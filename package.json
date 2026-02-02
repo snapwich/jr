@@ -1,0 +1,34 @@
+{
+  "name": "dotagents",
+  "version": "1.0.0",
+  "description": "Stores shared AI-generated content for agents across repos using stow",
+  "keywords": [
+    "claude",
+    "agents"
+  ],
+  "homepage": "https://github.com/snapwich/.agents#readme",
+  "bugs": {
+    "url": "https://github.com/snapwich/.agents/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snapwich/.agents.git"
+  },
+  "license": "MIT",
+  "author": "Rich Snapp",
+  "type": "module",
+  "scripts": {
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "lint-staged": "^16.2.7",
+    "markdownlint-cli2": "^0.17.2",
+    "prettier": "^3.8.1"
+  },
+  "lint-staged": {
+    "*.{md,mdx}": [
+      "prettier --write",
+      "markdownlint-cli2 --fix"
+    ]
+  }
+}

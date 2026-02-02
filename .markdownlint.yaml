@@ -1,1 +1,2 @@
+MD013: false # line-length (disabled because this is enforced by Prettier)
 MD041: false # first-line-heading/first-line-h1

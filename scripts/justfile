@@ -1,0 +1,25 @@
+
+_default:
+  just --list
+
+create-worktree name:
+  git -C default worktree add -b {{ name }} ../{{ name }}
+  cp -r --update=none .claude/. {{ name }}/.claude/
+  grep -qxF '.claude/agents/tk/' default/.git/info/exclude \
+    || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
+      >> default/.git/info/exclude
+
+remove-worktree name:
+  git -C default worktree remove ../{{ name }}
+  git -C default branch -d {{ name }}
+
+start-subagent worktree ticket-id:
+  #!/usr/bin/env bash
+  cd "{{ justfile_directory() }}"
+  agent=$(tk query 'select(.id | contains("{{ ticket-id }}"))' | jq -r '.assignee')
+  prompt=$(sed 's/\$ARGUMENTS\[0\]/{{ ticket-id }}/' .claude/commands/tk/subagent-task.md)
+  # TODO: figure out better permission handling for Bash
+  cd {{ worktree }} && claude \
+    --agent "$agent" \
+    --allowedTools "Bash,Read,Edit,Write,Grep,Glob" \
+    -p "$prompt"
