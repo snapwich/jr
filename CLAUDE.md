@@ -52,6 +52,52 @@ scripts/justfile              ──→     justfile (worktree mgmt)
                                       .tickets → .agents/.tickets  (symlink)
 ```
 
+### Expected project structure
+
+```text
+repos/
+├── .agents/                              # this repo, project created with `just init ../richsnapp.com`
+│   └── ...
+└── richsnapp.com/                        # target project
+    ├── .agents/
+    │   ├── .tickets/                     # git-backed ticket store (tk data)
+    │   └── plans/                        # plan documents
+    ├── .claude/
+    │   ├── agents/tk/
+    │   │   ├── coder.md                  # ──→ symlink (stow) — agent definition
+    │   │   ├── orchestrator.md           # ──→ symlink (stow) — agent definition
+    │   │   └── ...                       # more agents as they're added
+    │   ├── commands/tk/
+    │   │   ├── subagent-task.md          # ──→ symlink (stow) — slash command
+    │   │   ├── create-epic.md            # ──→ symlink (stow) — slash command
+    │   │   └── ...                       # more commands as they're added
+    │   └── rules/
+    │       ├── tk-agents.md              # ──→ symlink (stow) — subagent rules
+    │       └── ...                       # more rules as they're added
+    ├── .tickets → .agents/.tickets       # symlink so tk can recursively find tickets
+    ├── justfile                           # ──→ symlink (stow) — recipes for orchestrator use
+    ├── default/                          # main git checkout (bare repo worktree)
+    │   ├── src/
+    │   └── ...
+    ├── EPIC-123-some-feature/            # worktree — one branch, one eventual PR
+    │   ├── .claude/                      # merged copy of project .claude/ (see note below)
+    │   │   ├── agents/tk/                #   tk agent defs (from project-level stow symlinks)
+    │   │   ├── commands/tk/              #   tk commands (from project-level stow symlinks)
+    │   │   ├── rules/                    #   project rules + tk rules
+    │   │   └── settings.json             #   project's own settings
+    │   ├── CLAUDE.md                     #   project's own context
+    │   ├── src/
+    │   └── ...
+    └── EPIC-124-another-feature/         # another worktree, can run in parallel
+        ├── .claude/
+        └── ...
+```
+
+Claude Code doesn't recursively search parent directories for `.claude/`, so each worktree needs its own copy.
+`just create-worktree` handles this — it copies the project-level `.claude/` into the worktree using
+`cp -r --update=none`, which merges without overwriting existing files. This means worktrees get both the stowed tk
+configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
+
 ### No project CLAUDE.md
 
 All universal subagent context goes in `claude/.claude/rules/*` prefixed with `tk-` to avoid clobbering project rules.
