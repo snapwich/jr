@@ -55,10 +55,10 @@ scripts/justfile              ──→     justfile (worktree mgmt)
 ### Expected project structure
 
 ```text
-repos/
-├── .agents/                              # this repo, project created with `just init ../richsnapp.com`
+~/
+├── .agents/                              # this repo, project created with `just init ../<project>`
 │   └── ...
-└── richsnapp.com/                        # target project
+└── <project>/                            # target project
     ├── .agents/
     │   ├── .tickets/                     # git-backed ticket store (tk data)
     │   └── plans/                        # plan documents
@@ -75,26 +75,30 @@ repos/
     │       ├── tk-agents.md              # ──→ symlink (stow) — subagent rules
     │       └── ...                       # more rules as they're added
     ├── .tickets → .agents/.tickets       # symlink so tk can recursively find tickets
-    ├── justfile                           # ──→ symlink (stow) — recipes for orchestrator use
-    ├── default/                          # main git checkout (bare repo worktree)
-    │   ├── src/
-    │   └── ...
-    ├── EPIC-123-some-feature/            # worktree — one branch, one eventual PR
-    │   ├── .claude/                      # merged copy of project .claude/ (see note below)
-    │   │   ├── agents/tk/                #   tk agent defs (from project-level stow symlinks)
-    │   │   ├── commands/tk/              #   tk commands (from project-level stow symlinks)
-    │   │   ├── rules/                    #   project rules + tk rules
-    │   │   └── settings.json             #   project's own settings
-    │   ├── CLAUDE.md                     #   project's own context
-    │   ├── src/
-    │   └── ...
-    └── EPIC-124-another-feature/         # another worktree, can run in parallel
-        ├── .claude/
-        └── ...
+    ├── justfile                          # ──→ symlink (stow) — recipes for orchestrator use
+    ├── <repo-a>/                           # user-managed git repo
+    │   ├── default/                      # main checkout (bare repo worktree)
+    │   │   └── .claude/                  # merged copy (if repo has .claude/ committed)
+    │   ├── EPIC-123-some-feature/        # worktree — one branch, one eventual PR
+    │   │   ├── .claude/                  # merged copy of project .claude/ (see note below)
+    │   │   │   ├── agents/tk/            #   tk agent defs (from project-level stow symlinks)
+    │   │   │   ├── commands/tk/          #   tk commands (from project-level stow symlinks)
+    │   │   │   ├── rules/                #   project rules + tk rules
+    │   │   │   └── settings.json         #   project's own settings
+    │   │   ├── CLAUDE.md                 #   project's own context
+    │   │   ├── src/
+    │   │   └── ...
+    │   └── EPIC-124-another-feature/     # another worktree, can run in parallel
+    │       ├── .claude/
+    │       └── ...
+    └── <repo-b>/                           # another user-managed git repo
+        ├── default/                      # main checkout
+        └── EPIC-456-cross-repo-work/     # worktree
+            └── ...
 ```
 
 Claude Code doesn't recursively search parent directories for `.claude/`, so each worktree needs its own copy.
-`just create-worktree` handles this — it copies the project-level `.claude/` into the worktree using
+`just create-worktree <repo> <name>` handles this — it copies the project-level `.claude/` into the worktree using
 `cp -r --update=none`, which merges without overwriting existing files. This means worktrees get both the stowed tk
 configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
 
@@ -110,8 +114,9 @@ ticket tracker. Run `tk` with no args to see available commands.
 
 ### Worktree model
 
-Generally one worktree per epic (branch + eventual PR). The `default/` directory contains the main checkout; worktrees
-are created as siblings. Can be multiple worktrees/PRs per epic for multi-repo or other reasons.
+Each repo directory (e.g. `repo-a/`) contains a `default/` checkout with sibling worktrees. All justfile recipes take a
+`repo` parameter to target the correct repo directory. Generally one worktree per epic (branch + eventual PR). Can be
+multiple worktrees/PRs per epic across different repos.
 
 ### Task parallelism
 
@@ -147,8 +152,21 @@ actual code and makes targeted changes, rather than defending the original appro
 
 ### Subagent launching
 
-`just start-subagent <worktree> <ticket-id>` reads the ticket's assignee via `tk query`, substitutes the ticket ID into
-`subagent-task.md`, and launches `claude --agent <agent> -p <prompt>` in the worktree directory.
+`just start-subagent <repo> <worktree> <ticket-id>` reads the ticket's assignee via `tk query`, substitutes the ticket
+ID into `subagent-task.md`, and launches `claude --agent <agent> -p <prompt>` in the `<repo>/<worktree>/` directory.
+
+### Worktree notes
+
+Each task tracks its assigned worktree via a `tk` note in a standard greppable format:
+
+```text
+worktree: <repo>/<worktree-name>
+```
+
+The orchestrator checks `tk show <ticket-id> | grep '^worktree:'` before creating a worktree. If a note exists, it
+reuses that worktree; otherwise it creates one and records it with `tk note`. This is per-task, not per-epic — a single
+epic may span multiple worktrees (e.g. cross-repo work), and looking up a parent epic on every `tk ready` result would
+be expensive.
 
 ## Directory Structure
 
@@ -176,7 +194,7 @@ package.json                          # dotagents — prettier + lint-staged dev
 ### Built
 
 - `just init <dir>` — creates `.agents/.tickets`, `.agents/plans`, inits git, stows configs, creates `.tickets` symlink
-- `scripts/justfile` — `create-worktree`, `remove-worktree`, `start-subagent` recipes
+- `scripts/justfile` — `create-worktree`, `remove-worktree`, `start-subagent` recipes (all take a `repo` parameter)
 - Agent definitions (coder, orchestrator) — initial pass, need significant work
 - `subagent-task.md` command — works on a ticket by ID (used by `just start-subagent`)
 - `tk-agents.md` rule — tells subagents to use `tk` and check help for syntax
@@ -196,11 +214,11 @@ package.json                          # dotagents — prettier + lint-staged dev
 ## Intended Workflow
 
 1. `just init ../<project>` — deploys agent configs and ticket infrastructure
-2. User sets up worktree layout: root checkout in `default/`, worktrees as siblings
+2. User clones repos as named subdirectories (e.g. `repo-a/`, `repo-b/`), each with `default/` as the main checkout
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
 4. User runs `/tk:create-epic` to break work into tk tickets (epics → tasks with dependencies)
 5. User runs a command to start the agentic loop
-6. Orchestrator: `tk ready` → create/reuse worktrees → start subagents → aggregate → notify user
+6. Orchestrator: `tk ready` → create/reuse worktrees per repo → start subagents → aggregate → notify user
 
 ## Work Breakdown Model
 
@@ -222,7 +240,7 @@ Possible task flow per epic:
   per-worktree even if tasks are ready.
 - **Unit test tasks**: Should unit test writing be separate from implementation? Reviewed independently? TBD.
 - **Testing subagent genericity**: How much do agent definitions prescribe vs leave to project rules?
-- **Cross-repo epics**: When work spans multiple repos, how are worktrees/PRs organized?
+- **Cross-repo epics**: Each repo gets its own worktree/branch; ticket metadata tracks the target repo.
 
 ## Development Guidelines
 

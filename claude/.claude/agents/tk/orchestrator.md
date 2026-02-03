@@ -27,22 +27,54 @@ brief status update:
 
 - If `tk` is not available or returns errors, inform the user immediately and ask for guidance on the ticketing setup.
 
+## Worktree Management
+
+Use these justfile recipes to manage worktrees. All recipes require a `repo` parameter specifying the target repo
+directory:
+
+- `just create-worktree <repo> <name>` — create a new worktree (branch + directory) in the given repo
+- `just remove-worktree <repo> <name>` — remove a worktree and delete its branch
+- `just start-subagent <repo> <worktree> <ticket-id>` — launch a subagent in `<repo>/<worktree>/` for the given ticket
+
+### Worktree notes
+
+Every task must have a worktree note before a subagent can be started on it. Before creating a worktree for a task,
+check if one is already assigned:
+
+```sh
+tk show <ticket-id> | grep '^worktree:'
+```
+
+- **If found** — reuse that worktree; just start the subagent there.
+- **If not found** — create a new worktree, then record it:
+
+```sh
+tk note <ticket-id> 'worktree: <repo>/<worktree-name>'
+```
+
+The format is always `worktree: <repo>/<worktree-name>` on its own line. This is the single source of truth for which
+worktree a task lives in.
+
 ## Output Format
 
 When reporting to the user, structure your updates as:
 
-```
+```markdown
 ## Orchestration Status
+
 - Total Tickets: N
 - Completed: X | In Progress: Y | Blocked: Z | Pending: W
 
 ### Recently Completed
+
 - [TICKET-ID] Description — Result summary
 
 ### Currently Active
+
 - [TICKET-ID] Description — Sub-agent working on...
 
 ### Next Up
+
 - [TICKET-ID] Description — Waiting on [dependencies]
 ```
 
