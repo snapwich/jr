@@ -54,51 +54,45 @@ scripts/justfile              ──→     justfile (worktree mgmt)
 
 ### Expected project structure
 
+The toolkit supports two modes depending on whether the project works with one repo or multiple:
+
+**Single-repo mode** — `default/` and worktrees at project root:
+
 ```text
 ~/
-├── .agents/                              # this repo, project created with `just init ../<project>`
-│   └── ...
-└── <project>/                            # target project
-    ├── .agents/
-    │   ├── .tickets/                     # git-backed ticket store (tk data)
-    │   └── plans/                        # plan documents
-    ├── .claude/
-    │   ├── agents/tk/
-    │   │   ├── coder.md                  # ──→ symlink (stow) — agent definition
-    │   │   ├── orchestrator.md           # ──→ symlink (stow) — agent definition
-    │   │   └── ...                       # more agents as they're added
-    │   ├── commands/tk/
-    │   │   ├── subagent-task.md          # ──→ symlink (stow) — slash command
-    │   │   ├── create-epic.md            # ──→ symlink (stow) — slash command
-    │   │   └── ...                       # more commands as they're added
-    │   └── rules/
-    │       ├── tk-agents.md              # ──→ symlink (stow) — subagent rules
-    │       └── ...                       # more rules as they're added
-    ├── .tickets → .agents/.tickets       # symlink so tk can recursively find tickets
-    ├── justfile                          # ──→ symlink (stow) — recipes for orchestrator use
-    ├── <repo-a>/                           # user-managed git repo
-    │   ├── default/                      # main checkout (bare repo worktree)
-    │   │   └── .claude/                  # merged copy (if repo has .claude/ committed)
-    │   ├── EPIC-123-some-feature/        # worktree — one branch, one eventual PR
-    │   │   ├── .claude/                  # merged copy of project .claude/ (see note below)
-    │   │   │   ├── agents/tk/            #   tk agent defs (from project-level stow symlinks)
-    │   │   │   ├── commands/tk/          #   tk commands (from project-level stow symlinks)
-    │   │   │   ├── rules/                #   project rules + tk rules
-    │   │   │   └── settings.json         #   project's own settings
-    │   │   ├── CLAUDE.md                 #   project's own context
-    │   │   ├── src/
-    │   │   └── ...
-    │   └── EPIC-124-another-feature/     # another worktree, can run in parallel
-    │       ├── .claude/
-    │       └── ...
-    └── <repo-b>/                           # another user-managed git repo
-        ├── default/                      # main checkout
-        └── EPIC-456-cross-repo-work/     # worktree
-            └── ...
+├── .agents/                              # this repo
+└── <project>/                            # target project (single repo)
+    ├── .agents/, .claude/, justfile      # project-level (stowed)
+    ├── .tickets → .agents/.tickets
+    ├── default/                          # main checkout
+    │   └── .claude/                      # merged copy (if repo has .claude/ committed)
+    ├── EPIC-123-some-feature/            # worktree
+    │   └── .claude/                      # merged copy of project .claude/
+    └── EPIC-124-another-feature/         # another worktree
 ```
 
+**Multi-repo mode** — repos are named subdirectories:
+
+```text
+~/
+├── .agents/                              # this repo
+└── <project>/                            # target project (multi-repo)
+    ├── .agents/, .claude/, justfile      # project-level (stowed)
+    ├── .tickets → .agents/.tickets
+    ├── <repo-a>/                         # user-managed git repo
+    │   ├── default/                      # main checkout
+    │   ├── EPIC-123-some-feature/        # worktree
+    │   └── EPIC-124-another-feature/
+    └── <repo-b>/                         # another repo
+        ├── default/
+        └── EPIC-456-cross-repo-work/
+```
+
+**Mode detection:** Run `just detect-mode` — returns `single-repo` if `default/` exists at project root, otherwise
+`multi-repo`. In single-repo mode, pass `.` as the `repo` parameter to justfile recipes.
+
 Claude Code doesn't recursively search parent directories for `.claude/`, so each worktree needs its own copy.
-`just create-worktree <repo> <name>` handles this — it copies the project-level `.claude/` into the worktree using
+`just create-worktree <name> [repo]` handles this — it copies the project-level `.claude/` into the worktree using
 `cp -r --update=none`, which merges without overwriting existing files. This means worktrees get both the stowed tk
 configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
 
@@ -114,9 +108,12 @@ ticket tracker. Run `tk` with no args to see available commands.
 
 ### Worktree model
 
-Each repo directory (e.g. `repo-a/`) contains a `default/` checkout with sibling worktrees. All justfile recipes take a
-`repo` parameter to target the correct repo directory. Generally one worktree per epic (branch + eventual PR). Can be
-multiple worktrees/PRs per epic across different repos.
+Each repo has a `default/` checkout with sibling worktrees. All justfile recipes take a `repo` parameter:
+
+- **Single-repo mode:** `default/` is at project root; omit the repo arg (e.g. `just create-worktree EPIC-123`)
+- **Multi-repo mode:** repos are subdirectories; pass the repo name (e.g. `just create-worktree EPIC-123 repo-a`)
+
+Generally one worktree per epic (branch + eventual PR). Can be multiple worktrees/PRs per epic across different repos.
 
 ### Task parallelism
 
@@ -162,6 +159,9 @@ Each task tracks its assigned worktree via a `tk` note in a standard greppable f
 ```text
 worktree: <repo>/<worktree-name>
 ```
+
+In single-repo mode, `<repo>` is `.` (e.g. `worktree: ./EPIC-123`). In multi-repo mode, it's the repo name (e.g.
+`worktree: repo-a/EPIC-123`).
 
 The orchestrator checks `tk show <ticket-id> | grep '^worktree:'` before creating a worktree. If a note exists, it
 reuses that worktree; otherwise it creates one and records it with `tk note`. This is per-task, not per-epic — a single
