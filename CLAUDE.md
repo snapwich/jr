@@ -3,8 +3,8 @@
 Stow-based toolkit for deploying AI agent configs into project directories. Orchestrates multi-agent workflows where
 Claude subagents work on `tk` tickets in git worktrees.
 
-**Intended flow:** `just init` a project → break down work into tk tickets (epics/tasks) → run agentic loop that assigns
-subagents to tickets via worktrees → results aggregated and user notified.
+**Intended flow:** `just init` a project → break down work into tk tickets (features/tasks) → run `/tk:orchestrate` →
+subagents implement, review, and close tickets → user notified on completion or blockers.
 
 ## Design Goals
 
@@ -22,13 +22,10 @@ This is deliberate, not a limitation to work around:
   the actual code in the worktree. This is intentionally lossy — it preserves what matters (decisions, rationale,
   specific feedback) without biasing toward a particular approach.
 
-**Orchestrator as tech lead, not a bash loop.** The orchestrator is an LLM agent (sonnet) rather than a script. The
-hypothesis is that an agent can exercise judgment a loop cannot: identifying issues early before subagents waste effort,
-adapting to unexpected failures, keeping workers aligned toward the common goal across a long-running session, and
-deciding when to intervene vs let things proceed. A known risk is the orchestrator being too creative — retrying things
-it shouldn't or making hard-to-debug coordination decisions. Sonnet on bash-only mitigates this, and structured status
-reporting keeps decisions auditable. If the orchestrator mostly just runs `tk ready` and launches subagents
-mechanically, it should be demoted to a script.
+**Orchestrator as interactive coordinator.** The orchestrator runs as a slash command (`/tk:orchestrate`) in the user's
+interactive Claude session. The user watches it work and can intervene directly. This simplifies observability and
+escalation — the user is right there. The orchestrator uses `tk ready` to discover work, launches subagents in the
+background, and reacts to their return signals.
 
 **Early issue detection.** A key motivation is avoiding the failure mode of existing long-running loops that do too much
 work before surfacing problems. The orchestrator should catch issues early and surface them to the user rather than
@@ -66,9 +63,9 @@ The toolkit supports two modes depending on whether the project works with one r
     ├── .tickets → .agents/.tickets
     ├── default/                          # main checkout
     │   └── .claude/                      # merged copy (if repo has .claude/ committed)
-    ├── EPIC-123-some-feature/            # worktree
+    ├── TASK-123-some-feature/            # worktree (one per task)
     │   └── .claude/                      # merged copy of project .claude/
-    └── EPIC-124-another-feature/         # another worktree
+    └── TASK-456-another-task/            # another worktree
 ```
 
 **Multi-repo mode** — repos are named subdirectories:
@@ -81,11 +78,11 @@ The toolkit supports two modes depending on whether the project works with one r
     ├── .tickets → .agents/.tickets
     ├── <repo-a>/                         # user-managed git repo
     │   ├── default/                      # main checkout
-    │   ├── EPIC-123-some-feature/        # worktree
-    │   └── EPIC-124-another-feature/
+    │   ├── TASK-123-backend/             # worktree
+    │   └── TASK-456-api/
     └── <repo-b>/                         # another repo
         ├── default/
-        └── EPIC-456-cross-repo-work/
+        └── TASK-789-frontend/
 ```
 
 **Mode detection:** Run `just detect-mode` — returns `single-repo` if `default/` exists at project root, otherwise
@@ -110,63 +107,110 @@ ticket tracker. Run `tk` with no args to see available commands.
 
 Each repo has a `default/` checkout with sibling worktrees. All justfile recipes take a `repo` parameter:
 
-- **Single-repo mode:** `default/` is at project root; omit the repo arg (e.g. `just create-worktree EPIC-123`)
-- **Multi-repo mode:** repos are subdirectories; pass the repo name (e.g. `just create-worktree EPIC-123 repo-a`)
+- **Single-repo mode:** `default/` is at project root; omit the repo arg (e.g. `just create-worktree TASK-123`)
+- **Multi-repo mode:** repos are subdirectories; pass the repo name (e.g. `just create-worktree TASK-123 repo-a`)
 
-Generally one worktree per epic (branch + eventual PR). Can be multiple worktrees/PRs per epic across different repos.
+One worktree per task (= one branch = one eventual PR).
 
 ### Task parallelism
 
-Tasks within an epic can run in parallel if their `tk` dependencies allow it. The orchestrator uses `tk ready` to
+Tasks within a feature can run in parallel if their `tk` dependencies allow it. The orchestrator uses `tk ready` to
 determine what can be worked on. However, multiple subagents in the same worktree simultaneously risks file conflicts —
-the orchestrator should serialize per-worktree even if tasks are technically ready.
+the orchestrator serializes per-worktree even if tasks are technically ready.
 
 ### Agent model
 
-- **Orchestrator** (sonnet, bash-only, green) — coordinates workflows, manages tickets, launches subagents
-- **Coder** (opus, full tools, orange) — implements tasks, tracks progress via `tk`
-- **Reviewer** (TBD) — reviews completed work with fresh context, approves or requests changes
+Four agent roles, three as subagents and one as a slash command:
 
-Agent definitions are WIP — initial pass only, need significant work. Need to add reviewer, testing subagents, and
-improve existing definitions.
+- **Coder** (`tk:coder`, opus, full tools, orange) — implements tasks, runs tests, commits and pushes
+- **Code-Reviewer** (`tk:code-reviewer`, opus, read-only, cyan) — reviews code + test quality, approves or requests
+  changes
+- **Architect-Reviewer** (`tk:architect-reviewer`, opus, read-only, magenta) — feature-level review, cross-task
+  coherence, opens PRs
+- **Orchestrator** (`/tk:orchestrate` slash command) — coordinates the workflow, launches subagents, reacts to their
+  signals. Stays context-lean: uses `tk query` with jq for structured data, never `tk show`
+
+### Ticket hierarchy
+
+Two levels: **Feature** and **Task**.
+
+- **Feature** (`type: feature`, assignee: `tk:architect-reviewer`) — logical grouping of related work. Created by
+  `/tk:create-feature` from a plan document. Depends on all its child tasks (appears in `tk ready` when all children
+  close). Plan context is embedded in the description.
+- **Task** (`type: task`, parent: feature, assignee: `tk:coder`) — one task = one worktree = one branch = one PR. Cycles
+  through: coder → code-reviewer → closed.
+
+### Task lifecycle
+
+1. **Coder** implements the task, runs tests, commits, pushes, returns `requesting-review`
+2. **Orchestrator** immediately launches code-reviewer on the same task
+3. **Code-reviewer** reviews code + tests, returns `approved` or `changes-requested`
+4. If approved → orchestrator closes task
+5. If changes requested → orchestrator relaunches coder (max 3 review iterations, then escalate)
+
+### Feature lifecycle
+
+1. All child tasks closed → feature appears in `tk ready`
+2. **Architect-reviewer** reviews cross-task coherence, integration, downstream deps
+3. If approved → orchestrator closes feature, PRs ready for human review
+4. If issues found → architect reopens specific task(s) for rework → tasks go through coder/reviewer cycle again
 
 ### Review workflow
 
-Review uses ticket notes as the handoff mechanism. The flow for a task:
+Review uses ticket notes as the handoff mechanism:
 
 1. **Coder works** — implements the task, logging decisions and steps as `tk` notes along the way
-2. **Coder finishes** — reassigns the ticket to the reviewer agent (ticket stays `in_progress`)
-3. **Reviewer picks up** — reads ticket description, notes, and reviews the code in the worktree with fresh context (no
-   implementation bias)
-4. **If approved** — reviewer marks ticket as `done`
-5. **If changes requested** — reviewer leaves detailed feedback as a note, reassigns back to coder. A new coder subagent
-   picks it up with the ticket description + all accumulated notes (implementation notes + review feedback) + the
-   current code state. The review note should be specific and concrete enough that a fresh agent can act on it without
-   the original implementation context.
+2. **Coder finishes** — returns `requesting-review` signal to orchestrator
+3. **Code-reviewer picks up** — reads ticket description, notes, and reviews the code in the worktree with fresh context
+4. **If approved** — code-reviewer returns `approved`, orchestrator closes task
+5. **If changes requested** — code-reviewer leaves detailed feedback as a note, returns `changes-requested`.
+   Orchestrator relaunches a fresh coder that reads the notes + code and makes targeted changes.
 
 This intentionally discards implementation context on revision — the coder reads the review feedback alongside the
 actual code and makes targeted changes, rather than defending the original approach.
 
 ### Subagent launching
 
-`just start-subagent <repo> <worktree> <ticket-id>` reads the ticket's assignee via `tk query`, substitutes the ticket
-ID into `subagent-task.md`, and launches `claude --agent <agent> -p <prompt>` in the `<repo>/<worktree>/` directory.
+`just start-subagent <ticket-id>` is self-contained: it queries the ticket for assignee and `repo:<name>` tag, derives
+the worktree name, creates the worktree if needed, and launches `claude --agent <agent> -p <prompt>` in the worktree
+directory.
 
-### Worktree notes
+### Worktree naming convention
 
-Each task tracks its assigned worktree via a `tk` note in a standard greppable format:
+Worktree and branch names are derived deterministically from ticket metadata: `<id>-<slugified-title>`. The
+`just worktree-name <ticket-id>` recipe computes this. No need to track worktree assignments — any agent or recipe can
+derive the worktree path from a ticket ID.
+
+### Return text signal block
+
+All subagents must end their output with a structured signal block so the orchestrator can parse the result:
 
 ```text
-worktree: <repo>/<worktree-name>
+---
+signal: <signal-type>
+ticket: <ticket-id>
+summary: <one-line summary>
+details: <optional details>
 ```
 
-In single-repo mode, `<repo>` is `.` (e.g. `worktree: ./EPIC-123`). In multi-repo mode, it's the repo name (e.g.
-`worktree: repo-a/EPIC-123`).
+| Signal              | Agent              | Meaning                                       |
+| ------------------- | ------------------ | --------------------------------------------- |
+| `requesting-review` | coder              | Implementation done, tests pass, ready for CR |
+| `approved`          | code-reviewer      | Code and tests look good, task can be closed  |
+| `changes-requested` | code-reviewer      | Issues found, coder should address feedback   |
+| `feature-approved`  | architect-reviewer | Feature is coherent, PRs ready                |
+| `task-rework`       | architect-reviewer | Specific task(s) need changes (in details)    |
+| `escalate`          | any                | Blocker that needs human attention            |
 
-The orchestrator checks `tk show <ticket-id> | grep '^worktree:'` before creating a worktree. If a note exists, it
-reuses that worktree; otherwise it creates one and records it with `tk note`. This is per-task, not per-epic — a single
-epic may span multiple worktrees (e.g. cross-repo work), and looking up a parent epic on every `tk ready` result would
-be expensive.
+### Note conventions
+
+Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`, `[architect]`. Task notes are for the
+next agent on the same task. Feature notes are for sibling tasks and the architect.
+
+### Concurrency
+
+The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`). One
+agent per worktree at a time.
 
 ## Directory Structure
 
@@ -174,73 +218,45 @@ be expensive.
 justfile                              # main entry point — `just init <dir>`
 claude/.claude/
   agents/tk/
-    coder.md                          # coder agent definition (opus, full tools)
-    orchestrator.md                   # orchestrator agent definition (sonnet, bash-only)
+    coder.md                          # coder agent (opus, full tools, orange)
+    code-reviewer.md                  # code reviewer agent (opus, read-only, cyan)
+    architect-reviewer.md             # architect reviewer agent (opus, read-only, magenta)
   commands/tk/
-    subagent-task.md                  # slash command: work on a ticket by ID (works)
-    create-epic.md                    # slash command: break down work into epics/tasks (empty — TODO)
+    subagent-task.md                  # slash command: work on a ticket by ID
+    orchestrate.md                    # slash command: run the orchestration loop
+    create-feature.md                 # slash command: break down plans into features/tasks
   rules/
     tk-agents.md                      # behavioral rules for subagents
 scripts/
-  justfile                            # worktree/subagent recipes (create-worktree, remove-worktree, start-subagent)
+  justfile                            # worktree/subagent recipes
 .husky/pre-commit                     # runs lint-staged on commit
 package.json                          # dotagents — prettier + lint-staged dev deps
 .prettierrc.yml                       # 120 char width, proseWrap: always for markdown
 .markdownlint.yaml                    # no line-length rule, no first-line-heading rule
 ```
 
-## Current State
-
-### Built
-
-- `just init <dir>` — creates `.agents/.tickets`, `.agents/plans`, inits git, stows configs, creates `.tickets` symlink
-- `scripts/justfile` — `create-worktree`, `remove-worktree`, `start-subagent` recipes (all take a `repo` parameter)
-- Agent definitions (coder, orchestrator) — initial pass, need significant work
-- `subagent-task.md` command — works on a ticket by ID (used by `just start-subagent`)
-- `tk-agents.md` rule — tells subagents to use `tk` and check help for syntax
-- Pre-commit hooks (prettier via husky/lint-staged)
-
-### TODO
-
-- **`create-epic.md` command** — currently empty. Slash command to break down plans/issues/GitHub issues/Jira into epics
-  → tasks with proper tk dependencies
-- **Agentic loop orchestrator** — runs `tk ready`, assigns work to worktrees, starts subagents, aggregates results,
-  notifies user on completion or blockers
-- **Testing subagents** — unit tester and integration tester agent definitions. Must be generic; project-specific test
-  config comes from project context (project CLAUDE.md, rules, skills)
-- **Reviewer agent definition** — design decided (see review workflow above), needs implementation
-- **Better agent definitions** — current ones are initial pass
-
 ## Intended Workflow
 
 1. `just init ../<project>` — deploys agent configs and ticket infrastructure
 2. User clones repos as named subdirectories (e.g. `repo-a/`, `repo-b/`), each with `default/` as the main checkout
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
-4. User runs `/tk:create-epic` to break work into tk tickets (epics → tasks with dependencies)
-5. User runs a command to start the agentic loop
-6. Orchestrator: `tk ready` → create/reuse worktrees per repo → start subagents → aggregate → notify user
+4. User runs `/tk:create-feature` to break work into tk tickets (features → tasks with dependencies)
+5. User runs `/tk:orchestrate` to start the orchestration loop
+6. Orchestrator: `tk ready` → create/reuse worktrees → start subagents → react to signals → close tickets → notify user
 
 ## Work Breakdown Model
 
 - **Plan** → optional starting point (markdown, GitHub issue, Jira, etc.)
-- **Epic** (`type: epic`) ≈ feature ≈ one worktree/branch/PR (usually)
-- **Task** (`type: task`, `parent: epic`) ≈ unit of work, parallelizable based on declared tk dependencies
-
-Possible task flow per epic:
-
-1. Write integration/acceptance tests up-front
-2. Fork into parallel: implementation tasks + unit test writing (dependency structure TBD)
-3. Each completed task goes through the review workflow (coder → reviewer → revision cycle in same worktree)
-4. Final review: all commits as a whole, verify integration tests pass
-5. PR is ready
+- **Feature** (`type: feature`) — logical grouping of related work, one or more tasks, reviewed by architect
+- **Task** (`type: task`, `parent: feature`) — unit of work, one worktree/branch/PR, parallelizable via tk dependencies
 
 ## Open Design Questions
 
-- **Task parallelism within a worktree**: Multiple subagents in same worktree risks file conflicts. Likely serialize
-  per-worktree even if tasks are ready.
 - **Unit test tasks**: Should unit test writing be separate from implementation? Reviewed independently? TBD.
 - **Testing subagent genericity**: How much do agent definitions prescribe vs leave to project rules?
-- **Cross-repo epics**: Each repo gets its own worktree/branch; ticket metadata tracks the target repo.
+- **Cross-repo features**: Each repo gets its own worktree/branch; ticket metadata tracks the target repo.
+- **Retry logic**: Handling crashed subagents (exit without clean return text).
+- **Promoting orchestrator**: From slash command to autonomous `claude -p` once reliable.
 
 ## Development Guidelines
 

@@ -2,24 +2,39 @@
 _default:
   just --list
 
-create-worktree repo name:
+# Detect single-repo vs multi-repo mode
+# Single-repo: default/ exists at project root, use "." as repo
+# Multi-repo: repos are subdirectories, use repo name as repo
+detect-mode:
+  @test -d default && echo "single-repo" || echo "multi-repo"
+
+# Derive worktree/branch name from a ticket: <id>-<slugified-title>
+worktree-name ticket-id:
+  #!/usr/bin/env bash
+  id=$(tk query 'select(.id | contains("{{ ticket-id }}"))' | jq -r '.id')
+  title=$(tk show "{{ ticket-id }}" | grep '^# ' | head -1 | sed 's/^# //')
+  echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+
+create-worktree name repo=".":
   git -C {{ repo }}/default worktree add -b {{ name }} ../{{ name }}
   cp -r --update=none .claude/. {{ repo }}/{{ name }}/.claude/
   grep -qxF '.claude/agents/tk/' {{ repo }}/default/.git/info/exclude \
     || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
       >> {{ repo }}/default/.git/info/exclude
 
-remove-worktree repo name:
+remove-worktree name repo=".":
   git -C {{ repo }}/default worktree remove ../{{ name }}
   git -C {{ repo }}/default branch -d {{ name }}
 
-start-subagent repo worktree ticket-id:
+start-subagent ticket-id:
   #!/usr/bin/env bash
   cd "{{ justfile_directory() }}"
-  agent=$(tk query 'select(.id | contains("{{ ticket-id }}"))' | jq -r '.assignee')
+  ticket=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
+  agent=$(echo "$ticket" | jq -r '.assignee')
+  repo=$(echo "$ticket" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+  wt=$(just worktree-name "{{ ticket-id }}")
+  just create-worktree "$wt" "$repo" 2>/dev/null || true
   prompt=$(sed 's/\$ARGUMENTS\[0\]/{{ ticket-id }}/' .claude/commands/tk/subagent-task.md)
-  # TODO: figure out better permission handling for Bash
-  cd {{ repo }}/{{ worktree }} && claude \
+  cd "$repo/$wt" && claude \
     --agent "$agent" \
-    --allowedTools "Bash,Read,Edit,Write,Grep,Glob" \
     -p "$prompt"
