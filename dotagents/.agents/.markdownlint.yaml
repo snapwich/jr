@@ -1,4 +1,5 @@
 MD013: false # line-length (disabled because this is enforced by Prettier)
 MD022: false # blanks-around-headings
+MD032: false # blanks-around-lists
 MD040: false # fenced-code-language
 MD041: false # first-line-heading/first-line-h1
