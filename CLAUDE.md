@@ -250,10 +250,26 @@ package.json                          # dotagents — prettier + lint-staged dev
 - **Feature** (`type: feature`) — logical grouping of related work, one or more tasks, reviewed by architect
 - **Task** (`type: task`, `parent: feature`) — unit of work, one worktree/branch/PR, parallelizable via tk dependencies
 
+## Testing Strategy
+
+Testing is requirements-driven. `/tk:create-feature` embeds testable requirements in each task description. These
+requirements are the basis for test coverage throughout the pipeline.
+
+- **Coder** owns test writing. Tests are mandatory output — unit tests for all new/changed code, integration tests where
+  cross-component interaction is involved. When working on existing code with coverage gaps, the coder fills in coverage
+  for code they touch. The coder discovers project testing conventions from the codebase (framework, patterns, file
+  locations) and follows them.
+- **Code-reviewer** enforces test quality. Insufficient testing is grounds for `changes-requested`, same as a code
+  defect. The reviewer traces task requirements to test coverage, checks for error/edge case coverage, and rejects
+  happy-path-only or meaningless assertions. Feedback on missing tests must be specific (what scenarios, what code
+  paths).
+- **Architect-reviewer** reviews integration test coverage at the feature level. Checks that cross-task interactions are
+  tested, API boundaries are verified on both sides, and components from different tasks work together. Requests rework
+  on specific tasks via `task-rework` when integration coverage is insufficient — does not write tests directly
+  (read-only). May also flag unit test gaps at API boundaries.
+
 ## Open Design Questions
 
-- **Unit test tasks**: Should unit test writing be separate from implementation? Reviewed independently? TBD.
-- **Testing subagent genericity**: How much do agent definitions prescribe vs leave to project rules?
 - **Cross-repo features**: Each repo gets its own worktree/branch; ticket metadata tracks the target repo.
 - **Retry logic**: Handling crashed subagents (exit without clean return text).
 - **Promoting orchestrator**: From slash command to autonomous `claude -p` once reliable.

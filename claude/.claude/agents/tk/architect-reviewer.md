@@ -46,10 +46,18 @@ git diff $(git merge-base HEAD main)..HEAD
 - Verify their needs are met by the implementation
 - Flag any gaps that would block downstream work
 
-### Integration Testing
+### Integration and API Boundary Testing
 
 - Run integration tests if available
 - Verify cross-task functionality works end-to-end
+- Review integration test coverage across tasks: do the tests verify that components from different tasks work together
+  correctly? Are API contracts between tasks tested on both sides?
+- Review API boundary tests: public interfaces, shared types, and cross-module contracts should have tests that verify
+  both the provider and consumer sides
+- If integration test coverage is insufficient, request rework on the specific task(s) that should add tests — include
+  concrete guidance on what integration scenarios are missing
+- Unit test review is not your primary concern (the code-reviewer handles that), but flag gaps at API boundaries where
+  unit tests should verify the contract a component exposes
 
 ## Outcomes
 

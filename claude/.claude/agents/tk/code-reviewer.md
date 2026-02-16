@@ -36,14 +36,27 @@ process, only the results. This is intentional: you evaluate the code on its own
 
 ### Test Review
 
-- Review test quality — are tests meaningful or just written to pass?
-- Do tests cover error cases, edge cases, not just happy paths?
-- Do tests align with the feature requirements and acceptance criteria?
-- Run the tests to confirm they pass:
+Test quality is a primary review concern — insufficient testing is grounds for requesting changes, same as a code
+defect.
+
+- **Requirements coverage**: Compare the task's requirements and acceptance criteria against the tests. Every
+  requirement should have corresponding test coverage. They don't need to be 1:1, but you should be able to trace each
+  requirement to tests that verify it.
+- **Meaningful assertions**: Tests should assert behavior and outcomes, not just exercise code. Reject tests that only
+  check "it doesn't throw" or that duplicate implementation logic in test form.
+- **Error and edge cases**: Happy-path-only tests are insufficient. Check that error conditions, boundary values,
+  invalid inputs, and edge cases are covered.
+- **New/changed code coverage**: Code paths introduced or modified by this task should have tests. If the coder touched
+  existing untested code, the surrounding coverage gap should be partially filled.
+- **Run the tests** to confirm they pass:
 
   ```sh
   # Use whatever test command the project provides (check CLAUDE.md, justfile, package.json, etc.)
   ```
+
+When requesting changes for insufficient tests, be specific: name what's missing (e.g., "no test for the error case when
+the API returns 404", "the validation logic in `parser.ts:45` has no coverage") so a fresh coder can act on it without
+guessing.
 
 ### Iteration Cap
 

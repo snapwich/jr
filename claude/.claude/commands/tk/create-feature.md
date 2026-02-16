@@ -62,7 +62,11 @@ mode, omit the tag (the orchestrator defaults to `.`).
 The task description should include:
 
 - What to implement
-- Acceptance criteria
+- **Requirements**: specific, testable statements of what the implementation must do. These are the basis for test
+  coverage — the coder writes tests to verify these requirements, and reviewers check tests against them. Requirements
+  don't need to be exhaustive or prescribe implementation details, but they should be concrete enough that you can tell
+  from a test whether the requirement is met.
+- **Acceptance criteria**: observable conditions for the task to be considered complete
 - Any relevant technical context from the plan
 
 ### 5. Set Up Dependencies
