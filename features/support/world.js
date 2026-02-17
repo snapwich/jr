@@ -17,6 +17,9 @@ class OrchestratorWorld extends World {
     this.lastExitCode = null;
     this.lastOutput = "";
     this.ticketIds = {}; // name → actual ticket ID
+    this.initTargetDirs = []; // temp dirs created by init tests
+    this.lastTicketTitle = null; // for worktree-name tests
+    this.lastWorktreeName = null; // for worktree-name tests
   }
 
   async setup() {
@@ -49,6 +52,9 @@ class OrchestratorWorld extends World {
   async teardown() {
     if (this.projectDir) {
       await rm(this.projectDir, { recursive: true, force: true });
+    }
+    for (const dir of this.initTargetDirs) {
+      await rm(dir, { recursive: true, force: true });
     }
   }
 
