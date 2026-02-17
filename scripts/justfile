@@ -192,7 +192,7 @@ start-work:
     prompt=$(make_prompt "$ticket_id")
     outfile="$OUTPUT_DIR/output-$ticket_id.txt"
 
-    (cd "$launch_dir" && $CLAUDE --agent "$agent" -p "$prompt") > "$outfile" 2>&1 &
+    (cd "$launch_dir" && $CLAUDE --agent "$agent" --dangerously-skip-permissions -p "$prompt") > "$outfile" 2>&1 &
     local pid=$!
 
     if ! acquire_lock "$lock_name" "$pid"; then
@@ -399,4 +399,5 @@ start-subagent ticket-id:
   prompt=$(sed 's/\$ARGUMENTS\[0\]/{{ ticket-id }}/' .claude/commands/tk/subagent-task.md)
   cd "$repo/$wt" && ${CLAUDE_CMD:-claude} \
     --agent "$agent" \
+    --dangerously-skip-permissions \
     -p "$prompt"
