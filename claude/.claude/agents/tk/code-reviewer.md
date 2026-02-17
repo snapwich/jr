@@ -19,6 +19,7 @@ process, only the results. This is intentional: you evaluate the code on its own
 1. Read your task: `tk show <ticket-id>`
 2. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
 3. Read the parent feature for broader context: `tk show <parent-id>`
+4. Log pickup: `tk add-note <ticket-id> '[code-reviewer] Starting review of <ticket-id>'`
 
 ## Review Process
 

@@ -22,6 +22,7 @@ launched in the **project root** so you can navigate to all task worktrees.
 3. For each child task, read its description and notes: `tk show <task-id>`
 4. Derive each task's worktree name: `just worktree-name <task-id>`
 5. Check what features/tasks depend on this feature: look for downstream dependencies
+6. Log pickup: `tk add-note <ticket-id> '[architect] Starting feature review of <ticket-id>'`
 
 ## Review Process
 
