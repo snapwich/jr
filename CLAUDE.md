@@ -137,7 +137,7 @@ Three Claude subagents plus a bash orchestrator:
 Two levels: **Feature** and **Task**.
 
 - **Feature** (`type: feature`, assignee: `tk:architect-reviewer`) — logical grouping of related work. Created by
-  `/tk:create-feature` from a plan document. Depends on all its child tasks (appears in `tk ready` when all children
+  `/tk:create-features` from a plan document. Depends on all its child tasks (appears in `tk ready` when all children
   close). Plan context is embedded in the description.
 - **Task** (`type: task`, parent: feature, assignee: `tk:coder`) — one task = one worktree = one branch = one PR. Cycles
   through: coder → code-reviewer → closed.
@@ -225,7 +225,7 @@ claude/.claude/
     architect-reviewer.md             # architect reviewer agent (opus, read-only, magenta)
   commands/tk/
     subagent-task.md                  # slash command: work on a ticket by ID
-    create-feature.md                 # slash command: break down plans into features/tasks
+    create-features.md                 # slash command: break down plans into features/tasks
   rules/
     tk-agents.md                      # behavioral rules for subagents
 scripts/
@@ -244,7 +244,7 @@ package.json                          # dotagents — prettier + lint-staged dev
 1. `just init ../<project>` — deploys agent configs and ticket infrastructure
 2. User clones repos as named subdirectories (e.g. `repo-a/`, `repo-b/`), each with `default/` as the main checkout
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
-4. User runs `/tk:create-feature` to break work into tk tickets (features → tasks with dependencies)
+4. User runs `/tk:create-features` to break work into tk tickets (features → tasks with dependencies)
 5. User runs `just start-work` to start the orchestration loop
 6. Orchestrator: `tk ready` → create/reuse worktrees → start subagents → react to signals → close tickets → exit
 
@@ -256,7 +256,7 @@ package.json                          # dotagents — prettier + lint-staged dev
 
 ## Testing Strategy
 
-Testing is requirements-driven. `/tk:create-feature` embeds testable requirements in each task description. These
+Testing is requirements-driven. `/tk:create-features` embeds testable requirements in each task description. These
 requirements are the basis for test coverage throughout the pipeline.
 
 - **Coder** owns test writing. Tests are mandatory output — unit tests for all new/changed code, integration tests where

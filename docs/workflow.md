@@ -8,7 +8,7 @@
 │                         (markdown, user-provided)                               │
 └────────────────────────────────┬────────────────────────────────────────────────┘
                                  │
-                         create-feature command
+                         create-features command
                      (consumes plan, creates tickets)
                                  │
               ┌──────────────────┴──────────────────┐
@@ -179,7 +179,7 @@ Two levels: **Feature** and **Task**.
 
 A logical grouping of related work. Can span multiple repos, worktrees, and PRs.
 
-- Created by the `create-feature` command from a plan document
+- Created by the `create-features` command from a plan document
 - **Assignee: `tk:architect-reviewer`** — set at creation time, tells orchestrator which agent to launch when feature
   becomes ready
 - Plan context is **embedded** in the feature description (plan is consumed, not referenced)
@@ -209,7 +209,7 @@ Feature B ──dep──► Task 3 (child of Feature B)
 Feature B ──dep──► Task 4 (child of Feature B)
 ```
 
-`create-feature` sets up all these dependencies at creation time. The combined effect:
+`create-features` sets up all these dependencies at creation time. The combined effect:
 
 - Tasks 1 and 2 are immediately discoverable via `tk ready` (Task 2 blocked by Task 1 if dep exists)
 - Feature A appears in `tk ready` only when Tasks 1 and 2 are both closed
@@ -301,7 +301,7 @@ and what's happening next.
 
 | Context Type       | Where                | Written By                | Read By                       |
 | ------------------ | -------------------- | ------------------------- | ----------------------------- |
-| Plan/requirements  | Feature description  | `create-feature` command  | All agents on that feature    |
+| Plan/requirements  | Feature description  | `create-features` command | All agents on that feature    |
 | Progress/work log  | Task notes           | Each agent during handoff | Next agent in lifecycle       |
 | Discovery/findings | Feature notes        | Any agent                 | Sibling task agents           |
 | Escalation signals | Subagent return text | Completing agent          | Orchestrator only             |
@@ -321,7 +321,7 @@ and what's happening next.
 - **Orchestrator → agents**: none directly — next agent reads `tk` state on startup
 - **Agent → sibling agents**: notes on the parent feature (discovery context)
 
-## Plan Consumption (`create-feature` command)
+## Plan Consumption (`create-features` command)
 
 1. Reads plan document (markdown, path provided as argument)
 2. Creates feature tickets with: plan context embedded in description, assignee `tk:architect-reviewer`
