@@ -103,7 +103,7 @@ Projects provide their own context via their own CLAUDE.md, rules, commands, and
 ### Ticket system
 
 `tk` CLI is always in PATH — never reference its source location, just use it as a CLI tool. It's a git-backed markdown
-ticket tracker. Run `tk` with no args to see available commands.
+ticket tracker. Run `tk` (no args) to see available commands. There is no help subcommand or `--help` flag.
 
 ### Worktree model
 

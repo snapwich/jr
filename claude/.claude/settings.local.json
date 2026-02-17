@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tk --help:*)",
       "Bash(tk)",
       "Bash(just detect-mode)",
       "Bash(tk create:*)",

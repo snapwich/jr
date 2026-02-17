@@ -1,5 +1,5 @@
-Work is managed using a ticketing CLI. Use `tk` without args to see commands. Never assume command syntax, only use
-syntax from help.
+Work is managed using a ticketing CLI. Run `tk` (no args) once to see available commands and syntax. There is no help
+subcommand — `tk` alone displays usage. Do not run `tk help`, `tk --help`, or `tk <cmd> help`.
 
 ## Return Text Signal Block
 
