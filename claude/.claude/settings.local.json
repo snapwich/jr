@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tk --help:*)",
+      "Bash(tk)",
+      "Bash(just detect-mode)",
+      "Bash(tk create:*)",
+      "Bash(tk show:*)",
+      "Bash(tk dep tree:*)",
+      "Bash(tk list:*)"
+    ]
+  }
+}
