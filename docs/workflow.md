@@ -267,45 +267,35 @@ task worktrees.
 - Blocker/architectural concern: returns escalation → orchestrator surfaces to user
 - Most likely agent to raise human-escalation blockers
 
-### Orchestrator (`tk:orchestrator`)
+### Orchestrator (`just start-work`)
 
-**Model:** sonnet | **Tools:** Bash only
+**Implementation:** Bash script inlined in `scripts/justfile` — no LLM, purely deterministic signal dispatch.
 
-Coordinates the workflow without accumulating domain knowledge.
+Coordinates the workflow without accumulating domain knowledge. Alternates between discovery and reaction:
 
-**Two modes of operation:**
-
-1. **Discovery mode** — polls `tk ready` for unblocked items:
+1. **Discovery** — polls `tk ready` for unblocked items:
    - Read assignee → launch that agent (create worktree if needed for tasks, project root for architect)
    - Uniform logic: assignee determines agent type regardless of ticket type
 
-2. **Reactive mode** — handles subagent completions via return text:
-   - Coder "requesting review" → immediately launch code-reviewer
+2. **Reaction** — handles subagent completions via return text signal blocks:
+   - Coder "requesting review" → assign to code-reviewer, relaunch
    - Code-reviewer "approved" → close task
-   - Code-reviewer "changes requested" → relaunch coder
+   - Code-reviewer "changes requested" → count review rounds, relaunch coder (or escalate after 3)
    - Architect "feature approved" → close feature
-   - Architect "issues in task X" → reopen task X (feature drops from ready)
-   - Any "escalate" → surface to user
+   - Architect "task rework" → reopen specified tasks for coder
+   - Any "escalate" or no valid signal → drain running subagents, exit 2
 
 **Parallelism:**
 
-Backgrounds all subagent launches, tracks PIDs and output files. Uses `wait -n` to react when any subagent completes.
+Backgrounds all subagent launches, tracks PIDs and output files. Uses `wait -n -p` to detect which subagent finishes.
 One agent per worktree at a time (serialization constraint). Different worktrees run in parallel.
 
-```bash
-# Launch pattern
-just start-subagent repo wt task > /tmp/output-task.txt 2>&1 &
-echo $! >> /tmp/active-pids.txt
-
-# Wait for any completion
-wait -n
-# Determine which PID finished, read its output file, react
-```
+**Exit codes:** 0 = all work complete, 2 = escalation or deadlock, 130 = interrupted (Ctrl-C).
 
 **Status reporting:**
 
-After every significant state change, provides structured status update with counts of total/completed/active/blocked
-items and what's happening next.
+After every significant state change, logs structured status updates with counts of total/completed/active/blocked items
+and what's happening next.
 
 ## Context Model
 

@@ -3,7 +3,7 @@
 Stow-based toolkit for deploying AI agent configs into project directories. Orchestrates multi-agent workflows where
 Claude subagents work on `tk` tickets in git worktrees.
 
-**Intended flow:** `just init` a project → break down work into tk tickets (features/tasks) → run `/tk:orchestrate` →
+**Intended flow:** `just init` a project → break down work into tk tickets (features/tasks) → run `just start-work` →
 subagents implement, review, and close tickets → user notified on completion or blockers.
 
 ## Design Goals
@@ -22,10 +22,10 @@ This is deliberate, not a limitation to work around:
   the actual code in the worktree. This is intentionally lossy — it preserves what matters (decisions, rationale,
   specific feedback) without biasing toward a particular approach.
 
-**Orchestrator as interactive coordinator.** The orchestrator runs as a slash command (`/tk:orchestrate`) in the user's
-interactive Claude session. The user watches it work and can intervene directly. This simplifies observability and
-escalation — the user is right there. The orchestrator uses `tk ready` to discover work, launches subagents in the
-background, and reacts to their return signals.
+**Orchestrator as bash recipe.** The orchestrator is a bash script inlined in the justfile (`just start-work`). Its
+decision tree is fully deterministic — every signal maps to a fixed action, no LLM reasoning needed. It uses `tk ready`
+to discover work, launches subagents in the background, and uses `wait -n` for instant completion detection. All state
+lives in `tk`, making it fully restartable.
 
 **Early issue detection.** A key motivation is avoiding the failure mode of existing long-running loops that do too much
 work before surfacing problems. The orchestrator should catch issues early and surface them to the user rather than
@@ -122,15 +122,15 @@ the orchestrator serializes per-worktree even if tasks are technically ready.
 
 ### Agent model
 
-Four agent roles, three as subagents and one as a slash command:
+Three Claude subagents plus a bash orchestrator:
 
 - **Coder** (`tk:coder`, opus, full tools, orange) — implements tasks, runs tests, commits and pushes
 - **Code-Reviewer** (`tk:code-reviewer`, opus, read-only, cyan) — reviews code + test quality, approves or requests
   changes
 - **Architect-Reviewer** (`tk:architect-reviewer`, opus, read-only, magenta) — feature-level review, cross-task
   coherence, opens PRs
-- **Orchestrator** (`/tk:orchestrate` slash command) — coordinates the workflow, launches subagents, reacts to their
-  signals. Stays context-lean: uses `tk query` with jq for structured data, never `tk show`
+- **Orchestrator** (`just start-work`, bash) — coordinates the workflow, launches subagents, reacts to their signals.
+  Deterministic signal dispatch — no LLM. Exits 0 on completion, 2 on escalation/deadlock
 
 ### Ticket hierarchy
 
@@ -225,12 +225,11 @@ claude/.claude/
     architect-reviewer.md             # architect reviewer agent (opus, read-only, magenta)
   commands/tk/
     subagent-task.md                  # slash command: work on a ticket by ID
-    orchestrate.md                    # slash command: run the orchestration loop
     create-feature.md                 # slash command: break down plans into features/tasks
   rules/
     tk-agents.md                      # behavioral rules for subagents
 scripts/
-  justfile                            # worktree/subagent recipes
+  justfile                            # worktree/subagent/orchestrator recipes
 dotagents/.agents/
   .prettierrc.yml                     # prettier config (stowed into project .agents/)
   .markdownlint.yaml                  # markdownlint config (stowed into project .agents/)
@@ -246,8 +245,8 @@ package.json                          # dotagents — prettier + lint-staged dev
 2. User clones repos as named subdirectories (e.g. `repo-a/`, `repo-b/`), each with `default/` as the main checkout
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
 4. User runs `/tk:create-feature` to break work into tk tickets (features → tasks with dependencies)
-5. User runs `/tk:orchestrate` to start the orchestration loop
-6. Orchestrator: `tk ready` → create/reuse worktrees → start subagents → react to signals → close tickets → notify user
+5. User runs `just start-work` to start the orchestration loop
+6. Orchestrator: `tk ready` → create/reuse worktrees → start subagents → react to signals → close tickets → exit
 
 ## Work Breakdown Model
 
@@ -276,8 +275,7 @@ requirements are the basis for test coverage throughout the pipeline.
 ## Open Design Questions
 
 - **Cross-repo features**: Each repo gets its own worktree/branch; ticket metadata tracks the target repo.
-- **Retry logic**: Handling crashed subagents (exit without clean return text).
-- **Promoting orchestrator**: From slash command to autonomous `claude -p` once reliable.
+- **Retry logic**: Handling crashed subagents (exit without clean return text — currently treated as escalation).
 
 ## Development Guidelines
 
@@ -290,11 +288,14 @@ requirements are the basis for test coverage throughout the pipeline.
 
 ## Testing
 
-No established test plan yet. This is an open question. Possible approaches:
+BDD tests using cucumber.js + mock subagents. Run with `just test` or `pnpm test`.
 
-- A dedicated test fixture project (not a real project)
-- Integration tests that run `just init` in a temp directory and verify stow output
-- Testing subagent behavior against fixture tickets
+- **Framework**: cucumber.js for Gherkin scenarios, zx available for shell scripting in steps
+- **Mock subagent**: `features/support/mock-subagent.sh` — stands in for `claude` CLI, returns preconfigured signal
+  blocks. Supports numbered files (queue) and unnumbered files (repeatable) for multi-call scenarios.
+- **Test world**: `features/support/world.js` — creates isolated temp projects with `tk` initialized per scenario
+- **Orchestrator tests**: `features/orchestrator.feature` — covers full signal dispatch lifecycle (task approval,
+  changes requested, escalation, feature review, deadlock detection)
 
 Do not use `../portfolio` or other real projects as test targets.
 

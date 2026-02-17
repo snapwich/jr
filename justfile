@@ -59,3 +59,6 @@ init dir:
 
   # Install dependencies
   (cd "$dir/.agents" && pnpm install)
+
+test:
+  pnpm test

@@ -26,6 +26,380 @@ remove-worktree name repo=".":
   git -C {{ repo }}/default worktree remove ../{{ name }}
   git -C {{ repo }}/default branch -d {{ name }}
 
+# Run the orchestration loop — discovers ready work, launches subagents, reacts to signals
+start-work:
+  #!/usr/bin/env bash
+  set -o pipefail
+
+  # --- Configuration ---
+  MAX_CONCURRENT="${TK_MAX_CONCURRENT:-3}"
+  OUTPUT_DIR="${TK_OUTPUT_DIR:-/tmp/tk-orchestrator}"
+  LOCK_DIR="$OUTPUT_DIR/locks"
+  CLAUDE="${CLAUDE_CMD:-claude}"
+  PROJECT_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  cd "$PROJECT_DIR"
+
+  # --- State ---
+  declare -A PID_TO_TICKET     # pid → ticket-id
+  declare -A PID_TO_AGENT      # pid → agent name
+  declare -A PID_TO_WORKTREE   # pid → worktree-name (or __feature-<id>)
+  declare -A BUSY_WORKTREES    # worktree-name → pid
+  ESCALATION=""                # non-empty = stop launching, drain, exit
+
+  # --- Functions ---
+
+  log() { echo "[orchestrator] $*"; }
+
+  setup() {
+    mkdir -p "$OUTPUT_DIR" "$LOCK_DIR"
+    # Clean stale lockfiles
+    for lockfile in "$LOCK_DIR"/*.lock; do
+      [[ -f "$lockfile" ]] || continue
+      local pid
+      pid=$(cat "$lockfile")
+      if ! kill -0 "$pid" 2>/dev/null; then
+        log "Cleaning stale lockfile: $lockfile (pid $pid)"
+        rm -f "$lockfile"
+      fi
+    done
+    log "Starting orchestration"
+    tk list 2>/dev/null || true
+  }
+
+  acquire_lock() {
+    local name="$1" pid="$2"
+    local lockfile="$LOCK_DIR/$name.lock"
+    if [[ -f "$lockfile" ]]; then
+      local existing_pid
+      existing_pid=$(cat "$lockfile")
+      if kill -0 "$existing_pid" 2>/dev/null; then
+        return 1  # lock held by live process
+      fi
+      rm -f "$lockfile"  # stale
+    fi
+    echo "$pid" > "$lockfile"
+    return 0
+  }
+
+  release_lock() {
+    local name="$1"
+    rm -f "$LOCK_DIR/$name.lock"
+  }
+
+  active_count() {
+    echo "${#PID_TO_TICKET[@]}"
+  }
+
+  get_ready_tickets() {
+    local ready_ids
+    ready_ids=$(tk ready 2>/dev/null | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
+    if [[ -z "$ready_ids" ]]; then
+      return
+    fi
+    while IFS= read -r id; do
+      tk query "select(.id == \"$id\")" | jq -c '{id: .id, type: .type, assignee: .assignee, tags: .tags}'
+    done <<< "$ready_ids"
+  }
+
+  worktree_name() {
+    local ticket_id="$1"
+    local id title
+    id=$(tk query "select(.id | contains(\"$ticket_id\"))" | jq -r '.id')
+    title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
+    echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+  }
+
+  create_worktree() {
+    local name="$1" repo="${2:-.}"
+    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" 2>/dev/null || return 1
+    if [[ -d "$PROJECT_DIR/.claude" ]]; then
+      cp -r --update=none "$PROJECT_DIR/.claude/." "$PROJECT_DIR/$repo/$name/.claude/"
+    fi
+  }
+
+  count_reviewer_notes() {
+    local ticket_id="$1"
+    tk show "$ticket_id" | grep -c '\[code-reviewer\]' || true
+  }
+
+  make_prompt() {
+    local ticket_id="$1"
+    local template="$PROJECT_DIR/.claude/commands/tk/subagent-task.md"
+    if [[ -f "$template" ]]; then
+      sed "s/\\\$ARGUMENTS\\[0\\]/$ticket_id/" "$template"
+    else
+      echo "Work on \`tk show $ticket_id\`."
+    fi
+  }
+
+  launch_task() {
+    local ticket_id="$1"
+    local current
+    current=$(active_count)
+    if (( current >= MAX_CONCURRENT )); then
+      return 1
+    fi
+
+    # Get ticket metadata
+    local ticket_json
+    ticket_json=$(tk query "select(.id == \"$ticket_id\")")
+    local agent repo
+    agent=$(echo "$ticket_json" | jq -r '.assignee')
+    repo=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+
+    # Derive worktree name
+    local wt
+    wt=$(worktree_name "$ticket_id")
+    if [[ -z "$wt" ]]; then
+      log "ERROR: Could not derive worktree name for $ticket_id"
+      return 1
+    fi
+
+    # Check worktree not busy
+    if [[ -n "${BUSY_WORKTREES[$wt]:-}" ]]; then
+      return 1
+    fi
+
+    # Create worktree (ignore failure — mock tests won't have default/)
+    create_worktree "$wt" "$repo" 2>/dev/null || true
+
+    local prompt outfile launch_dir
+    prompt=$(make_prompt "$ticket_id")
+    outfile="$OUTPUT_DIR/output-$ticket_id.txt"
+    launch_dir="$PROJECT_DIR/$repo/$wt"
+    [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
+
+    (cd "$launch_dir" && $CLAUDE --agent "$agent" -p "$prompt") > "$outfile" 2>&1 &
+    local pid=$!
+
+    if ! acquire_lock "$wt" "$pid"; then
+      kill "$pid" 2>/dev/null || true
+      return 1
+    fi
+
+    PID_TO_TICKET[$pid]="$ticket_id"
+    PID_TO_AGENT[$pid]="$agent"
+    PID_TO_WORKTREE[$pid]="$wt"
+    BUSY_WORKTREES[$wt]="$pid"
+
+    log "Launched $agent on $ticket_id (worktree: $wt, pid: $pid)"
+    return 0
+  }
+
+  launch_feature() {
+    local ticket_id="$1"
+    local current
+    current=$(active_count)
+    if (( current >= MAX_CONCURRENT )); then
+      return 1
+    fi
+
+    local lock_name="__feature-$ticket_id"
+    if [[ -n "${BUSY_WORKTREES[$lock_name]:-}" ]]; then
+      return 1
+    fi
+
+    local prompt outfile
+    prompt=$(make_prompt "$ticket_id")
+    outfile="$OUTPUT_DIR/output-$ticket_id.txt"
+
+    (cd "$PROJECT_DIR" && $CLAUDE --agent "tk:architect-reviewer" -p "$prompt") > "$outfile" 2>&1 &
+    local pid=$!
+
+    if ! acquire_lock "$lock_name" "$pid"; then
+      kill "$pid" 2>/dev/null || true
+      return 1
+    fi
+
+    PID_TO_TICKET[$pid]="$ticket_id"
+    PID_TO_AGENT[$pid]="tk:architect-reviewer"
+    PID_TO_WORKTREE[$pid]="$lock_name"
+    BUSY_WORKTREES[$lock_name]="$pid"
+
+    log "Launched architect-reviewer on feature $ticket_id (pid: $pid)"
+    return 0
+  }
+
+  parse_signal() {
+    local outfile="$1"
+    local tail
+    tail=$(tail -20 "$outfile")
+    SIGNAL=$(echo "$tail" | grep -oP '^signal:\s*\K\S+' || true)
+    SIGNAL_TICKET=$(echo "$tail" | grep -oP '^ticket:\s*\K\S+' || true)
+    SIGNAL_SUMMARY=$(echo "$tail" | grep -oP '^summary:\s*\K.*' || true)
+    SIGNAL_DETAILS=$(echo "$tail" | grep -oP '^details:\s*\K.*' || true)
+  }
+
+  react() {
+    local finished_pid="$1"
+    local ticket_id="${PID_TO_TICKET[$finished_pid]:-}"
+    local wt="${PID_TO_WORKTREE[$finished_pid]:-}"
+
+    if [[ -z "$ticket_id" ]]; then
+      log "WARNING: Unknown PID $finished_pid finished"
+      return
+    fi
+
+    # Clean up tracking state
+    unset PID_TO_TICKET[$finished_pid]
+    unset PID_TO_AGENT[$finished_pid]
+    unset PID_TO_WORKTREE[$finished_pid]
+    unset BUSY_WORKTREES[$wt]
+    release_lock "$wt"
+
+    # Parse signal from output
+    local outfile="$OUTPUT_DIR/output-$ticket_id.txt"
+    parse_signal "$outfile"
+
+    log "Finished $ticket_id — signal: ${SIGNAL:-NONE}"
+
+    case "${SIGNAL:-}" in
+      requesting-review)
+        log "Assigning $ticket_id to tk:code-reviewer"
+        tk assign "$ticket_id" "tk:code-reviewer"
+        launch_task "$ticket_id" || log "Could not immediately launch reviewer for $ticket_id"
+        ;;
+      approved)
+        log "Closing $ticket_id (approved)"
+        tk close "$ticket_id"
+        ;;
+      changes-requested)
+        local review_count
+        review_count=$(count_reviewer_notes "$ticket_id")
+        if (( review_count >= 3 )); then
+          log "ESCALATE: $ticket_id has $review_count review rounds — max exceeded"
+          ESCALATION="Max review iterations exceeded for $ticket_id"
+        else
+          log "Assigning $ticket_id back to tk:coder (review round $((review_count + 1)))"
+          tk assign "$ticket_id" "tk:coder"
+          launch_task "$ticket_id" || log "Could not immediately relaunch coder for $ticket_id"
+        fi
+        ;;
+      feature-approved)
+        log "Closing feature $ticket_id (approved)"
+        tk close "$ticket_id"
+        ;;
+      task-rework)
+        log "Task rework requested for: ${SIGNAL_DETAILS:-}"
+        for task_id in ${SIGNAL_DETAILS:-}; do
+          log "Reopening $task_id for rework"
+          tk reopen "$task_id"
+          tk assign "$task_id" "tk:coder"
+        done
+        ;;
+      escalate)
+        log "ESCALATE: $ticket_id — ${SIGNAL_SUMMARY:-no summary}"
+        ESCALATION="Escalation from $ticket_id: ${SIGNAL_SUMMARY:-no details}"
+        ;;
+      *)
+        log "ESCALATE: $ticket_id returned no valid signal"
+        if [[ -f "$outfile" ]]; then
+          log "Last 5 lines of output:"
+          tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
+        fi
+        ESCALATION="No valid signal from $ticket_id"
+        ;;
+    esac
+  }
+
+  discover() {
+    [[ -n "$ESCALATION" ]] && return
+    local tickets
+    tickets=$(get_ready_tickets)
+    [[ -z "$tickets" ]] && return
+    while IFS= read -r ticket_json; do
+      [[ -z "$ticket_json" ]] && continue
+      local id type
+      id=$(echo "$ticket_json" | jq -r '.id')
+      type=$(echo "$ticket_json" | jq -r '.type')
+
+      # Skip tickets already being worked on
+      local already_running=false
+      for pid in "${!PID_TO_TICKET[@]}"; do
+        if [[ "${PID_TO_TICKET[$pid]}" == "$id" ]]; then
+          already_running=true
+          break
+        fi
+      done
+      [[ "$already_running" == "true" ]] && continue
+
+      if [[ "$type" == "feature" ]]; then
+        launch_feature "$id" || true
+      else
+        launch_task "$id" || true
+      fi
+    done <<< "$tickets"
+  }
+
+  drain() {
+    log "Draining — waiting for ${#PID_TO_TICKET[@]} active subagent(s)..."
+    while (( ${#PID_TO_TICKET[@]} > 0 )); do
+      local FINISHED_PID
+      wait -n -p FINISHED_PID "${!PID_TO_TICKET[@]}" 2>/dev/null || true
+      if [[ -n "${FINISHED_PID:-}" ]]; then
+        react "$FINISHED_PID"
+      else
+        break
+      fi
+    done
+  }
+
+  cleanup() {
+    log "Interrupted — cleaning up"
+    for pid in "${!PID_TO_TICKET[@]}"; do
+      kill "$pid" 2>/dev/null || true
+      local wt="${PID_TO_WORKTREE[$pid]:-}"
+      [[ -n "$wt" ]] && release_lock "$wt"
+    done
+    exit 130
+  }
+
+  # --- Main ---
+
+  trap cleanup SIGINT SIGTERM
+
+  setup
+
+  while true; do
+    discover
+
+    if (( ${#PID_TO_TICKET[@]} == 0 )); then
+      ready_count=0
+      ready_count=$(tk ready 2>/dev/null | grep -c '^[a-z]') || true
+      if (( ready_count > 0 )); then
+        sleep 1
+        continue
+      fi
+      open_count=0
+      open_count=$(tk query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
+      if (( open_count == 0 )); then
+        log "All work complete"
+        exit 0
+      else
+        log "DEADLOCK: $open_count open ticket(s) but none are ready"
+        exit 2
+      fi
+    fi
+
+    # Wait for any child to finish
+    FINISHED_PID=""
+    wait -n -p FINISHED_PID "${!PID_TO_TICKET[@]}" 2>/dev/null || true
+
+    if [[ -n "${FINISHED_PID:-}" ]]; then
+      react "$FINISHED_PID"
+    fi
+
+    # If escalation triggered, drain remaining and exit
+    if [[ -n "$ESCALATION" ]]; then
+      if (( ${#PID_TO_TICKET[@]} > 0 )); then
+        drain
+      fi
+      log "Exiting due to escalation: $ESCALATION"
+      exit 2
+    fi
+  done
+
 start-subagent ticket-id:
   #!/usr/bin/env bash
   cd "{{ justfile_directory() }}"
@@ -35,6 +409,6 @@ start-subagent ticket-id:
   wt=$(just worktree-name "{{ ticket-id }}")
   just create-worktree "$wt" "$repo" 2>/dev/null || true
   prompt=$(sed 's/\$ARGUMENTS\[0\]/{{ ticket-id }}/' .claude/commands/tk/subagent-task.md)
-  cd "$repo/$wt" && claude \
+  cd "$repo/$wt" && ${CLAUDE_CMD:-claude} \
     --agent "$agent" \
     -p "$prompt"

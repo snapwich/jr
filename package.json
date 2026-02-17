@@ -18,12 +18,16 @@
   "author": "Rich Snapp",
   "type": "module",
   "scripts": {
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "test": "cucumber-js"
   },
   "devDependencies": {
+    "@cucumber/cucumber": "^11",
+    "husky": "^9",
     "lint-staged": "^16.2.7",
     "markdownlint-cli2": "^0.17.2",
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "zx": "^8"
   },
   "lint-staged": {
     "*.{md,mdx}": [
