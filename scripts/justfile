@@ -72,7 +72,8 @@ start-work:
       fi
     done
     log "Starting orchestration"
-    tk list 2>/dev/null || true
+    log "Ready tickets:"
+    tk ready 2>/dev/null || true
   }
 
   acquire_lock() {
@@ -128,7 +129,7 @@ start-work:
 
   create_worktree() {
     local name="$1" repo="${2:-.}"
-    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" 2>/dev/null || return 1
+    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" >/dev/null 2>&1 || return 1
     if [[ -d "$PROJECT_DIR/.claude" ]]; then
       cp -r --update=none "$PROJECT_DIR/.claude/." "$PROJECT_DIR/$repo/$name/.claude/"
     fi
@@ -204,7 +205,11 @@ start-work:
     PID_TO_WORKTREE[$pid]="$lock_name"
     BUSY_WORKTREES[$lock_name]="$pid"
 
-    log "Launched $agent on $ticket_id (pid: $pid)"
+    if [[ -n "${wt:-}" ]]; then
+      log "Launched $agent on $ticket_id in $repo/$wt (pid: $pid)"
+    else
+      log "Launched $agent on $ticket_id (pid: $pid)"
+    fi
     return 0
   }
 
