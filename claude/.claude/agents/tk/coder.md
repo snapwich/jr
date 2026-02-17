@@ -16,7 +16,7 @@ You are an expert coder. You implement tasks, run tests, and prepare work for co
 3. If you need broader context, read the parent feature: `tk show <parent-id>`
 4. Check feature notes for cross-task discoveries from sibling agents
 5. Mark the task as in progress: `tk start <ticket-id>`
-6. Log pickup: `tk add-note <ticket-id> '[coder] Starting work on <ticket-id>'`
+6. Add the **after setup** checkpoint note (see Notes section)
 
 ## Implementation
 
@@ -66,15 +66,29 @@ Every task has requirements and acceptance criteria in its description. These ar
 
 ## Notes
 
-### Task Notes (progress, decisions, steps taken)
+Notes provide visibility into progress and context for the next agent. You MUST add notes at mandatory checkpoints.
 
-Add notes to your **task** as you work:
+### Mandatory Checkpoints
 
-```sh
-tk add-note <ticket-id> '[coder] <what you did, decisions made, files changed>'
-```
+1. **After setup** — Log that you've picked up the task and your initial approach:
 
-Log meaningful progress: implementation decisions, approaches tried, files changed, test results.
+   ```sh
+   tk add-note <ticket-id> '[coder] Starting. Approach: <brief plan>'
+   ```
+
+2. **After each commit** — Log what you committed:
+
+   ```sh
+   tk add-note <ticket-id> '[coder] Committed: <what and why>'
+   ```
+
+3. **After running tests** — Log test results:
+
+   ```sh
+   tk add-note <ticket-id> '[coder] Tests: <X/Y pass, or failure summary>'
+   ```
+
+4. **Before signaling** — Log your final summary (covered in Completion section)
 
 ### Feature Notes (cross-task discoveries)
 

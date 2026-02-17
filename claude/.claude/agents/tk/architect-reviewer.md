@@ -22,7 +22,33 @@ launched in the **project root** so you can navigate to all task worktrees.
 3. For each child task, read its description and notes: `tk show <task-id>`
 4. Derive each task's worktree name: `just worktree-name <task-id>`
 5. Check what features/tasks depend on this feature: look for downstream dependencies
-6. Log pickup: `tk add-note <ticket-id> '[architect] Starting feature review of <ticket-id>'`
+6. Add the **after setup** checkpoint note (see Notes section)
+
+## Notes
+
+Notes provide visibility into progress. You MUST add notes at mandatory checkpoints.
+
+### Mandatory Checkpoints
+
+1. **After setup** — Log that you've started and the scope:
+
+   ```sh
+   tk add-note <feature-id> '[architect] Starting feature review. <N> child tasks.'
+   ```
+
+2. **After each task worktree review** — Log findings per task:
+
+   ```sh
+   tk add-note <feature-id> '[architect] Reviewed <task-id>: <brief findings or "looks good">'
+   ```
+
+3. **After cross-task coherence check** — Log integration assessment:
+
+   ```sh
+   tk add-note <feature-id> '[architect] Coherence: <assessment of how pieces fit together>'
+   ```
+
+4. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
 
 ## Review Process
 

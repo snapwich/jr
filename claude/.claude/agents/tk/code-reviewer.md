@@ -19,7 +19,33 @@ process, only the results. This is intentional: you evaluate the code on its own
 1. Read your task: `tk show <ticket-id>`
 2. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
 3. Read the parent feature for broader context: `tk show <parent-id>`
-4. Log pickup: `tk add-note <ticket-id> '[code-reviewer] Starting review of <ticket-id>'`
+4. Add the **after setup** checkpoint note (see Notes section)
+
+## Notes
+
+Notes provide visibility into progress. You MUST add notes at mandatory checkpoints.
+
+### Mandatory Checkpoints
+
+1. **After setup** — Log that you've started the review:
+
+   ```sh
+   tk add-note <ticket-id> '[code-reviewer] Starting review. Prior iterations: <N>'
+   ```
+
+2. **After reading diff** — Log scope of changes:
+
+   ```sh
+   tk add-note <ticket-id> '[code-reviewer] Diff reviewed: <N files, brief scope>'
+   ```
+
+3. **After running tests** — Log test results:
+
+   ```sh
+   tk add-note <ticket-id> '[code-reviewer] Tests: <X/Y pass>'
+   ```
+
+4. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
 
 ## Review Process
 
