@@ -2,6 +2,12 @@
 _default:
   just --list
 
+# Detect single-repo vs multi-repo mode
+# Single-repo: default/ exists at project root, use "." as repo
+# Multi-repo: repos are subdirectories, use repo name as repo
+detect-mode:
+  @test -d default && echo "single-repo" || echo "multi-repo"
+
 # Derive worktree/branch name from a ticket: <id>-<slugified-title>
 # If the ticket has a prefix:<value> tag, use that instead of the tk ID (preserving case).
 worktree-name ticket-id:
