@@ -3,11 +3,19 @@ _default:
   just --list
 
 # Derive worktree/branch name from a ticket: <id>-<slugified-title>
+# If the ticket has a prefix:<value> tag, use that instead of the tk ID (preserving case).
 worktree-name ticket-id:
   #!/usr/bin/env bash
-  id=$(tk query 'select(.id | contains("{{ ticket-id }}"))' | jq -r '.id')
+  ticket_json=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
+  id=$(echo "$ticket_json" | jq -r '.id')
+  prefix_tag=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
   title=$(tk show "{{ ticket-id }}" | grep '^# ' | head -1 | sed 's/^# //')
-  echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+  if [[ -n "$prefix_tag" ]]; then
+    slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
+    echo "$prefix_tag-$slug"
+  else
+    echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+  fi
 
 create-worktree name repo=".":
   git -C {{ repo }}/default worktree add -b {{ name }} ../{{ name }}
@@ -98,10 +106,18 @@ start-work:
 
   worktree_name() {
     local ticket_id="$1"
-    local id title
-    id=$(tk query "select(.id | contains(\"$ticket_id\"))" | jq -r '.id')
+    local ticket_json id prefix_tag title
+    ticket_json=$(tk query "select(.id | contains(\"$ticket_id\"))")
+    id=$(echo "$ticket_json" | jq -r '.id')
+    prefix_tag=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
     title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
-    echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+    if [[ -n "$prefix_tag" ]]; then
+      local slug
+      slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
+      echo "$prefix_tag-$slug"
+    else
+      echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+    fi
   }
 
   create_worktree() {

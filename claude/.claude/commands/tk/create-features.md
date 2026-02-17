@@ -57,6 +57,10 @@ tk create "<task title>" \
 In multi-repo mode, every task MUST have a `repo:<name>` tag matching the target repo directory name. In single-repo
 mode, omit the tag (the orchestrator defaults to `.`).
 
+If the user specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to all created
+tickets. This overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value.
+Example: `--tags "repo:backend,prefix:PEX-1234"`.
+
 The task description should include:
 
 - What to implement

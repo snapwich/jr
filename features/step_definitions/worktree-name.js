@@ -10,6 +10,12 @@ Given("a ticket titled {string}", async function (title) {
   this.ticketIds[title] = id;
 });
 
+Given("a ticket titled {string} with tags {string}", async function (title, tags) {
+  const id = await this.createTicket(title, { tags });
+  this.lastTicketTitle = title;
+  this.ticketIds[title] = id;
+});
+
 When("I run worktree-name for that ticket", async function () {
   const id = this.ticketIds[this.lastTicketTitle];
   const justfile = join(REPO_ROOT, "scripts", "justfile");
@@ -28,6 +34,14 @@ When("I run worktree-name for that ticket", async function () {
 Then("the worktree name should end with {string}", async function (expectedSlug) {
   const id = this.ticketIds[this.lastTicketTitle];
   const expected = `${id}-${expectedSlug}`;
+  assert.strictEqual(
+    this.lastWorktreeName,
+    expected,
+    `Expected worktree name "${expected}", got "${this.lastWorktreeName}"`,
+  );
+});
+
+Then("the worktree name should be {string}", async function (expected) {
   assert.strictEqual(
     this.lastWorktreeName,
     expected,
