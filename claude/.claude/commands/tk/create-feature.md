@@ -16,13 +16,11 @@ Read the plan document and identify:
 - **Dependencies**: ordering constraints between tasks and between features
 - **Repos**: which repo(s) each task targets (relevant in multi-repo mode)
 
-### 2. Detect Project Mode
+### 2. Detect Project Layout
 
-```sh
-just detect-mode
-```
-
-In multi-repo mode, each task should specify which repo it targets.
+Check whether the project uses multiple repos (named subdirectories each containing `default/`) or a single repo
+(`default/` at project root). If multiple repos exist, each task should have a `repo:<name>` tag matching its target
+repo directory.
 
 ### 3. Create Feature Tickets
 
