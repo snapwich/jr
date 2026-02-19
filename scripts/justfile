@@ -22,7 +22,8 @@ create-worktree name repo=".":
   #!/usr/bin/env bash
   git -C "{{ repo }}/default" worktree add -b "{{ name }}" "../{{ name }}" 2>/dev/null || true
   if [[ -d ".claude" && -d "{{ repo }}/{{ name }}" ]]; then
-    cp -r --update=none .claude/. "{{ repo }}/{{ name }}/.claude/"
+    # Use rsync to merge without overwriting — copies missing files/dirs only
+    rsync -a --ignore-existing --exclude='settings.local.json' .claude/ "{{ repo }}/{{ name }}/.claude/"
   fi
   grep -qxF '.claude/agents/tk/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
     || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
@@ -122,7 +123,7 @@ start-work:
     local name="$1" repo="${2:-.}"
     git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" >/dev/null 2>&1 || true
     if [[ -d "$PROJECT_DIR/.claude" && -d "$PROJECT_DIR/$repo/$name" ]]; then
-      cp -r --update=none "$PROJECT_DIR/.claude/." "$PROJECT_DIR/$repo/$name/.claude/"
+      rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
     fi
   }
 
