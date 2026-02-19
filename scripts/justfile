@@ -186,11 +186,11 @@ start-work:
 
     log "Session: $session_uuid (ticket: $ticket_id)"
 
-    # Launch claude as background process
+    # Launch claude as background process (exec replaces subshell so PID matches)
     (
       cd "$launch_dir"
       export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
-      $CLAUDE --agent "$agent" --session-id "$session_uuid" --dangerously-skip-permissions \
+      exec $CLAUDE --agent "$agent" --session-id "$session_uuid" --dangerously-skip-permissions \
         -p "$prompt" > "$outfile" 2>&1
     ) &
     local pid=$!
