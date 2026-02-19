@@ -9,19 +9,14 @@ detect-mode:
   @test -d default && echo "single-repo" || echo "multi-repo"
 
 # Derive worktree/branch name from a ticket: <id>-<slugified-title>
-# If the ticket has a prefix:<value> tag, use that instead of the tk ID (preserving case).
+# Always uses tk ticket ID as prefix for easy mapping back to tickets.
+# External tracking IDs (e.g., Jira) are kept in prefix:<value> tag for PR creation.
 worktree-name ticket-id:
   #!/usr/bin/env bash
   ticket_json=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
   id=$(echo "$ticket_json" | jq -r '.id')
-  prefix_tag=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
   title=$(tk show "{{ ticket-id }}" | grep '^# ' | head -1 | sed 's/^# //')
-  if [[ -n "$prefix_tag" ]]; then
-    slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
-    echo "$prefix_tag-$slug"
-  else
-    echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
-  fi
+  echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
 
 create-worktree name repo=".":
   git -C {{ repo }}/default worktree add -b {{ name }} ../{{ name }}
@@ -113,18 +108,11 @@ start-work:
 
   worktree_name() {
     local ticket_id="$1"
-    local ticket_json id prefix_tag title
+    local ticket_json id title
     ticket_json=$(tk query "select(.id | contains(\"$ticket_id\"))")
     id=$(echo "$ticket_json" | jq -r '.id')
-    prefix_tag=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
     title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
-    if [[ -n "$prefix_tag" ]]; then
-      local slug
-      slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
-      echo "$prefix_tag-$slug"
-    else
-      echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
-    fi
+    echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
   }
 
   create_worktree() {
@@ -196,8 +184,12 @@ start-work:
     # Kill any existing session with this name
     tmux kill-session -t "$session_name" 2>/dev/null || true
 
+    # Build tmux env args — pass through test-relevant vars if set
+    local tmux_env_args=()
+    [[ -n "${MOCK_RESPONSES_DIR:-}" ]] && tmux_env_args+=(-e "MOCK_RESPONSES_DIR=$MOCK_RESPONSES_DIR")
+
     # Launch claude in tmux session, tee output to file, signal when done
-    tmux new-session -d -s "$session_name" \
+    tmux new-session -d -s "$session_name" "${tmux_env_args[@]}" \
       "cd '$launch_dir' && $CLAUDE --agent '$agent' --dangerously-skip-permissions -p '$prompt' 2>&1 | tee '$outfile'; tmux wait-for -S '$session_name-done'"
 
     # Waiter process — blocks until tmux session signals completion
@@ -418,3 +410,34 @@ attach ticket-id:
   cd "{{ justfile_directory() }}"
   wt=$(just worktree-name "{{ ticket-id }}")
   TMUX= tmux attach -t "$wt"
+
+# Output signal block and add completion note — use this instead of manual signal output
+signal type ticket-id summary details="":
+  #!/usr/bin/env bash
+  set -e
+  type="{{ type }}"
+  ticket="{{ ticket-id }}"
+  summary="{{ summary }}"
+  details="{{ details }}"
+
+  case "$type" in
+    requesting-review) agent="coder"; prefix="Requesting review" ;;
+    approved) agent="code-reviewer"; prefix="APPROVED" ;;
+    changes-requested) agent="code-reviewer"; prefix="CHANGES REQUESTED" ;;
+    feature-approved) agent="architect"; prefix="APPROVED" ;;
+    task-rework) agent="architect"; prefix="REWORK NEEDED" ;;
+    escalate)
+      assignee=$(tk query "select(.id == \"$ticket\")" | jq -r '.assignee // "tk:coder"')
+      agent="${assignee#tk:}"
+      prefix="Escalating"
+      ;;
+    *) echo "Unknown signal type: $type" >&2; exit 1 ;;
+  esac
+
+  tk add-note "$ticket" "[$agent] $prefix. $summary"
+  echo "---"
+  echo "signal: $type"
+  echo "ticket: $ticket"
+  echo "summary: $summary"
+  [[ -n "$details" ]] && echo "details: $details"
+  exit 0

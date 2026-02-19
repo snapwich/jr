@@ -37,12 +37,14 @@ Feature: Worktree name slugification
     When I run worktree-name for that ticket
     Then the worktree name should end with "add-oauth2-support"
 
-  Scenario: Prefix tag preserves case
+  Scenario: Prefix tag ignored in worktree name
+    # Prefix tags are for PR creation, not worktree naming. Worktree always uses ticket ID.
     Given a ticket titled "Add login page" with tags "prefix:PEX-1234"
     When I run worktree-name for that ticket
-    Then the worktree name should be "PEX-1234-add-login-page"
+    Then the worktree name should end with "add-login-page"
 
-  Scenario: Prefix tag with mixed case title
+  Scenario: Prefix tag with mixed case title still uses ticket ID
+    # Worktree uses ticket ID even when prefix tag is present
     Given a ticket titled "Fix Auth Bug" with tags "prefix:JIRA-567"
     When I run worktree-name for that ticket
-    Then the worktree name should be "JIRA-567-fix-auth-bug"
+    Then the worktree name should end with "fix-auth-bug"

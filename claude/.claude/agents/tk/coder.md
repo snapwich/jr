@@ -58,11 +58,16 @@ Every task has requirements and acceptance criteria in its description. These ar
 - Make logical commits as you work — meaningful units of change, not one giant commit
 - Write clear commit messages that explain the "why"
 - Commit any remaining work at the end before signaling for review
-- Push to the task's branch:
+- Do NOT push — human reviews locally first, then pushes manually
 
-  ```sh
-  git push -u origin HEAD
-  ```
+### Branch Dependencies
+
+If your task depends on another task's branch (e.g., it builds on code from a sibling task), document this on the
+ticket:
+
+```sh
+tk add-note <ticket-id> '[coder] Branch depends on: <sibling-worktree-name>'
+```
 
 ## Notes
 
@@ -106,37 +111,18 @@ it, note on the feature.
 
 When implementation is done and tests pass:
 
-1. Commit and push all remaining changes
-2. Add a final note summarizing what was done and the signal you are returning:
+1. Commit all remaining changes (do NOT push)
+2. Add a summary note: files touched, approach taken, test coverage added
+3. Run the signal command as the **last thing** in your response:
 
-   ```sh
-   tk add-note <ticket-id> '[coder] Requesting review. <summary of what was implemented>'
-   ```
-
-   Or if escalating:
-
-   ```sh
-   tk add-note <ticket-id> '[coder] Escalating. <what is blocking>'
-   ```
-
-3. Output the signal block as the last thing in your response
-
-## Return Text
-
-You MUST end your output with a signal block in this exact format:
-
-```text
----
-signal: requesting-review
-ticket: <ticket-id>
-summary: <one-line summary of what was implemented>
+```sh
+just signal requesting-review <ticket-id> "<summary of what was implemented>"
 ```
 
 If you hit a blocker you cannot resolve:
 
-```text
----
-signal: escalate
-ticket: <ticket-id>
-summary: <what is blocking you>
+```sh
+just signal escalate <ticket-id> "<what is blocking you>"
 ```
+
+Valid signal types for this agent: `requesting-review`, `escalate`

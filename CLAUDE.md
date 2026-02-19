@@ -183,20 +183,16 @@ Worktree and branch names are derived deterministically from ticket metadata: `<
 `just worktree-name <ticket-id>` recipe computes this. No need to track worktree assignments — any agent or recipe can
 derive the worktree path from a ticket ID.
 
-A `prefix:<value>` tag on the ticket overrides the tk ID as the branch prefix, **preserving the original case** of the
-value. For example, a ticket with tag `prefix:PEX-1234` and title "Add login page" produces `PEX-1234-add-login-page`
-instead of the default `<tk-id>-add-login-page`. This is useful for matching external tracking systems (JIRA, etc.).
+External tracking IDs (e.g., Jira) can be stored in a `prefix:<value>` tag for use during PR creation, but the worktree
+and branch always use the tk ticket ID for easy mapping back to tickets.
 
-### Return text signal block
+### Signaling completion
 
-All subagents must end their output with a structured signal block so the orchestrator can parse the result:
+All subagents must use `just signal` as the **last command** in their output. This atomically adds the completion note
+and outputs the signal block for the orchestrator to parse:
 
-```text
----
-signal: <signal-type>
-ticket: <ticket-id>
-summary: <one-line summary>
-details: <optional details>
+```sh
+just signal <type> <ticket-id> "<summary>" ["<details>"]
 ```
 
 | Signal              | Agent              | Meaning                                       |

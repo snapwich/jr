@@ -92,20 +92,18 @@ git diff $(git merge-base HEAD main)..HEAD
 
 If the feature is coherent and ready:
 
-1. Open a PR (or convert draft to ready) for each task's branch:
+1. Open a PR for each task's branch:
 
    ```sh
    cd <repo>/<worktree>
    gh pr create --title "<task title>" --body "<summary of changes>"
    ```
 
-2. Add a note to the feature:
+2. Run the signal command as the **last thing** in your response:
 
-   ```sh
-   tk add-note <feature-id> '[architect] APPROVED. <summary of review findings>'
-   ```
-
-3. Return the signal block
+```sh
+just signal feature-approved <feature-id> "<summary of review findings>"
+```
 
 ### Task Rework Needed
 
@@ -118,41 +116,21 @@ If specific task(s) need changes:
    <specific issues and what needs to change>'
    ```
 
-2. Add a note to the feature summarizing what needs rework
-3. Return the signal block listing which tasks need rework
+2. Run the signal command listing tasks in the details parameter:
+
+```sh
+just signal task-rework <feature-id> "<one-line summary>" "<task-id-1> <task-id-2>"
+```
 
 ### Escalate
 
-If there is an architectural concern or blocker that needs human attention:
+If there is an architectural concern or blocker:
 
-1. Add a note to the feature explaining the concern
-2. Return the signal block
-
-## Return Text
-
-You MUST end your output with a signal block in this exact format:
-
-```text
----
-signal: feature-approved
-ticket: <feature-id>
-summary: <one-line summary>
+```sh
+just signal escalate <feature-id> "<reason for escalation>"
 ```
 
-```text
----
-signal: task-rework
-ticket: <feature-id>
-summary: <one-line summary of issues>
-details: <task-id-1>, <task-id-2>
-```
-
-```text
----
-signal: escalate
-ticket: <feature-id>
-summary: <reason for escalation>
-```
+Valid signal types for this agent: `feature-approved`, `task-rework`, `escalate`
 
 ## Rules
 

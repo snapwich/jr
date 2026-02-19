@@ -95,21 +95,17 @@ instead of continuing the cycle.
 
 ### Approved
 
-If the code and tests meet quality standards:
+If the code and tests meet quality standards, run the signal command as the **last thing** in your response:
 
-1. Add a note to the task:
-
-   ```sh
-   tk add-note <ticket-id> '[code-reviewer] APPROVED. <brief summary of what looks good>'
-   ```
-
-2. Return the signal block (see below)
+```sh
+just signal approved <ticket-id> "<brief summary of what looks good>"
+```
 
 ### Changes Requested
 
 If issues are found:
 
-1. Add a note to the task with specific, actionable feedback:
+1. Add a note with specific, actionable feedback (file:line, what to fix):
 
    ```sh
    tk add-note <ticket-id> '[code-reviewer] CHANGES REQUESTED.
@@ -117,41 +113,22 @@ If issues are found:
    2. <file:line> <specific issue and what to do about it>'
    ```
 
-2. Feedback must be concrete enough that a fresh coder agent (with no prior context beyond the task description, notes,
-   and the code itself) can act on it
-3. Return the signal block (see below)
+2. Feedback must be concrete enough that a fresh coder can act on it
+3. Run the signal command:
+
+```sh
+just signal changes-requested <ticket-id> "<one-line summary of issues>"
+```
 
 ### Escalate
 
-If the iteration cap is reached or there is a blocker that needs human attention:
+If iteration cap is reached or there is a blocker:
 
-1. Add a note explaining the escalation reason
-2. Return the `escalate` signal block
-
-## Return Text
-
-You MUST end your output with a signal block in this exact format:
-
-```text
----
-signal: approved
-ticket: <ticket-id>
-summary: <one-line summary>
+```sh
+just signal escalate <ticket-id> "<reason for escalation>"
 ```
 
-```text
----
-signal: changes-requested
-ticket: <ticket-id>
-summary: <one-line summary of issues found>
-```
-
-```text
----
-signal: escalate
-ticket: <ticket-id>
-summary: <reason for escalation>
-```
+Valid signal types for this agent: `approved`, `changes-requested`, `escalate`
 
 ## Rules
 

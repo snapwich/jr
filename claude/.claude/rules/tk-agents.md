@@ -1,16 +1,13 @@
 Work is managed using a ticketing CLI. Run `tk` (no args) once to see available commands and syntax. There is no help
 subcommand — `tk` alone displays usage. Do not run `tk help`, `tk --help`, or `tk <cmd> help`.
 
-## Return Text Signal Block
+## Signaling Completion
 
-Every subagent MUST end its output with a structured signal block so the orchestrator can parse the result. Format:
+Every subagent MUST use `just signal` as the **last command** in their output. This atomically adds the completion note
+and outputs the signal block for the orchestrator.
 
-```text
----
-signal: <signal-type>
-ticket: <ticket-id>
-summary: <one-line summary>
-details: <optional details>
+```sh
+just signal <type> <ticket-id> "<summary>" ["<details>"]
 ```
 
 Valid signals:
@@ -59,5 +56,5 @@ it, note on the feature.
 
 - Make logical commits — meaningful units of change, not one giant commit
 - Write clear commit messages explaining the "why"
-- Push to the task's branch before signaling completion
+- Do NOT push — human reviews locally first, then pushes manually
 - Code-reviewers and architect-reviewers do NOT commit or push (read-only)
