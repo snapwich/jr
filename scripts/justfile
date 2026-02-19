@@ -427,7 +427,14 @@ watch ticket-id:
   fi
 
   echo "Watching: $latest"
-  tail -f "$latest" | jq -r 'select(.message.content) | .message.content[] | select(.type == "text") | .text // empty'
+  tail -n +1 -f "$latest" | stdbuf -oL jq -r --unbuffered '
+    select(.type == "assistant" and .message.content) |
+    .message.content[] |
+    if .type == "text" then .text
+    elif .type == "thinking" then "[thinking] " + .thinking
+    elif .type == "tool_use" then "[" + .name + "] " + (.input | tostring | .[0:200])
+    else empty end
+  ' 2>/dev/null
 
 # Output signal block and add completion note — use this instead of manual signal output
 signal type ticket-id summary details="":
