@@ -3,11 +3,20 @@ subcommand — `tk` alone displays usage. Do not run `tk help`, `tk --help`, or 
 
 ## Signaling Completion
 
-Every subagent MUST use `just signal` as the **last command** in their output. This atomically adds the completion note
-and outputs the signal block for the orchestrator.
+Every subagent MUST end by running `just signal` and **outputting its result verbatim as the final message**. Do not
+summarize, add commentary, or output anything after the signal block.
 
 ```sh
 just signal <type> <ticket-id> "<summary>" ["<details>"]
+```
+
+The command outputs a signal block — copy it exactly as your final output:
+
+```text
+---
+signal: requesting-review
+ticket: abc-1234
+summary: Implemented feature X with tests
 ```
 
 Valid signals:
