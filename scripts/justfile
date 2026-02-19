@@ -20,7 +20,9 @@ worktree-name ticket-id:
 
 create-worktree name repo=".":
   #!/usr/bin/env bash
-  git -C "{{ repo }}/default" worktree add -b "{{ name }}" "../{{ name }}" 2>/dev/null || true
+  # Fetch latest and create worktree from origin's default branch
+  git -C "{{ repo }}/default" fetch origin 2>/dev/null || true
+  git -C "{{ repo }}/default" worktree add -b "{{ name }}" "../{{ name }}" origin/HEAD 2>/dev/null || true
   if [[ -d ".claude" && -d "{{ repo }}/{{ name }}" ]]; then
     # Use rsync to merge without overwriting — copies missing files/dirs only
     rsync -a --ignore-existing --exclude='settings.local.json' .claude/ "{{ repo }}/{{ name }}/.claude/"
@@ -121,7 +123,8 @@ start-work:
 
   create_worktree() {
     local name="$1" repo="${2:-.}"
-    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" >/dev/null 2>&1 || true
+    git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
+    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" origin/HEAD >/dev/null 2>&1 || true
     if [[ -d "$PROJECT_DIR/.claude" && -d "$PROJECT_DIR/$repo/$name" ]]; then
       rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
     fi
@@ -336,6 +339,8 @@ start-work:
 
   cleanup() {
     log "Interrupted — cleaning up"
+    # Kill all child processes
+    pkill -P $$ 2>/dev/null || true
     for pid in "${!PID_TO_TICKET[@]}"; do
       kill "$pid" 2>/dev/null || true
       local wt="${PID_TO_WORKTREE[$pid]:-}"
@@ -433,7 +438,12 @@ watch ticket-id:
     .message.content[] |
     if .type == "text" then .text
     elif .type == "thinking" then "[thinking] " + .thinking
-    elif .type == "tool_use" then "[" + .name + "] " + (.input | tostring | .[0:200])
+    elif .type == "tool_use" then
+      if .name == "Write" or .name == "Edit" then "[" + .name + "] " + .input.file_path
+      elif .name == "Read" then "[Read] " + .input.file_path
+      elif .name == "Bash" then "[Bash] " + (.input.command | .[0:100])
+      else "[" + .name + "] " + (.input | tostring | .[0:150])
+      end
     else empty end
   ' 2>/dev/null
 
