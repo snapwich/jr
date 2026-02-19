@@ -411,7 +411,7 @@ watch ticket-id:
   project_dir="{{ justfile_directory() }}"
   repo=$(tk query "select(.id == \"$ticket\")" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
   worktree_path="$project_dir/$repo/$wt"
-  escaped_path=$(echo "$worktree_path" | sed 's|/|-|g; s|^-||')
+  escaped_path=$(echo "$worktree_path" | sed 's|/|-|g')
 
   session_dir="$HOME/.claude/projects/$escaped_path"
   if [[ ! -d "$session_dir" ]]; then
