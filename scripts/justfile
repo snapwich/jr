@@ -19,11 +19,14 @@ worktree-name ticket-id:
   echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
 
 create-worktree name repo=".":
-  git -C {{ repo }}/default worktree add -b {{ name }} ../{{ name }}
-  cp -r --update=none .claude/. {{ repo }}/{{ name }}/.claude/
-  grep -qxF '.claude/agents/tk/' {{ repo }}/default/.git/info/exclude \
+  #!/usr/bin/env bash
+  git -C "{{ repo }}/default" worktree add -b "{{ name }}" "../{{ name }}" 2>/dev/null || true
+  if [[ -d ".claude" && -d "{{ repo }}/{{ name }}" ]]; then
+    cp -r --update=none .claude/. "{{ repo }}/{{ name }}/.claude/"
+  fi
+  grep -qxF '.claude/agents/tk/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
     || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
-      >> {{ repo }}/default/.git/info/exclude
+      >> "{{ repo }}/default/.git/info/exclude"
 
 remove-worktree name repo=".":
   git -C {{ repo }}/default worktree remove ../{{ name }}
@@ -117,8 +120,8 @@ start-work:
 
   create_worktree() {
     local name="$1" repo="${2:-.}"
-    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" >/dev/null 2>&1 || return 1
-    if [[ -d "$PROJECT_DIR/.claude" ]]; then
+    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" >/dev/null 2>&1 || true
+    if [[ -d "$PROJECT_DIR/.claude" && -d "$PROJECT_DIR/$repo/$name" ]]; then
       cp -r --update=none "$PROJECT_DIR/.claude/." "$PROJECT_DIR/$repo/$name/.claude/"
     fi
   }
@@ -176,24 +179,20 @@ start-work:
       return 1
     fi
 
-    local prompt outfile session_name
+    local prompt outfile session_uuid
     prompt=$(make_prompt "$ticket_id")
     outfile="$OUTPUT_DIR/output-$ticket_id.txt"
-    session_name="$lock_name"
+    session_uuid=$(uuidgen)
 
-    # Kill any existing session with this name
-    tmux kill-session -t "$session_name" 2>/dev/null || true
+    log "Session: $session_uuid (ticket: $ticket_id)"
 
-    # Build tmux env args — pass through test-relevant vars if set
-    local tmux_env_args=()
-    [[ -n "${MOCK_RESPONSES_DIR:-}" ]] && tmux_env_args+=(-e "MOCK_RESPONSES_DIR=$MOCK_RESPONSES_DIR")
-
-    # Launch claude in tmux session, tee output to file, signal when done
-    tmux new-session -d -s "$session_name" "${tmux_env_args[@]}" \
-      "cd '$launch_dir' && $CLAUDE --agent '$agent' --dangerously-skip-permissions -p '$prompt' 2>&1 | tee '$outfile'; tmux wait-for -S '$session_name-done'"
-
-    # Waiter process — blocks until tmux session signals completion
-    (tmux wait-for "$session_name-done") &
+    # Launch claude as background process
+    (
+      cd "$launch_dir"
+      export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
+      $CLAUDE --agent "$agent" --session-id "$session_uuid" --dangerously-skip-permissions \
+        -p "$prompt" > "$outfile" 2>&1
+    ) &
     local pid=$!
 
     if ! acquire_lock "$lock_name" "$pid"; then
@@ -398,18 +397,37 @@ start-subagent ticket-id:
   wt=$(just worktree-name "{{ ticket-id }}")
   just create-worktree "$wt" "$repo" 2>/dev/null || true
   prompt=$(sed 's/\$ARGUMENTS\[0\]/{{ ticket-id }}/' .claude/commands/tk/subagent-task.md)
-  session_name="$wt"
   launch_dir="{{ justfile_directory() }}/$repo/$wt"
-  tmux kill-session -t "$session_name" 2>/dev/null || true
-  tmux new-session -s "$session_name" \
-    "cd '$launch_dir' && ${CLAUDE_CMD:-claude} --agent '$agent' --dangerously-skip-permissions -p '$prompt'"
+  cd "$launch_dir"
+  ${CLAUDE_CMD:-claude} --agent "$agent" --dangerously-skip-permissions -p "$prompt"
 
-# Attach to a running subagent session (use from within tmux with TMUX= prefix)
-attach ticket-id:
+# Watch a running subagent's output by ticket ID
+watch ticket-id:
   #!/usr/bin/env bash
-  cd "{{ justfile_directory() }}"
-  wt=$(just worktree-name "{{ ticket-id }}")
-  TMUX= tmux attach -t "$wt"
+  ticket="{{ ticket-id }}"
+  wt=$(just worktree-name "$ticket")
+
+  # Derive escaped project path (matches claude's path escaping)
+  project_dir="{{ justfile_directory() }}"
+  repo=$(tk query "select(.id == \"$ticket\")" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+  worktree_path="$project_dir/$repo/$wt"
+  escaped_path=$(echo "$worktree_path" | sed 's|/|-|g; s|^-||')
+
+  session_dir="$HOME/.claude/projects/$escaped_path"
+  if [[ ! -d "$session_dir" ]]; then
+    echo "No session found for $ticket at $session_dir" >&2
+    exit 1
+  fi
+
+  # Find most recent session jsonl
+  latest=$(ls -t "$session_dir"/*.jsonl 2>/dev/null | head -1)
+  if [[ -z "$latest" ]]; then
+    echo "No session files found" >&2
+    exit 1
+  fi
+
+  echo "Watching: $latest"
+  tail -f "$latest" | jq -r 'select(.message.content) | .message.content[] | select(.type == "text") | .text // empty'
 
 # Output signal block and add completion note — use this instead of manual signal output
 signal type ticket-id summary details="":
