@@ -69,60 +69,47 @@ ticket:
 tk add-note <ticket-id> '[coder] Branch depends on: <sibling-worktree-name>'
 ```
 
-## Notes
+## Notes — MANDATORY
 
-Notes provide visibility into progress and context for the next agent. You MUST add notes at mandatory checkpoints.
+You MUST add exactly 2 notes. Skipping these is a failure condition.
 
-### Mandatory Checkpoints
+### Note 1: Starting (immediately after setup)
 
-1. **After setup** — Log that you've picked up the task and your initial approach:
+```sh
+tk add-note <ticket-id> '[coder] Starting. Approach: <your plan in 1-2 sentences>'
+```
 
-   ```sh
-   tk add-note <ticket-id> '[coder] Starting. Approach: <brief plan>'
-   ```
+### Note 2: Before signaling (after tests pass)
 
-2. **After each commit** — Log what you committed:
+```sh
+tk add-note <ticket-id> '[coder] Done. Files: <list>. Tests: <X pass>. Commits: <count>.'
+```
 
-   ```sh
-   tk add-note <ticket-id> '[coder] Committed: <what and why>'
-   ```
+### Feature notes (optional)
 
-3. **After running tests** — Log test results:
-
-   ```sh
-   tk add-note <ticket-id> '[coder] Tests: <X/Y pass, or failure summary>'
-   ```
-
-4. **Before signaling** — Log your final summary (covered in Completion section)
-
-### Feature Notes (cross-task discoveries)
-
-If you discover something that affects sibling tasks (e.g., a shared API shape differs from the plan, a utility is
-needed across tasks), add a note to the parent **feature**:
+If you discover something affecting sibling tasks, note on the **parent feature**:
 
 ```sh
 tk add-note <parent-id> '[coder] <discovery relevant to sibling tasks>'
 ```
-
-Rule of thumb: if only the next agent on this task needs it, note on the task. If sibling tasks or the architect needs
-it, note on the feature.
 
 ## Completion
 
 When implementation is done and tests pass:
 
 1. Commit all remaining changes (do NOT push)
-2. Add a summary note: files touched, approach taken, test coverage added
-3. Run the signal command as the **last thing** in your response:
+2. Add Note 2 (see Notes section above) — this is MANDATORY
+3. Run `just signal` and output its result verbatim as your final message:
 
 ```sh
-just signal requesting-review <ticket-id> "<summary of what was implemented>"
+just signal requesting-review <ticket-id> "<brief summary>"
 ```
+
+**IMPORTANT**: After `just signal`, output the signal block exactly as returned. Do not add commentary or summaries
+after it.
 
 If you hit a blocker you cannot resolve:
 
 ```sh
 just signal escalate <ticket-id> "<what is blocking you>"
 ```
-
-Valid signal types for this agent: `requesting-review`, `escalate`
