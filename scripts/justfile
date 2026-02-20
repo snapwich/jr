@@ -477,3 +477,57 @@ signal type ticket-id summary details="":
   echo "summary: $summary"
   [[ -n "$details" ]] && echo "details: $details"
   exit 0
+
+# Verify ticket structure — checks for cross-feature task dependencies and other invariants
+verify-tickets:
+  #!/usr/bin/env bash
+  set -e
+
+  cd "${TK_PROJECT_DIR:-{{ invocation_directory() }}}"
+
+  errors=0
+
+  # Check 1: No cross-feature task dependencies
+  # For each task, verify its dependencies are either:
+  #   - Features (any feature is OK)
+  #   - Tasks with the same parent (sibling tasks)
+  while IFS= read -r task_json; do
+    [[ -z "$task_json" ]] && continue
+
+    task_id=$(echo "$task_json" | jq -r '.id')
+    task_parent=$(echo "$task_json" | jq -r '.parent // empty')
+
+    # Skip tasks without a parent (orphan tasks are allowed but unusual)
+    [[ -z "$task_parent" ]] && continue
+
+    # Get dependencies directly from the ticket's deps array
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+
+      # Get dependency ticket info
+      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+      [[ -z "$dep_json" ]] && continue
+
+      dep_type=$(echo "$dep_json" | jq -r '.type')
+
+      # Only check task dependencies (features are allowed cross-feature)
+      if [[ "$dep_type" == "task" ]]; then
+        dep_parent=$(echo "$dep_json" | jq -r '.parent // empty')
+        if [[ -n "$dep_parent" && "$task_parent" != "$dep_parent" ]]; then
+          echo "ERROR: Cross-feature task dependency detected"
+          echo "  Task $task_id (parent: $task_parent)"
+          echo "  depends on task $dep_id (parent: $dep_parent)"
+          echo "  Fix: $task_id should depend on feature $dep_parent instead"
+          echo
+          ((errors++)) || true
+        fi
+      fi
+    done < <(echo "$task_json" | jq -r '.deps[]?' 2>/dev/null)
+  done < <(tk query 'select(.type == "task")' 2>/dev/null)
+
+  if ((errors > 0)); then
+    echo "Found $errors ticket verification error(s)"
+    exit 1
+  fi
+
+  echo "All tickets valid"

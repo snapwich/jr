@@ -85,13 +85,16 @@ tk dep <feature-id> <task-id-2>
 # ... for each child task
 ```
 
-#### Inter-task dependencies
+#### Inter-task dependencies (within the same feature only)
 
-Set up ordering between tasks within a feature (e.g., frontend depends on backend):
+Set up ordering between tasks **within the same feature** (e.g., frontend depends on backend):
 
 ```sh
 tk dep <task-id-dependent> <task-id-dependency>
 ```
+
+**IMPORTANT**: Tasks must ONLY depend on other tasks within the same feature. If a task needs something from another
+feature, it should depend on the entire feature, not on a specific task within it.
 
 #### Cross-feature dependencies
 
@@ -110,7 +113,8 @@ After creating all tickets:
 1. Show the full hierarchy: `tk tree`
 2. Check for dependency cycles: `tk dep cycle`
 3. Show what's immediately ready to work on: `tk ready`
-4. Report a summary to the user
+4. Run `just verify-tickets` to check for cross-feature task dependencies
+5. Report a summary to the user
 
 ## Output
 
@@ -129,5 +133,7 @@ Present the user with:
 - Every task gets initial assignee `tk:coder`
 - Every feature must depend on all its child tasks
 - Keep task scope focused — one task = one worktree = one branch = one PR
+- Tasks must only depend on other tasks within the same feature — use feature-level dependencies for cross-feature
+  ordering
 - In multi-repo mode, every task must have a `repo:<name>` tag
 - If the plan is ambiguous about task breakdown, propose your interpretation and ask the user before creating tickets
