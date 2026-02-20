@@ -6,7 +6,9 @@
       "Bash(tk create:*)",
       "Bash(tk show:*)",
       "Bash(tk dep tree:*)",
-      "Bash(tk list:*)"
+      "Bash(tk list:*)",
+      "Bash(tk undep:*)",
+      "Bash(tk dep:*)"
     ]
   }
 }
