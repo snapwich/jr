@@ -13,8 +13,12 @@ init dir:
   # Initialize git repo for .agents
   git -C "$dir/.agents" init
 
-  # Stow agent configs, scripts, and dotagents (linting config)
-  stow -t "$dir" claude scripts dotagents
+  # Stow agent configs and scripts
+  stow -t "$dir" claude scripts
+
+  # Copy linting config (not symlinked — avoids breakage if .agents repo moves)
+  cp .prettierrc.yml "$dir/.agents/"
+  cp .markdownlint.yaml "$dir/.agents/"
 
   # Create .tickets symlink
   ln -snf .agents/.tickets "$dir/.tickets"

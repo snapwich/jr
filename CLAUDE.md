@@ -45,7 +45,8 @@ claude/.claude/agents/tk/*    ──→     .claude/agents/tk/*
 claude/.claude/commands/tk/*  ──→     .claude/commands/tk/*
 claude/.claude/rules/tk-*     ──→     .claude/rules/tk-*
 scripts/justfile              ──→     justfile (worktree mgmt)
-dotagents/.agents/*           ──→     .agents/.prettierrc.yml, .markdownlint.yaml
+.prettierrc.yml               ──(cp)  .agents/.prettierrc.yml
+.markdownlint.yaml            ──(cp)  .agents/.markdownlint.yaml
                                       .agents/.tickets/  (git-tracked tickets)
                                       .agents/package.json  (generated, per-project)
                                       .tickets → .agents/.tickets  (symlink)
@@ -230,13 +231,10 @@ claude/.claude/
     tk-agents.md                      # behavioral rules for subagents
 scripts/
   justfile                            # worktree/subagent/orchestrator recipes
-dotagents/.agents/
-  .prettierrc.yml                     # prettier config (stowed into project .agents/)
-  .markdownlint.yaml                  # markdownlint config (stowed into project .agents/)
 .husky/pre-commit                     # runs lint-staged on commit (this repo only)
-package.json                          # dotagents — prettier + lint-staged dev deps
-.prettierrc.yml                       # symlink → dotagents/.agents/.prettierrc.yml
-.markdownlint.yaml                    # symlink → dotagents/.agents/.markdownlint.yaml
+package.json                          # prettier + lint-staged dev deps
+.prettierrc.yml                       # prettier config (copied to project .agents/)
+.markdownlint.yaml                    # markdownlint config (copied to project .agents/)
 ```
 
 ## Intended Workflow
