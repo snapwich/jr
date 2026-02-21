@@ -26,7 +26,27 @@ Read the plan document and identify:
   feature depending on all of them. Keep verification features lean: only the tests that genuinely require code from
   multiple features to be present.
 
-### 2. Detect Project Mode
+### 2. Resolve Open Questions
+
+Before creating any tickets, scan the plan for unresolved decisions and ambiguities. Look for:
+
+- Explicit markers: "TBD", "TODO", "TBC", "open question", "to be decided", "to be determined"
+- Alternatives without a decision: "X or Y", "either A or B", "option 1 / option 2"
+- Uncertainty language: "maybe", "possibly", "might", "not sure if", "need to decide"
+- Incomplete specifications: missing error handling strategy, unspecified edge cases, vague acceptance criteria
+- Placeholders: "...", "etc.", "and so on" where specifics are needed for implementation
+
+Collect **all** unresolved items and present them to the user in a single batch. For each item:
+
+- Quote the relevant text from the plan
+- Explain why it needs resolution (what decision the coder would be stuck on)
+- Suggest a default if one is obvious
+
+Wait for the user to answer all open questions before proceeding. Use the resolved answers when writing ticket
+descriptions — replace every ambiguity with the concrete decision. **No ticket description should contain unresolved
+language.** If you find yourself writing "TBD" or "or" between alternatives in a ticket, stop and ask the user.
+
+### 3. Detect Project Mode
 
 ```sh
 just detect-mode
@@ -34,7 +54,7 @@ just detect-mode
 
 In multi-repo mode, each task should specify which repo it targets.
 
-### 3. Create Feature Tickets
+### 4. Create Feature Tickets
 
 For each feature identified in the plan:
 
@@ -61,7 +81,7 @@ not referenced again. Include:
 - Any architectural notes or constraints
 - Cross-feature context if relevant
 
-### 4. Create Task Tickets
+### 5. Create Task Tickets
 
 Tasks within a feature form a **linear chain** — no parallel tasks within a feature. Order them logically (e.g., backend
 before frontend, data model before API, etc.).
@@ -128,7 +148,7 @@ has access to both features' code. Only create a separate verification feature w
 depends on all the features being tested (see "Cross-feature test needs" in the analysis step). The feature's own
 acceptance criteria should only cover what can be tested within its scope.
 
-### 5. Set Up Dependencies
+### 6. Set Up Dependencies
 
 #### Feature depends on all its child tasks
 
@@ -165,7 +185,7 @@ tk dep <first-task-B-id> <feature-A-id>
 
 This blocks all tasks in the dependent feature until the dependency feature is closed by a human.
 
-### 6. Verify
+### 7. Verify
 
 After creating all tickets:
 
@@ -199,4 +219,5 @@ Present the user with:
 - Cross-feature deps: feature B depends on feature A, AND first task of feature B depends on feature A
 - In multi-repo mode, every task must have a `repo:<name>` tag
 - `prefix:<value>` tags go on **features** (not tasks) for worktree/branch naming
-- If the plan is ambiguous about task breakdown, propose your interpretation and ask the user before creating tickets
+- **No unresolved questions in tickets** — every TBD, open alternative, or ambiguity in the plan must be resolved with
+  the user before creating tickets. Coders implement exactly what the ticket says; if it says "TBD", they're stuck.
