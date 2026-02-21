@@ -281,21 +281,26 @@ package.json                          # prettier + lint-staged dev deps
 
 ## Testing Strategy
 
-Testing is requirements-driven. `/tk:create-features` embeds testable requirements in each task description. These
-requirements are the basis for test coverage throughout the pipeline.
+Testing is requirements-driven at two levels: task requirements drive per-task tests, feature acceptance criteria drive
+feature-level verification. `/tk:create-features` embeds testable requirements in each task description and testable
+acceptance criteria in each feature description. The testing strategy follows a cost pyramid: prefer unit tests
+(exhaustive), use integration tests only where unit tests can't cover the interaction, and e2e tests only as a last
+resort.
 
-- **Coder** owns test writing. Tests are mandatory output — unit tests for all new/changed code, integration tests where
-  cross-component interaction is involved. When working on existing code with coverage gaps, the coder fills in coverage
-  for code they touch. The coder discovers project testing conventions from the codebase (framework, patterns, file
-  locations) and follows them.
+- **Coder** owns test writing. Tests are mandatory output. The coder finds and updates existing tests covering modified
+  behavior before writing new tests. Unit tests are the default and should be most exhaustive — covering requirements,
+  error cases, edge cases, and boundary conditions. Integration tests only where unit tests genuinely can't cover the
+  scenario. The **last implementation task** (before architect review) may include a "Feature verification" section
+  listing feature-level acceptance criteria that need test coverage beyond what individual tasks provide.
 - **Code-reviewer** enforces test quality. Insufficient testing is grounds for `changes-requested`, same as a code
   defect. The reviewer traces task requirements to test coverage, checks for error/edge case coverage, and rejects
   happy-path-only or meaningless assertions. Feedback on missing tests must be specific (what scenarios, what code
   paths).
-- **Architect-reviewer** reviews integration test coverage at the feature level. Checks that cross-task interactions are
-  tested, API boundaries are verified on both sides, and components from different tasks work together. Requests changes
-  when integration coverage is insufficient — does not write tests directly (read-only). May also flag unit test gaps at
-  API boundaries.
+- **Architect-reviewer** reviews test coverage at the feature level. Traces each feature acceptance criterion to
+  concrete test cases in the branch — any test type counts (unit, integration, e2e). Also reviews test appropriateness:
+  flags integration/e2e tests that could be unit tests (over-testing), and flags missing integration tests where unit
+  tests can't cover cross-component interactions. If cross-feature integration/e2e tests are needed, notes this on the
+  parent feature rather than requesting them as changes. Does not write tests directly (read-only).
 
 ## Open Design Questions
 

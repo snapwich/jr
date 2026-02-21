@@ -15,6 +15,16 @@ Read the plan document and identify:
 - **Tasks**: concrete units of implementation within each feature (each becomes a `type: task` ticket)
 - **Dependencies**: ordering constraints between tasks and between features
 - **Repos**: which repo(s) each task targets (relevant in multi-repo mode)
+- **Cross-feature test needs**: when the plan involves multiple interrelated features, identify interactions between
+  features that need verification but can't be tested within any single feature's scope. Usually, a downstream feature
+  that already depends on an upstream feature is the right place for these tests — a task in the downstream feature can
+  verify the interaction since it has access to both features' code via stacked branches. Add the cross-feature test
+  requirements to that task's description (or its "Feature verification" section).
+
+  Only create a **separate verification feature** when there is no downstream feature that naturally depends on all the
+  features being tested. This is rare — e.g., multiple independent features that all contribute to a shared flow with no
+  feature depending on all of them. Keep verification features lean: only the tests that genuinely require code from
+  multiple features to be present.
 
 ### 2. Detect Project Mode
 
@@ -44,7 +54,10 @@ The description MUST include all relevant plan context for this feature. The pla
 not referenced again. Include:
 
 - What this feature accomplishes (from the plan)
-- Acceptance criteria
+- **Acceptance criteria** — written as specific, testable statements. These are feature-level requirements that may span
+  multiple tasks (e.g., "the API endpoint returns paginated results and the frontend renders them with infinite
+  scroll"). The architect-reviewer traces these to test coverage across the branch. Write them with the same rigor as
+  task-level requirements — concrete enough that you can point to a test and say "this verifies that criterion."
 - Any architectural notes or constraints
 - Cross-feature context if relevant
 
@@ -86,6 +99,34 @@ The task description should include:
   from a test whether the requirement is met.
 - **Acceptance criteria**: observable conditions for the task to be considered complete
 - Any relevant technical context from the plan
+
+**Last implementation task owns feature-level test verification.** The last implementation task (immediately before the
+architect-review task) has access to all prior tasks' code in the worktree. If the feature's acceptance criteria require
+verification beyond what individual tasks test, add a "Feature verification" section to this task's description listing
+what needs to be verified and at what level. Use the cheapest test type that adequately covers each criterion:
+
+- **Unit tests** should cover the majority of requirements — they are fast, focused, and cheap to maintain
+- **Integration tests** only where unit tests genuinely can't verify the interaction (e.g., API contracts, middleware
+  chains, cross-component data flow). Happy path is usually sufficient unless the integration boundary has its own
+  failure modes.
+- **E2E tests** only when explicitly needed — expensive to write and maintain
+
+Not every feature needs this section. If all acceptance criteria are already covered by individual tasks' unit tests
+(e.g., a migration feature where each task verifies its own migration), omit it.
+
+Example for a feature that does need cross-task verification:
+
+```
+## Feature verification
+- Verify the API endpoint (task 1) returns data that the renderer (task 2) handles correctly [integration]
+- Verify the Storybook stories render without errors [unit — snapshot test]
+```
+
+**Cross-feature test placement.** If verifying a feature requires testing its interaction with code from other features,
+prefer adding those tests to a downstream feature that already depends on the upstream feature — a task in that feature
+has access to both features' code. Only create a separate verification feature when no existing feature naturally
+depends on all the features being tested (see "Cross-feature test needs" in the analysis step). The feature's own
+acceptance criteria should only cover what can be tested within its scope.
 
 ### 5. Set Up Dependencies
 

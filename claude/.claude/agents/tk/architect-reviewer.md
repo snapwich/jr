@@ -77,17 +77,41 @@ git diff $(git merge-base HEAD origin/HEAD)..HEAD
 - Verify their needs are met by the implementation
 - Flag any gaps that would block downstream work
 
+### Feature Acceptance Criteria Coverage
+
+The parent feature's description contains acceptance criteria — testable statements about what the feature as a whole
+must do. These may span multiple tasks.
+
+- Read the feature's acceptance criteria from `tk show <parent-id>`
+- For each criterion, find the test(s) that verify it. Trace the criterion to concrete test cases in the branch.
+  Criteria can be covered by any test type (unit, integration, e2e) — what matters is that coverage exists, not what
+  type of test provides it.
+- If a feature acceptance criterion has no corresponding test coverage, request changes. Be specific: name the criterion
+  and what test is missing.
+- Check that existing tests were considered. If the codebase had tests covering the modified behavior before this
+  feature, those tests should have been updated — not left broken or duplicated with new tests.
+
+### Test Appropriateness
+
+Review whether tests use the right level of abstraction:
+
+- Flag integration or e2e tests that test something a unit test could cover — these are unnecessarily expensive
+- Flag missing integration tests where unit tests alone can't verify a cross-component interaction
+- Do NOT request e2e tests unless the feature description explicitly calls for them or there is a critical user-facing
+  flow with no other verification path
+- Check for over-testing: redundant tests that cover the same scenario at multiple levels without adding confidence
+
 ### Integration and API Boundary Testing
 
 - Run integration tests if available
-- Verify cross-task functionality works end-to-end
 - Review integration test coverage across tasks: do the tests verify that components from different tasks work together
-  correctly? Are API contracts between tasks tested on both sides?
-- Review API boundary tests: public interfaces, shared types, and cross-module contracts should have tests that verify
-  both the provider and consumer sides
-- If integration test coverage is insufficient, request changes with concrete guidance on what scenarios are missing
+  correctly? Are API contracts tested on both sides?
+- If integration test coverage is insufficient for cross-task interactions that exist in this feature, request changes
+  with concrete guidance on what scenarios are missing
 - Unit test review is not your primary concern (the code-reviewer handles that), but flag gaps at API boundaries where
   unit tests should verify the contract a component exposes
+- If the feature needs integration/e2e tests that span beyond its scope (involving other features), note this as a
+  finding on the parent feature — do not request them as changes to this feature's tasks
 
 ## Outcomes
 
