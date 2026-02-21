@@ -38,6 +38,27 @@ worktree-name ticket-id:
     echo "$ticket_id-$slug"
   fi
 
+# Resolve the base branch for a feature — checks deps for upstream features (stacked branches)
+resolve-base-branch feature-id:
+  #!/usr/bin/env bash
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  feature_json=$(tk query "select(.id == \"{{ feature-id }}\")")
+  while IFS= read -r dep_id; do
+    [[ -z "$dep_id" ]] && continue
+    dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+    [[ -z "$dep_json" ]] && continue
+    dep_type=$(echo "$dep_json" | jq -r '.type')
+    if [[ "$dep_type" == "feature" ]]; then
+      upstream_wt=$(just --justfile "{{ justfile() }}" \
+        --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$dep_id")
+      if [[ -n "$upstream_wt" ]]; then
+        echo "$upstream_wt"
+        exit 0
+      fi
+    fi
+  done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
+  echo "origin/HEAD"
+
 create-worktree name repo="." base="origin/HEAD":
   #!/usr/bin/env bash
   # Fetch latest and create worktree from the specified base
@@ -66,6 +87,8 @@ start-work:
   LOCK_DIR="$OUTPUT_DIR/locks"
   CLAUDE="${CLAUDE_CMD:-claude}"
   PROJECT_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  JUSTFILE="{{ justfile() }}"
+  AGENT_TIMEOUT="${TK_AGENT_TIMEOUT:-1800}"
 
   cd "$PROJECT_DIR"
 
@@ -82,12 +105,12 @@ start-work:
 
   setup() {
     mkdir -p "$OUTPUT_DIR" "$LOCK_DIR"
-    # Clean stale lockfiles
+    # Clean stale lockfiles (symlinks: target is the PID)
     for lockfile in "$LOCK_DIR"/*.lock; do
-      [[ -f "$lockfile" ]] || continue
+      [[ -L "$lockfile" ]] || continue
       local pid
-      pid=$(cat "$lockfile")
-      if ! kill -0 "$pid" 2>/dev/null; then
+      pid=$(readlink "$lockfile" 2>/dev/null || true)
+      if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
         log "Cleaning stale lockfile: $lockfile (pid $pid)"
         rm -f "$lockfile"
       fi
@@ -100,16 +123,16 @@ start-work:
   acquire_lock() {
     local name="$1" pid="$2"
     local lockfile="$LOCK_DIR/$name.lock"
-    if [[ -f "$lockfile" ]]; then
-      local existing_pid
-      existing_pid=$(cat "$lockfile")
-      if kill -0 "$existing_pid" 2>/dev/null; then
-        return 1  # lock held by live process
-      fi
-      rm -f "$lockfile"  # stale
+    if ln -s "$pid" "$lockfile" 2>/dev/null; then
+      return 0
     fi
-    echo "$pid" > "$lockfile"
-    return 0
+    local existing_pid
+    existing_pid=$(readlink "$lockfile" 2>/dev/null || true)
+    if [[ -n "$existing_pid" ]] && ! kill -0 "$existing_pid" 2>/dev/null; then
+      rm -f "$lockfile"
+      ln -s "$pid" "$lockfile" 2>/dev/null && return 0
+    fi
+    return 1
   }
 
   release_lock() {
@@ -134,64 +157,12 @@ start-work:
 
   worktree_name() {
     local ticket_id="$1"
-    local ticket_json ticket_type
-    ticket_json=$(tk query "select(.id == \"$ticket_id\")")
-    ticket_type=$(echo "$ticket_json" | jq -r '.type')
-
-    # Resolve to feature: if this is a task, use its parent
-    local feature_json feature_id
-    if [[ "$ticket_type" == "task" ]]; then
-      local parent
-      parent=$(echo "$ticket_json" | jq -r '.parent // empty')
-      if [[ -n "$parent" ]]; then
-        feature_json=$(tk query "select(.id == \"$parent\")")
-        feature_id=$(echo "$feature_json" | jq -r '.id')
-      else
-        feature_json="$ticket_json"
-        feature_id=$(echo "$ticket_json" | jq -r '.id')
-      fi
-    else
-      feature_json="$ticket_json"
-      feature_id=$(echo "$ticket_json" | jq -r '.id')
-    fi
-
-    # Check for prefix:<value> tag — use as name prefix instead of tk ID
-    local prefix
-    prefix=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
-
-    local title slug
-    title=$(tk show "$feature_id" | grep '^# ' | head -1 | sed 's/^# //')
-    slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
-
-    if [[ -n "$prefix" ]]; then
-      echo "$prefix-$slug"
-    else
-      echo "$feature_id-$slug"
-    fi
+    just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" worktree-name "$ticket_id"
   }
 
   resolve_base_branch() {
     local feature_id="$1"
-    local feature_json
-    feature_json=$(tk query "select(.id == \"$feature_id\")")
-    # Check if feature depends on another feature — use that feature's branch as base
-    local dep_id dep_json dep_type
-    while IFS= read -r dep_id; do
-      [[ -z "$dep_id" ]] && continue
-      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
-      [[ -z "$dep_json" ]] && continue
-      dep_type=$(echo "$dep_json" | jq -r '.type')
-      if [[ "$dep_type" == "feature" ]]; then
-        # Use the upstream feature's branch as base
-        local upstream_wt
-        upstream_wt=$(worktree_name "$dep_id")
-        if [[ -n "$upstream_wt" ]]; then
-          echo "$upstream_wt"
-          return
-        fi
-      fi
-    done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
-    echo "origin/HEAD"
+    just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" resolve-base-branch "$feature_id"
   }
 
   create_worktree() {
@@ -205,7 +176,7 @@ start-work:
 
   count_notes_by_prefix() {
     local ticket_id="$1" prefix="$2"
-    tk show "$ticket_id" | grep -c "\\[$prefix\\]" || true
+    tk show "$ticket_id" | grep -cF "[$prefix] " || true
   }
 
   make_prompt() {
@@ -287,7 +258,7 @@ start-work:
     (
       cd "$launch_dir"
       export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
-      exec $CLAUDE --agent "$agent" --session-id "$session_uuid" --dangerously-skip-permissions \
+      exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" --session-id "$session_uuid" --dangerously-skip-permissions \
         -p "$prompt" > "$outfile" 2>&1
     ) &
     local pid=$!
@@ -339,6 +310,12 @@ start-work:
     parse_signal "$outfile"
 
     log "Finished $ticket_id — signal: ${SIGNAL:-NONE}"
+
+    # Drain mode: skip dispatch if escalation already triggered
+    if [[ -n "$ESCALATION" ]]; then
+      log "Drain: skipping dispatch for $ticket_id (signal: ${SIGNAL:-NONE})"
+      return
+    fi
 
     # Check if task has architect-review tag
     local has_architect_tag=false
@@ -528,37 +505,6 @@ start-work:
     fi
   done
 
-start-subagent ticket-id:
-  #!/usr/bin/env bash
-  cd "{{ justfile_directory() }}"
-  ticket=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
-  agent=$(echo "$ticket" | jq -r '.assignee')
-  ticket_type=$(echo "$ticket" | jq -r '.type')
-  repo=$(echo "$ticket" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
-
-  # Derive worktree from parent feature
-  wt=$(just worktree-name "{{ ticket-id }}")
-
-  # Resolve base branch for stacked features
-  parent=$(echo "$ticket" | jq -r '.parent // empty')
-  feature_id="${parent:-{{ ticket-id }}}"
-  # Simple base resolution — check feature deps for upstream features
-  base="origin/HEAD"
-  feature_json=$(tk query "select(.id == \"$feature_id\")")
-  for dep_id in $(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null); do
-    dep_type=$(tk query "select(.id == \"$dep_id\")" | jq -r '.type' 2>/dev/null || true)
-    if [[ "$dep_type" == "feature" ]]; then
-      base=$(just worktree-name "$dep_id")
-      break
-    fi
-  done
-
-  just create-worktree "$wt" "$repo" "$base" 2>/dev/null || true
-  prompt=$(sed 's/\$ARGUMENTS\[0\]/{{ ticket-id }}/' .claude/commands/tk/subagent-task.md)
-  launch_dir="{{ justfile_directory() }}/$repo/$wt"
-  cd "$launch_dir"
-  ${CLAUDE_CMD:-claude} --agent "$agent" --dangerously-skip-permissions -p "$prompt"
-
 # Watch a running subagent's output by ticket ID
 watch ticket-id:
   #!/usr/bin/env bash
@@ -638,7 +584,7 @@ verify-tickets:
   #!/usr/bin/env bash
   set -e
 
-  cd "${TK_PROJECT_DIR:-{{ invocation_directory() }}}"
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
 
   errors=0
 
@@ -773,6 +719,7 @@ verify-tickets:
 request-changes feature-id feedback:
   #!/usr/bin/env bash
   set -e
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
   feedback="{{ feedback }}"
 

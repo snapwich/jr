@@ -117,7 +117,9 @@ Given("a standalone task {string}", async function (taskName) {
 
 When("I run verify-tickets", async function () {
   const justfile = join(REPO_ROOT, "scripts", "justfile");
-  const result = await this.exec("just", ["--justfile", justfile, "verify-tickets"]);
+  const result = await this.exec("just", ["--justfile", justfile, "verify-tickets"], {
+    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+  });
   this.lastExitCode = result.exitCode;
   this.lastOutput = result.stdout + "\n" + result.stderr;
 });

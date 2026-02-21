@@ -125,6 +125,25 @@ class OrchestratorWorld extends World {
     });
   }
 
+  async setupMultiRepo(repoName) {
+    // Create a bare "remote" repo so origin/HEAD resolves
+    const bareDir = join(this.projectDir, `${repoName}-bare`);
+    await mkdir(bareDir, { recursive: true });
+    await execFileAsync("git", ["init", "--bare"], { cwd: bareDir });
+
+    const repoDir = join(this.projectDir, repoName, "default");
+    await mkdir(repoDir, { recursive: true });
+    await execFileAsync("git", ["init"], { cwd: repoDir });
+    await execFileAsync("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+    await execFileAsync("git", ["config", "user.name", "Test"], { cwd: repoDir });
+    await execFileAsync("git", ["remote", "add", "origin", bareDir], { cwd: repoDir });
+    await writeFile(join(repoDir, ".gitkeep"), "");
+    await execFileAsync("git", ["add", "."], { cwd: repoDir });
+    await execFileAsync("git", ["commit", "-m", "init"], { cwd: repoDir });
+    await execFileAsync("git", ["push", "-u", "origin", "HEAD"], { cwd: repoDir });
+    await execFileAsync("git", ["remote", "set-head", "origin", "--auto"], { cwd: repoDir });
+  }
+
   async getTicketStatus(ticketId) {
     const result = await this.exec("tk", ["query", `select(.id == "${ticketId}")`]);
     if (!result.stdout) return null;

@@ -84,6 +84,16 @@ Feature: Orchestrator signal dispatch
     Then the orchestrator should exit with code 2
     And the output should contain "DEADLOCK"
 
+  Scenario: Drain does not launch new agents after escalation
+    Given a feature "feat-a" with a linear task chain: "task-a1"
+    And a feature "feat-b" with a linear task chain: "task-b1"
+    And the mock subagent always returns "escalate" for "task-a1" as "tk:coder"
+    And the mock subagent always returns "requesting-review" for "task-b1" as "tk:coder"
+    When I run the orchestrator
+    Then the orchestrator should exit with code 2
+    And the output should contain "ESCALATE"
+    And the output should contain "Drain: skipping dispatch"
+
   Scenario: Escalation after max architect review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And all tasks except arch-review in "feat-1" are closed

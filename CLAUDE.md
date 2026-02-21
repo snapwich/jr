@@ -206,9 +206,9 @@ actual code and makes targeted changes, rather than defending the original appro
 
 ### Subagent launching
 
-`just start-subagent <ticket-id>` is self-contained: it queries the ticket for assignee and `repo:<name>` tag, derives
-the worktree name from the parent feature, resolves the base branch for stacked features, creates the worktree if
-needed, and launches `claude --agent <agent> -p <prompt>` in the worktree directory.
+The internal `launch()` function in `start-work` is self-contained: it queries the ticket for assignee and `repo:<name>`
+tag, derives the worktree name from the parent feature, resolves the base branch for stacked features, creates the
+worktree if needed, and launches `claude --agent <agent> -p <prompt>` in the worktree directory as a background process.
 
 ### Signaling completion
 
@@ -237,7 +237,7 @@ Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`
 ### Concurrency
 
 The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`). One
-agent per worktree at a time.
+agent per worktree at a time. See [docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
 
 ## Directory Structure
 
@@ -302,10 +302,12 @@ resort.
   tests can't cover cross-component interactions. If cross-feature integration/e2e tests are needed, notes this on the
   parent feature rather than requesting them as changes. Does not write tests directly (read-only).
 
-## Open Design Questions
+## Known Limitations
 
-- **Cross-repo features**: Each repo gets its own worktree/branch; ticket metadata tracks the target repo.
-- **Retry logic**: Handling crashed subagents (exit without clean return text — currently treated as escalation).
+- **Cross-repo features**: Supported — each repo gets its own worktree/branch; ticket metadata tracks the target repo
+  via `repo:<name>` tag. Limited test coverage.
+- **Crashed subagents**: Treated as escalation (no valid signal). `TK_AGENT_TIMEOUT` (default: 30 min) prevents
+  indefinite runs.
 
 ## Development Guidelines
 
