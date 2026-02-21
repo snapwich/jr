@@ -66,6 +66,10 @@ git diff $(git merge-base HEAD origin/HEAD)..HEAD
 - Do the pieces fit together? (e.g., backend API matches what frontend expects)
 - Are shared interfaces consistent across tasks?
 - Are there conflicting assumptions between tasks?
+- **Review feature notes from coders.** Earlier coders may have flagged issues or concerns on the parent feature (e.g.,
+  an API mismatch, a missing shared utility, a risk). These notes may describe problems that a later task was expected
+  to address. Check that each flagged issue was actually resolved in the final code — if a coder noted it but no
+  subsequent task addressed it, request changes.
 
 ### Downstream Dependencies
 
