@@ -16,6 +16,20 @@ Given("a ticket titled {string} with tags {string}", async function (title, tags
   this.ticketIds[title] = id;
 });
 
+Given("a feature {string} with child task {string}", async function (featureTitle, taskTitle) {
+  const featureId = await this.createTicket(featureTitle, { type: "feature" });
+  this.ticketIds[featureTitle] = featureId;
+  const taskId = await this.createTicket(taskTitle, { type: "task", parent: featureId });
+  this.ticketIds[taskTitle] = taskId;
+});
+
+Given("a feature {string} with tags {string} and child task {string}", async function (featureTitle, tags, taskTitle) {
+  const featureId = await this.createTicket(featureTitle, { type: "feature", tags });
+  this.ticketIds[featureTitle] = featureId;
+  const taskId = await this.createTicket(taskTitle, { type: "task", parent: featureId });
+  this.ticketIds[taskTitle] = taskId;
+});
+
 When("I run worktree-name for that ticket", async function () {
   const id = this.ticketIds[this.lastTicketTitle];
   const justfile = join(REPO_ROOT, "scripts", "justfile");
@@ -31,13 +45,25 @@ When("I run worktree-name for that ticket", async function () {
   this.lastWorktreeName = result.stdout;
 });
 
+When("I run worktree-name for task {string}", async function (taskTitle) {
+  const id = this.ticketIds[taskTitle];
+  const justfile = join(REPO_ROOT, "scripts", "justfile");
+  const result = await this.exec("just", [
+    "--justfile",
+    justfile,
+    "--working-directory",
+    this.projectDir,
+    "worktree-name",
+    id,
+  ]);
+  assert.strictEqual(result.exitCode, 0, `worktree-name failed: ${result.stderr}`);
+  this.lastWorktreeName = result.stdout;
+});
+
 Then("the worktree name should end with {string}", async function (expectedSlug) {
-  const id = this.ticketIds[this.lastTicketTitle];
-  const expected = `${id}-${expectedSlug}`;
-  assert.strictEqual(
-    this.lastWorktreeName,
-    expected,
-    `Expected worktree name "${expected}", got "${this.lastWorktreeName}"`,
+  assert.ok(
+    this.lastWorktreeName.endsWith(expectedSlug),
+    `Expected worktree name "${this.lastWorktreeName}" to end with "${expectedSlug}"`,
   );
 });
 

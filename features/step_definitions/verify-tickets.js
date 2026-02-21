@@ -9,7 +9,7 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..");
 Given("a feature {string} with task {string}", async function (featureName, taskName) {
   // Create feature if not exists
   if (!this.ticketIds[featureName]) {
-    const featureId = await this.createTicket(featureName, { type: "feature", assignee: "tk:architect-reviewer" });
+    const featureId = await this.createTicket(featureName, { type: "feature" });
     this.ticketIds[featureName] = featureId;
   }
 
@@ -19,6 +19,75 @@ Given("a feature {string} with task {string}", async function (featureName, task
 
   // Feature depends on its child task
   await this.addDep(featureId, taskId);
+});
+
+Given(
+  "a feature {string} with linear chain tasks {string} and architect-review",
+  async function (featureName, taskNamesCsv) {
+    const featureId = await this.createTicket(featureName, { type: "feature" });
+    this.ticketIds[featureName] = featureId;
+
+    const taskNames = taskNamesCsv.split(",").map((s) => s.trim());
+    let prevTaskId = null;
+
+    for (const taskName of taskNames) {
+      const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+      this.ticketIds[taskName] = taskId;
+      await this.addDep(featureId, taskId);
+      if (prevTaskId) {
+        await this.addDep(taskId, prevTaskId);
+      }
+      prevTaskId = taskId;
+    }
+
+    // Add architect-review task as last in chain
+    const archTaskId = await this.createTicket("arch-review", {
+      type: "task",
+      assignee: "tk:architect-reviewer",
+      parent: featureId,
+      tags: "architect-review",
+    });
+    this.ticketIds["arch-review"] = archTaskId;
+    await this.addDep(featureId, archTaskId);
+    if (prevTaskId) {
+      await this.addDep(archTaskId, prevTaskId);
+    }
+  },
+);
+
+Given(
+  "a feature {string} with linear chain tasks {string} without architect-review tag",
+  async function (featureName, taskNamesCsv) {
+    const featureId = await this.createTicket(featureName, { type: "feature" });
+    this.ticketIds[featureName] = featureId;
+
+    const taskNames = taskNamesCsv.split(",").map((s) => s.trim());
+    let prevTaskId = null;
+
+    for (const taskName of taskNames) {
+      const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+      this.ticketIds[taskName] = taskId;
+      await this.addDep(featureId, taskId);
+      if (prevTaskId) {
+        await this.addDep(taskId, prevTaskId);
+      }
+      prevTaskId = taskId;
+    }
+  },
+);
+
+Given("a feature {string} with parallel tasks {string}", async function (featureName, taskNamesCsv) {
+  const featureId = await this.createTicket(featureName, { type: "feature" });
+  this.ticketIds[featureName] = featureId;
+
+  const taskNames = taskNamesCsv.split(",").map((s) => s.trim());
+
+  // Create tasks with NO inter-task deps (parallel)
+  for (const taskName of taskNames) {
+    const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+    this.ticketIds[taskName] = taskId;
+    await this.addDep(featureId, taskId);
+  }
 });
 
 Given("task {string} depends on sibling task {string}", async function (taskName, siblingName) {

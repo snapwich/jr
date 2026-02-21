@@ -66,9 +66,9 @@ The toolkit supports two modes depending on whether the project works with one r
     ├── .tickets → .agents/.tickets
     ├── default/                          # main checkout
     │   └── .claude/                      # merged copy (if repo has .claude/ committed)
-    ├── TASK-123-some-feature/            # worktree (one per task)
+    ├── feat-abcd-my-feature/             # feature worktree (one per feature)
     │   └── .claude/                      # merged copy of project .claude/
-    └── TASK-456-another-task/            # another worktree
+    └── feat-efgh-another-feature/        # another feature worktree
 ```
 
 **Multi-repo mode** — repos are named subdirectories:
@@ -81,20 +81,19 @@ The toolkit supports two modes depending on whether the project works with one r
     ├── .tickets → .agents/.tickets
     ├── <repo-a>/                         # user-managed git repo
     │   ├── default/                      # main checkout
-    │   ├── TASK-123-backend/             # worktree
-    │   └── TASK-456-api/
+    │   └── feat-abcd-backend-feature/    # feature worktree
     └── <repo-b>/                         # another repo
         ├── default/
-        └── TASK-789-frontend/
+        └── feat-efgh-frontend-feature/
 ```
 
 **Mode detection:** Run `just detect-mode` — returns `single-repo` if `default/` exists at project root, otherwise
 `multi-repo`. In single-repo mode, pass `.` as the `repo` parameter to justfile recipes.
 
 Claude Code doesn't recursively search parent directories for `.claude/`, so each worktree needs its own copy.
-`just create-worktree <name> [repo]` handles this — it copies the project-level `.claude/` into the worktree using
-`cp -r --update=none`, which merges without overwriting existing files. This means worktrees get both the stowed tk
-configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
+`just create-worktree <name> [repo] [base]` handles this — it copies the project-level `.claude/` into the worktree
+using rsync with `--ignore-existing`, which merges without overwriting existing files. This means worktrees get both the
+stowed tk configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
 
 ### No project CLAUDE.md
 
@@ -108,66 +107,99 @@ ticket tracker. Run `tk` (no args) to see available commands. There is no help s
 
 ### Worktree model
 
+Worktrees align with **features**, not tasks. One feature = one worktree = one branch = one PR. Tasks within a feature
+are sequential commits on the feature's branch.
+
 Each repo has a `default/` checkout with sibling worktrees. All justfile recipes take a `repo` parameter:
 
-- **Single-repo mode:** `default/` is at project root; omit the repo arg (e.g. `just create-worktree TASK-123`)
-- **Multi-repo mode:** repos are subdirectories; pass the repo name (e.g. `just create-worktree TASK-123 repo-a`)
+- **Single-repo mode:** `default/` is at project root; omit the repo arg (e.g. `just create-worktree feat-abcd-title`)
+- **Multi-repo mode:** repos are subdirectories; pass the repo name (e.g. `just create-worktree feat-abcd-title repo-a`)
 
-One worktree per task (= one branch = one eventual PR).
+### Worktree naming convention
+
+Worktree and branch names are derived from the **feature** ticket (not task). The `just worktree-name <ticket-id>`
+recipe computes this — when called with a task ID, it resolves to the parent feature first.
+
+**Prefix logic**: Check the feature's tags for `prefix:<value>`. If present, use the external prefix (preserving
+original case) instead of the tk ticket ID: `PEX-1234-my-feature-title`. If no prefix tag, fall back to the tk feature
+ID: `rep-abcd-my-feature-title`.
+
+### Stacked branches
+
+When Feature B depends on Feature A, Feature B's worktree branches off Feature A's branch (not origin/HEAD). The
+`resolve_base_branch()` function in the orchestrator checks feature deps for upstream features.
 
 ### Task parallelism
 
-Tasks within a feature can run in parallel if their `tk` dependencies allow it. The orchestrator uses `tk ready` to
-determine what can be worked on. However, multiple subagents in the same worktree simultaneously risks file conflicts —
-the orchestrator serializes per-worktree even if tasks are technically ready.
+Tasks within a feature form a **linear chain** — they run sequentially, sharing the same worktree. Cross-feature
+parallelism is supported: features with independent dependency chains can run their tasks concurrently in separate
+worktrees. The orchestrator enforces one agent per worktree at a time.
 
 ### Agent model
 
 Three Claude subagents plus a bash orchestrator:
 
-- **Coder** (`tk:coder`, opus, full tools, orange) — implements tasks, runs tests, commits and pushes
+- **Coder** (`tk:coder`, opus, full tools, orange) — implements tasks, runs tests, commits
 - **Code-Reviewer** (`tk:code-reviewer`, opus, read-only, cyan) — reviews code + test quality, approves or requests
   changes
-- **Architect-Reviewer** (`tk:architect-reviewer`, opus, read-only, magenta) — feature-level review, cross-task
-  coherence, opens PRs
+- **Architect-Reviewer** (`tk:architect-reviewer`, opus, read-only, magenta) — reviews full feature branch for
+  cross-task coherence, integration quality
 - **Orchestrator** (`just start-work`, bash) — coordinates the workflow, launches subagents, reacts to their signals.
-  Deterministic signal dispatch — no LLM. Exits 0 on completion, 2 on escalation/deadlock
+  Deterministic signal dispatch — no LLM. Exits 0 on completion, 2 on escalation/deadlock, 3 on features awaiting human
+  review
 
 ### Ticket hierarchy
 
 Two levels: **Feature** and **Task**.
 
-- **Feature** (`type: feature`, assignee: `tk:architect-reviewer`) — logical grouping of related work. Created by
-  `/tk:create-features` from a plan document. Depends on all its child tasks (appears in `tk ready` when all children
-  close). Plan context is embedded in the description.
-- **Task** (`type: task`, parent: feature, assignee: `tk:coder`) — one task = one worktree = one branch = one PR. Cycles
-  through: coder → code-reviewer → closed.
+- **Feature** (`type: feature`, no assignee) — logical grouping of related work. One feature = one worktree = one branch
+  = one PR. Created by `/tk:create-features` from a plan document. Depends on all its child tasks (appears in `tk ready`
+  when all children close). Features are **human review gates** — when they appear in `tk ready`, the orchestrator logs
+  it and exits with code 3. Humans close features directly or use `just request-changes` to trigger rework.
+- **Task** (`type: task`, parent: feature) — sequential unit of work within a feature. Tasks form a linear chain within
+  their feature. Last task always has `architect-review` tag and `tk:architect-reviewer` assignee.
 
 ### Task lifecycle
 
-1. **Coder** implements the task, runs tests, commits, pushes, returns `requesting-review`
-2. **Orchestrator** immediately launches code-reviewer on the same task
-3. **Code-reviewer** reviews code + tests, returns `approved` or `changes-requested`
-4. If approved → orchestrator closes task
-5. If changes requested → orchestrator relaunches coder (max 3 review iterations, then escalate)
+1. **Orchestrator** adds `[orchestrator] Assigned to coder. HEAD: <sha>` note
+2. **Coder** implements the task, runs tests, commits, signals `requesting-review`
+3. **Orchestrator** immediately assigns to code-reviewer and launches
+4. **Code-reviewer** reviews code + tests (focused on changes since HEAD SHA)
+   - If approved and task has `architect-review` tag → orchestrator assigns to architect-reviewer and launches
+   - If approved and no `architect-review` tag → orchestrator closes task
+   - If changes requested → orchestrator relaunches coder (max 3 review iterations, then escalate)
 
 ### Feature lifecycle
 
-1. All child tasks closed → feature appears in `tk ready`
-2. **Architect-reviewer** reviews cross-task coherence, integration, downstream deps
-3. If approved → orchestrator closes feature, PRs ready for human review
-4. If issues found → architect reopens specific task(s) for rework → tasks go through coder/reviewer cycle again
+1. All child tasks closed (including architect-review) → feature appears in `tk ready`
+2. **Orchestrator** logs "Feature X ready for human review", skips (no agent launched)
+3. **Human** reviews the branch/worktree
+   - Satisfied → `tk close <feature-id>` → downstream features unblocked
+   - Issues found → `just request-changes <feature-id> "<feedback>"` → triggers rework loop
+
+### Architect-review task lifecycle
+
+The architect-review task is a special task that goes through an extended lifecycle:
+
+1. All prior tasks in the chain close → architect-review task appears in `tk ready`
+2. **Architect-reviewer** reviews full branch diff, signals `approved` or `changes-requested`
+3. If `changes-requested` → orchestrator assigns to coder for fixes → code-reviewer reviews → if approved, re-launches
+   architect (because of `architect-review` tag)
+4. If `approved` → orchestrator closes task → feature appears in `tk ready` for human review
 
 ### Review workflow
 
 Review uses ticket notes as the handoff mechanism:
 
-1. **Coder works** — implements the task, logging decisions and steps as `tk` notes along the way
-2. **Coder finishes** — returns `requesting-review` signal to orchestrator
-3. **Code-reviewer picks up** — reads ticket description, notes, and reviews the code in the worktree with fresh context
-4. **If approved** — code-reviewer returns `approved`, orchestrator closes task
-5. **If changes requested** — code-reviewer leaves detailed feedback as a note, returns `changes-requested`.
-   Orchestrator relaunches a fresh coder that reads the notes + code and makes targeted changes.
+1. **Orchestrator** adds HEAD SHA note before launching coder
+2. **Coder works** — implements the task, logging decisions and steps as `tk` notes along the way
+3. **Coder finishes** — returns `requesting-review` signal to orchestrator
+4. **Code-reviewer picks up** — reads ticket notes, uses HEAD SHA for focused diff review
+5. **If approved** — code-reviewer returns `approved`, orchestrator closes task (or re-launches architect for
+   architect-review tasks)
+6. **If changes requested** — code-reviewer leaves detailed feedback as a note, returns `changes-requested`.
+   Orchestrator adds new HEAD SHA note and relaunches a fresh coder that reads the notes + code and makes targeted
+   changes.
 
 This intentionally discards implementation context on revision — the coder reads the review feedback alongside the
 actual code and makes targeted changes, rather than defending the original approach.
@@ -175,17 +207,8 @@ actual code and makes targeted changes, rather than defending the original appro
 ### Subagent launching
 
 `just start-subagent <ticket-id>` is self-contained: it queries the ticket for assignee and `repo:<name>` tag, derives
-the worktree name, creates the worktree if needed, and launches `claude --agent <agent> -p <prompt>` in the worktree
-directory.
-
-### Worktree naming convention
-
-Worktree and branch names are derived deterministically from ticket metadata: `<id>-<slugified-title>`. The
-`just worktree-name <ticket-id>` recipe computes this. No need to track worktree assignments — any agent or recipe can
-derive the worktree path from a ticket ID.
-
-External tracking IDs (e.g., Jira) can be stored in a `prefix:<value>` tag for use during PR creation, but the worktree
-and branch always use the tk ticket ID for easy mapping back to tickets.
+the worktree name from the parent feature, resolves the base branch for stacked features, creates the worktree if
+needed, and launches `claude --agent <agent> -p <prompt>` in the worktree directory.
 
 ### Signaling completion
 
@@ -193,22 +216,23 @@ All subagents must use `just signal` as the **last command** in their output. Th
 and outputs the signal block for the orchestrator to parse:
 
 ```sh
-just signal <type> <ticket-id> "<summary>" ["<details>"]
+just signal <type> <ticket-id> "<summary>" ["<details>"] ["<role>"]
 ```
 
-| Signal              | Agent              | Meaning                                       |
-| ------------------- | ------------------ | --------------------------------------------- |
-| `requesting-review` | coder              | Implementation done, tests pass, ready for CR |
-| `approved`          | code-reviewer      | Code and tests look good, task can be closed  |
-| `changes-requested` | code-reviewer      | Issues found, coder should address feedback   |
-| `feature-approved`  | architect-reviewer | Feature is coherent, PRs ready                |
-| `task-rework`       | architect-reviewer | Specific task(s) need changes (in details)    |
-| `escalate`          | any                | Blocker that needs human attention            |
+| Signal              | Agent                             | Meaning                                       |
+| ------------------- | --------------------------------- | --------------------------------------------- |
+| `requesting-review` | coder                             | Implementation done, tests pass, ready for CR |
+| `approved`          | code-reviewer, architect-reviewer | Code/feature looks good                       |
+| `changes-requested` | code-reviewer, architect-reviewer | Issues found, coder should address feedback   |
+| `escalate`          | any                               | Blocker that needs human attention            |
+
+The optional `role` parameter overrides the default note prefix. The architect-reviewer passes `"architect"` to get
+`[architect]` notes.
 
 ### Note conventions
 
-Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`, `[architect]`. Task notes are for the
-next agent on the same task. Feature notes are for sibling tasks and the architect.
+Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`, `[architect]`, `[orchestrator]`,
+`[human]`. Task notes are for the next agent on the same task. Feature notes are for sibling tasks and the architect.
 
 ### Concurrency
 
@@ -242,15 +266,18 @@ package.json                          # prettier + lint-staged dev deps
 1. `just init ../<project>` — deploys agent configs and ticket infrastructure
 2. User clones repos as named subdirectories (e.g. `repo-a/`, `repo-b/`), each with `default/` as the main checkout
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
-4. User runs `/tk:create-features` to break work into tk tickets (features → tasks with dependencies)
+4. User runs `/tk:create-features` to break work into tk tickets (features → linear task chains with architect review)
 5. User runs `just start-work` to start the orchestration loop
-6. Orchestrator: `tk ready` → create/reuse worktrees → start subagents → react to signals → close tickets → exit
+6. Orchestrator: `tk ready` → create/reuse feature worktrees → start subagents → react to signals → close tasks
+7. All automated work done → orchestrator exits 3 → human reviews feature branches
+8. Human closes features (`tk close`) or requests changes (`just request-changes`)
 
 ## Work Breakdown Model
 
 - **Plan** → optional starting point (markdown, GitHub issue, Jira, etc.)
-- **Feature** (`type: feature`) — logical grouping of related work, one or more tasks, reviewed by architect
-- **Task** (`type: task`, `parent: feature`) — unit of work, one worktree/branch/PR, parallelizable via tk dependencies
+- **Feature** (`type: feature`) — one worktree, one branch, one PR. Human review gate.
+- **Task** (`type: task`, `parent: feature`) — sequential commit(s) within the feature's worktree. Linear chain, last
+  task is always architect review.
 
 ## Testing Strategy
 
@@ -266,9 +293,9 @@ requirements are the basis for test coverage throughout the pipeline.
   happy-path-only or meaningless assertions. Feedback on missing tests must be specific (what scenarios, what code
   paths).
 - **Architect-reviewer** reviews integration test coverage at the feature level. Checks that cross-task interactions are
-  tested, API boundaries are verified on both sides, and components from different tasks work together. Requests rework
-  on specific tasks via `task-rework` when integration coverage is insufficient — does not write tests directly
-  (read-only). May also flag unit test gaps at API boundaries.
+  tested, API boundaries are verified on both sides, and components from different tasks work together. Requests changes
+  when integration coverage is insufficient — does not write tests directly (read-only). May also flag unit test gaps at
+  API boundaries.
 
 ## Open Design Questions
 

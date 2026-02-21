@@ -15,6 +15,76 @@ Given("a project with tk initialized", async function () {
   // Just verify tk works (may exit 2 for empty list, that's fine)
 });
 
+// --- Feature with linear task chain ---
+
+Given("a feature {string} with a linear task chain: {string}", async function (featureName, taskNamesCsv) {
+  // Create the feature (no assignee — human review gate)
+  const featureId = await this.createTicket(featureName, { type: "feature" });
+  this.ticketIds[featureName] = featureId;
+
+  // Parse task names
+  const taskNames = taskNamesCsv.split(",").map((s) => s.trim());
+
+  // Create implementation tasks
+  let prevTaskId = null;
+  for (const taskName of taskNames) {
+    const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+    this.ticketIds[taskName] = taskId;
+    await this.addDep(featureId, taskId);
+    if (prevTaskId) {
+      await this.addDep(taskId, prevTaskId);
+    }
+    prevTaskId = taskId;
+  }
+
+  // Always create architect-review task as last in chain
+  const archTaskId = await this.createTicket("Architect review", {
+    type: "task",
+    assignee: "tk:architect-reviewer",
+    parent: featureId,
+    tags: "architect-review",
+  });
+  this.ticketIds["arch-review"] = archTaskId;
+  await this.addDep(featureId, archTaskId);
+  if (prevTaskId) {
+    await this.addDep(archTaskId, prevTaskId);
+  }
+});
+
+Given("a feature {string} with all tasks closed", async function (featureName) {
+  // Create feature with a single task + arch review, all closed
+  const featureId = await this.createTicket(featureName, { type: "feature" });
+  this.ticketIds[featureName] = featureId;
+
+  const taskId = await this.createTicket("impl-task", { type: "task", assignee: "tk:coder", parent: featureId });
+  this.ticketIds["impl-task"] = taskId;
+  await this.addDep(featureId, taskId);
+
+  const archTaskId = await this.createTicket("Architect review", {
+    type: "task",
+    assignee: "tk:architect-reviewer",
+    parent: featureId,
+    tags: "architect-review",
+  });
+  this.ticketIds["arch-review"] = archTaskId;
+  await this.addDep(featureId, archTaskId);
+  await this.addDep(archTaskId, taskId);
+
+  // Close both tasks
+  await this.closeTicket(taskId);
+  await this.closeTicket(archTaskId);
+});
+
+Given("all tasks except arch-review in {string} are closed", async function (featureName) {
+  // Close all impl tasks, leave arch-review open and assign to architect
+  for (const [name, id] of Object.entries(this.ticketIds)) {
+    if (name !== featureName && name !== "arch-review") {
+      await this.closeTicket(id);
+    }
+  }
+  // Arch-review task should now be ready (its deps are closed)
+});
+
 // --- Ticket setup ---
 
 Given("a task {string} assigned to {string}", async function (name, assignee) {
@@ -22,18 +92,9 @@ Given("a task {string} assigned to {string}", async function (name, assignee) {
   this.ticketIds[name] = id;
 });
 
-Given("a feature {string} with closed child task {string}", async function (featureName, taskName) {
-  const featureId = await this.createTicket(featureName, { type: "feature", assignee: "tk:architect-reviewer" });
-  this.ticketIds[featureName] = featureId;
-
-  const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
-  this.ticketIds[taskName] = taskId;
-
-  // Feature depends on its child task
-  await this.addDep(featureId, taskId);
-
-  // Close the child task so the feature becomes ready
-  await this.closeTicket(taskId);
+Given("ticket {string} is assigned to {string}", async function (name, assignee) {
+  const id = this.ticketIds[name];
+  await this.assignTicket(id, assignee);
 });
 
 Given("ticket {string} has {int} code-reviewer notes", async function (name, count) {
@@ -43,14 +104,20 @@ Given("ticket {string} has {int} code-reviewer notes", async function (name, cou
   }
 });
 
+Given("ticket {string} has {int} architect notes", async function (name, count) {
+  const id = this.ticketIds[name];
+  for (let i = 0; i < count; i++) {
+    await this.addNote(id, `[architect] Review round ${i + 1}: changes requested`);
+  }
+});
+
 Given("ticket {string} depends on nonexistent {string}", async function (name, depName) {
   // Create the dependency ticket but make it depend on something that blocks it
   const depId = await this.createTicket(depName, { type: "task", assignee: "tk:coder" });
   this.ticketIds[depName] = depId;
   const id = this.ticketIds[name];
   await this.addDep(id, depId);
-  // Make depName also blocked — create a circular or unresolvable dep
-  // Actually, just make both depend on each other for a true deadlock
+  // Make depName also blocked — create a circular dep for a true deadlock
   await this.addDep(depId, id);
 });
 
@@ -88,7 +155,7 @@ Given(
 Given("the mock subagent returns {string} for {string} as {string} after rework", async function (signal, name, agent) {
   const id = this.ticketIds[name];
   const content = signalBlock(signal, id, `${signal} for ${name}`);
-  // This is the second response (after the first task-rework response)
+  // This is the second response (after the first response)
   await this.setMockResponse(id, agent, content, 2);
 });
 
@@ -120,4 +187,13 @@ Then("the orchestrator should exit with code {int}", async function (code) {
 
 Then("the output should contain {string}", async function (text) {
   assert.ok(this.lastOutput.includes(text), `Expected output to contain "${text}".\nOutput:\n${this.lastOutput}`);
+});
+
+Then("ticket {string} should have a note containing {string}", async function (name, text) {
+  const id = this.ticketIds[name];
+  const result = await this.exec("tk", ["show", id]);
+  assert.ok(
+    result.stdout.includes(text),
+    `Expected ticket ${name} (${id}) to have a note containing "${text}".\nTicket:\n${result.stdout}`,
+  );
 });

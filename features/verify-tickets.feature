@@ -3,10 +3,8 @@ Feature: Verify tickets structure
   Background:
     Given a project with tk initialized
 
-  Scenario: Valid tickets pass verification
-    Given a feature "feat-1" with task "task-a"
-    And a feature "feat-1" with task "task-b"
-    And task "task-b" depends on sibling task "task-a"
+  Scenario: Valid linear chain passes verification
+    Given a feature "feat-1" with linear chain tasks "task-a, task-b" and architect-review
     When I run verify-tickets
     Then the verification should pass
     And the output should contain "All tickets valid"
@@ -36,3 +34,15 @@ Feature: Verify tickets structure
     Given a standalone task "orphan-task"
     When I run verify-tickets
     Then the verification should pass
+
+  Scenario: Parallel tasks within feature detected as error
+    Given a feature "feat-1" with parallel tasks "task-a, task-b"
+    When I run verify-tickets
+    Then the verification should fail
+    And the output should contain "Non-linear task chain"
+
+  Scenario: Missing architect-review tag on last task
+    Given a feature "feat-1" with linear chain tasks "task-a, task-b" without architect-review tag
+    When I run verify-tickets
+    Then the verification should fail
+    And the output should contain "missing architect-review tag"

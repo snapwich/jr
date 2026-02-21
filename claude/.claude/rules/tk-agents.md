@@ -7,7 +7,7 @@ Every subagent MUST end by running `just signal` and **outputting its result ver
 summarize, add commentary, or output anything after the signal block.
 
 ```sh
-just signal <type> <ticket-id> "<summary>" ["<details>"]
+just signal <type> <ticket-id> "<summary>" ["<details>"] ["<role>"]
 ```
 
 The command outputs a signal block — copy it exactly as your final output:
@@ -19,16 +19,17 @@ ticket: abc-1234
 summary: Implemented feature X with tests
 ```
 
+The optional `role` parameter overrides the default note prefix. The architect-reviewer passes `"architect"` to get
+`[architect]` notes. Default behavior is unchanged for other agents.
+
 Valid signals:
 
-| Signal              | Agent              | Meaning                                       |
-| ------------------- | ------------------ | --------------------------------------------- |
-| `requesting-review` | coder              | Implementation done, tests pass, ready for CR |
-| `approved`          | code-reviewer      | Code and tests look good, task can be closed  |
-| `changes-requested` | code-reviewer      | Issues found, coder should address feedback   |
-| `feature-approved`  | architect-reviewer | Feature is coherent, PRs ready                |
-| `task-rework`       | architect-reviewer | Specific task(s) need changes (in details)    |
-| `escalate`          | any                | Blocker that needs human attention            |
+| Signal              | Agent                             | Meaning                                       |
+| ------------------- | --------------------------------- | --------------------------------------------- |
+| `requesting-review` | coder                             | Implementation done, tests pass, ready for CR |
+| `approved`          | code-reviewer, architect-reviewer | Code/feature looks good                       |
+| `changes-requested` | code-reviewer, architect-reviewer | Issues found, coder should address feedback   |
+| `escalate`          | any                               | Blocker that needs human attention            |
 
 ## Note Conventions
 
@@ -38,7 +39,8 @@ Prefix every note with your agent role in brackets:
 [coder] Implemented auth endpoint using JWT. Added 12 unit tests.
 [code-reviewer] APPROVED. Code quality good. Tests are meaningful.
 [code-reviewer] CHANGES REQUESTED. 1. auth.test.ts: need error cases. 2. middleware/auth.ts:15: race condition.
-[architect] Feature coherent. Backend API matches frontend expectations. PRs opened.
+[architect] APPROVED. Feature coherent. Backend API matches frontend expectations.
+[architect] CHANGES REQUESTED. 1. API contract mismatch between task A and task B.
 ```
 
 ### Task Notes vs Feature Notes
@@ -63,6 +65,8 @@ it, note on the feature.
 
 ## Git Workflow
 
+- You are working in a **feature worktree** shared with other tasks in the same feature
+- Prior commits (before the HEAD SHA in the `[orchestrator]` note) are from earlier tasks — do not modify or rebase them
 - Make logical commits — meaningful units of change, not one giant commit
 - Write clear commit messages explaining the "why"
 - Do NOT push — human reviews locally first, then pushes manually

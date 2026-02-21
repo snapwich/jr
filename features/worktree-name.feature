@@ -1,8 +1,9 @@
 Feature: Worktree name slugification
 
-  The `worktree-name` recipe derives a worktree/branch name from a ticket:
-  `<id>-<slugified-title>`. Lowercased, non-alphanumeric chars become hyphens,
-  consecutive hyphens collapsed, trailing hyphens stripped.
+  The `worktree-name` recipe derives a worktree/branch name from a ticket.
+  For tasks, it resolves to the parent feature first.
+  Uses `prefix:<value>` tag on the feature if present (preserving original case),
+  otherwise falls back to the tk feature ID: `<feature-id>-<slugified-title>`.
 
   Background:
     Given a project with tk initialized
@@ -37,14 +38,22 @@ Feature: Worktree name slugification
     When I run worktree-name for that ticket
     Then the worktree name should end with "add-oauth2-support"
 
-  Scenario: Prefix tag ignored in worktree name
-    # Prefix tags are for PR creation, not worktree naming. Worktree always uses ticket ID.
+  Scenario: Task resolves to parent feature for worktree name
+    Given a feature "My Feature" with child task "My Task"
+    When I run worktree-name for task "My Task"
+    Then the worktree name should end with "my-feature"
+
+  Scenario: Prefix tag on feature overrides ticket ID
     Given a ticket titled "Add login page" with tags "prefix:PEX-1234"
     When I run worktree-name for that ticket
-    Then the worktree name should end with "add-login-page"
+    Then the worktree name should be "PEX-1234-add-login-page"
 
-  Scenario: Prefix tag with mixed case title still uses ticket ID
-    # Worktree uses ticket ID even when prefix tag is present
+  Scenario: Prefix tag preserves original case
     Given a ticket titled "Fix Auth Bug" with tags "prefix:JIRA-567"
     When I run worktree-name for that ticket
-    Then the worktree name should end with "fix-auth-bug"
+    Then the worktree name should be "JIRA-567-fix-auth-bug"
+
+  Scenario: Task inherits prefix from parent feature
+    Given a feature "My Feature" with tags "prefix:PEX-999" and child task "Backend work"
+    When I run worktree-name for task "Backend work"
+    Then the worktree name should be "PEX-999-my-feature"

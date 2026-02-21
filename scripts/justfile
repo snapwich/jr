@@ -8,21 +8,41 @@ _default:
 detect-mode:
   @test -d default && echo "single-repo" || echo "multi-repo"
 
-# Derive worktree/branch name from a ticket: <id>-<slugified-title>
-# Always uses tk ticket ID as prefix for easy mapping back to tickets.
-# External tracking IDs (e.g., Jira) are kept in prefix:<value> tag for PR creation.
+# Derive worktree/branch name from a ticket (resolves tasks to parent feature).
+# Uses prefix:<value> tag on the feature if present (preserving original case),
+# otherwise falls back to the tk feature ID.
 worktree-name ticket-id:
   #!/usr/bin/env bash
   ticket_json=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
-  id=$(echo "$ticket_json" | jq -r '.id')
-  title=$(tk show "{{ ticket-id }}" | grep '^# ' | head -1 | sed 's/^# //')
-  echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+  ticket_type=$(echo "$ticket_json" | jq -r '.type')
+  ticket_id=$(echo "$ticket_json" | jq -r '.id')
 
-create-worktree name repo=".":
+  # Resolve to feature: if this is a task, use its parent
+  if [[ "$ticket_type" == "task" ]]; then
+    parent=$(echo "$ticket_json" | jq -r '.parent // empty')
+    if [[ -n "$parent" ]]; then
+      ticket_json=$(tk query "select(.id == \"$parent\")")
+      ticket_id=$(echo "$ticket_json" | jq -r '.id')
+    fi
+  fi
+
+  # Check for prefix:<value> tag — use as name prefix instead of tk ID
+  prefix=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
+
+  title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
+  slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
+
+  if [[ -n "$prefix" ]]; then
+    echo "$prefix-$slug"
+  else
+    echo "$ticket_id-$slug"
+  fi
+
+create-worktree name repo="." base="origin/HEAD":
   #!/usr/bin/env bash
-  # Fetch latest and create worktree from origin's default branch
+  # Fetch latest and create worktree from the specified base
   git -C "{{ repo }}/default" fetch origin 2>/dev/null || true
-  git -C "{{ repo }}/default" worktree add -b "{{ name }}" "../{{ name }}" origin/HEAD 2>/dev/null || true
+  git -C "{{ repo }}/default" worktree add -b "{{ name }}" "../{{ name }}" "{{ base }}" 2>/dev/null || true
   if [[ -d ".claude" && -d "{{ repo }}/{{ name }}" ]]; then
     # Use rsync to merge without overwriting — copies missing files/dirs only
     rsync -a --ignore-existing --exclude='settings.local.json' .claude/ "{{ repo }}/{{ name }}/.claude/"
@@ -52,7 +72,7 @@ start-work:
   # --- State ---
   declare -A PID_TO_TICKET     # pid → ticket-id
   declare -A PID_TO_AGENT      # pid → agent name
-  declare -A PID_TO_WORKTREE   # pid → worktree-name (or __feature-<id>)
+  declare -A PID_TO_WORKTREE   # pid → worktree-name (lock name)
   declare -A BUSY_WORKTREES    # worktree-name → pid
   ESCALATION=""                # non-empty = stop launching, drain, exit
 
@@ -108,31 +128,84 @@ start-work:
       return
     fi
     while IFS= read -r id; do
-      tk query "select(.id == \"$id\")" | jq -c '{id: .id, type: .type, assignee: .assignee, tags: .tags}'
+      tk query "select(.id == \"$id\")" | jq -c '{id: .id, type: .type, assignee: .assignee, tags: .tags, parent: .parent}'
     done <<< "$ready_ids"
   }
 
   worktree_name() {
     local ticket_id="$1"
-    local ticket_json id title
-    ticket_json=$(tk query "select(.id | contains(\"$ticket_id\"))")
-    id=$(echo "$ticket_json" | jq -r '.id')
-    title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
-    echo "$id-$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//'
+    local ticket_json ticket_type
+    ticket_json=$(tk query "select(.id == \"$ticket_id\")")
+    ticket_type=$(echo "$ticket_json" | jq -r '.type')
+
+    # Resolve to feature: if this is a task, use its parent
+    local feature_json feature_id
+    if [[ "$ticket_type" == "task" ]]; then
+      local parent
+      parent=$(echo "$ticket_json" | jq -r '.parent // empty')
+      if [[ -n "$parent" ]]; then
+        feature_json=$(tk query "select(.id == \"$parent\")")
+        feature_id=$(echo "$feature_json" | jq -r '.id')
+      else
+        feature_json="$ticket_json"
+        feature_id=$(echo "$ticket_json" | jq -r '.id')
+      fi
+    else
+      feature_json="$ticket_json"
+      feature_id=$(echo "$ticket_json" | jq -r '.id')
+    fi
+
+    # Check for prefix:<value> tag — use as name prefix instead of tk ID
+    local prefix
+    prefix=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
+
+    local title slug
+    title=$(tk show "$feature_id" | grep '^# ' | head -1 | sed 's/^# //')
+    slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
+
+    if [[ -n "$prefix" ]]; then
+      echo "$prefix-$slug"
+    else
+      echo "$feature_id-$slug"
+    fi
+  }
+
+  resolve_base_branch() {
+    local feature_id="$1"
+    local feature_json
+    feature_json=$(tk query "select(.id == \"$feature_id\")")
+    # Check if feature depends on another feature — use that feature's branch as base
+    local dep_id dep_json dep_type
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+      [[ -z "$dep_json" ]] && continue
+      dep_type=$(echo "$dep_json" | jq -r '.type')
+      if [[ "$dep_type" == "feature" ]]; then
+        # Use the upstream feature's branch as base
+        local upstream_wt
+        upstream_wt=$(worktree_name "$dep_id")
+        if [[ -n "$upstream_wt" ]]; then
+          echo "$upstream_wt"
+          return
+        fi
+      fi
+    done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
+    echo "origin/HEAD"
   }
 
   create_worktree() {
-    local name="$1" repo="${2:-.}"
+    local name="$1" repo="${2:-.}" base="${3:-origin/HEAD}"
     git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
-    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" origin/HEAD >/dev/null 2>&1 || true
+    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" "$base" >/dev/null 2>&1 || true
     if [[ -d "$PROJECT_DIR/.claude" && -d "$PROJECT_DIR/$repo/$name" ]]; then
       rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
     fi
   }
 
-  count_reviewer_notes() {
-    local ticket_id="$1"
-    tk show "$ticket_id" | grep -c '\[code-reviewer\]' || true
+  count_notes_by_prefix() {
+    local ticket_id="$1" prefix="$2"
+    tk show "$ticket_id" | grep -c "\\[$prefix\\]" || true
   }
 
   make_prompt() {
@@ -153,34 +226,54 @@ start-work:
       return 1
     fi
 
+    # Features are human review gates — skip them
+    if [[ "$ticket_type" == "feature" ]]; then
+      log "Feature $ticket_id ready for human review"
+      return 1
+    fi
+
     # Get ticket metadata
     local ticket_json
     ticket_json=$(tk query "select(.id == \"$ticket_id\")")
-    local agent
+    local agent parent
     agent=$(echo "$ticket_json" | jq -r '.assignee')
+    parent=$(echo "$ticket_json" | jq -r '.parent // empty')
 
-    local lock_name launch_dir
-    if [[ "$ticket_type" == "feature" ]]; then
-      # Features run from project root (architect reviews across worktrees)
-      lock_name="__feature-$ticket_id"
-      launch_dir="$PROJECT_DIR"
+    # Derive worktree from parent feature (not task)
+    local repo wt feature_id base_branch
+    repo=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+
+    if [[ -n "$parent" ]]; then
+      feature_id="$parent"
     else
-      local repo wt
-      repo=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
-      wt=$(worktree_name "$ticket_id")
-      if [[ -z "$wt" ]]; then
-        log "ERROR: Could not derive worktree name for $ticket_id"
-        return 1
-      fi
-      lock_name="$wt"
-      create_worktree "$wt" "$repo" 2>/dev/null || true
-      launch_dir="$PROJECT_DIR/$repo/$wt"
-      [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
+      feature_id="$ticket_id"
     fi
+
+    wt=$(worktree_name "$ticket_id")
+    if [[ -z "$wt" ]]; then
+      log "ERROR: Could not derive worktree name for $ticket_id"
+      return 1
+    fi
+
+    # Lock name = feature worktree name (all tasks in a feature share the lock)
+    local lock_name="$wt"
 
     # Check lock not busy
     if [[ -n "${BUSY_WORKTREES[$lock_name]:-}" ]]; then
       return 1
+    fi
+
+    # Create worktree if needed, resolving base branch for stacked features
+    base_branch=$(resolve_base_branch "$feature_id")
+    create_worktree "$wt" "$repo" "$base_branch" 2>/dev/null || true
+    local launch_dir="$PROJECT_DIR/$repo/$wt"
+    [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
+
+    # Add HEAD SHA note before launching coder
+    if [[ "$agent" == "tk:coder" ]]; then
+      local head_sha
+      head_sha=$(git -C "$launch_dir" rev-parse HEAD 2>/dev/null || echo "unknown")
+      tk add-note "$ticket_id" "[orchestrator] Assigned to coder. HEAD: $head_sha"
     fi
 
     local prompt outfile session_uuid
@@ -209,11 +302,7 @@ start-work:
     PID_TO_WORKTREE[$pid]="$lock_name"
     BUSY_WORKTREES[$lock_name]="$pid"
 
-    if [[ -n "${wt:-}" ]]; then
-      log "Launched $agent on $ticket_id in $repo/$wt (pid: $pid)"
-    else
-      log "Launched $agent on $ticket_id (pid: $pid)"
-    fi
+    log "Launched $agent on $ticket_id in $repo/$wt (pid: $pid)"
     return 0
   }
 
@@ -230,6 +319,7 @@ start-work:
   react() {
     local finished_pid="$1"
     local ticket_id="${PID_TO_TICKET[$finished_pid]:-}"
+    local finished_agent="${PID_TO_AGENT[$finished_pid]:-}"
     local wt="${PID_TO_WORKTREE[$finished_pid]:-}"
 
     if [[ -z "$ticket_id" ]]; then
@@ -250,6 +340,14 @@ start-work:
 
     log "Finished $ticket_id — signal: ${SIGNAL:-NONE}"
 
+    # Check if task has architect-review tag
+    local has_architect_tag=false
+    local ticket_tags
+    ticket_tags=$(tk query "select(.id == \"$ticket_id\")" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
+    if echo "$ticket_tags" | grep -qx "architect-review"; then
+      has_architect_tag=true
+    fi
+
     case "${SIGNAL:-}" in
       requesting-review)
         log "Assigning $ticket_id to tk:code-reviewer"
@@ -257,32 +355,46 @@ start-work:
         launch "$ticket_id" "task" || log "Could not immediately launch reviewer for $ticket_id"
         ;;
       approved)
-        log "Closing $ticket_id (approved)"
-        tk close "$ticket_id"
-        ;;
-      changes-requested)
-        local review_count
-        review_count=$(count_reviewer_notes "$ticket_id")
-        if (( review_count >= 3 )); then
-          log "ESCALATE: $ticket_id has $review_count review rounds — max exceeded"
-          ESCALATION="Max review iterations exceeded for $ticket_id"
+        if [[ "$has_architect_tag" == "true" && "$finished_agent" == "tk:code-reviewer" ]]; then
+          # Code-reviewer approved an architect-review task — re-launch architect
+          log "Assigning $ticket_id to tk:architect-reviewer (architect-review task)"
+          tk assign "$ticket_id" "tk:architect-reviewer"
+          launch "$ticket_id" "task" || log "Could not immediately launch architect for $ticket_id"
         else
-          log "Assigning $ticket_id back to tk:coder (review round $((review_count + 1)))"
-          tk assign "$ticket_id" "tk:coder"
-          launch "$ticket_id" "task" || log "Could not immediately relaunch coder for $ticket_id"
+          log "Closing $ticket_id (approved)"
+          tk close "$ticket_id"
         fi
         ;;
-      feature-approved)
-        log "Closing feature $ticket_id (approved)"
-        tk close "$ticket_id"
-        ;;
-      task-rework)
-        log "Task rework requested for: ${SIGNAL_DETAILS:-}"
-        for task_id in ${SIGNAL_DETAILS:-}; do
-          log "Reopening $task_id for rework"
-          tk reopen "$task_id"
-          tk assign "$task_id" "tk:coder"
-        done
+      changes-requested)
+        # Check iteration cap based on who sent the signal
+        if [[ "$finished_agent" == "tk:architect-reviewer" ]]; then
+          local arch_count
+          arch_count=$(count_notes_by_prefix "$ticket_id" "architect")
+          if (( arch_count >= 3 )); then
+            log "ESCALATE: $ticket_id has $arch_count architect review rounds — max exceeded"
+            ESCALATION="Max architect review iterations exceeded for $ticket_id"
+            return
+          fi
+        else
+          local cr_count
+          cr_count=$(count_notes_by_prefix "$ticket_id" "code-reviewer")
+          if (( cr_count >= 3 )); then
+            log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
+            ESCALATION="Max review iterations exceeded for $ticket_id"
+            return
+          fi
+        fi
+        log "Assigning $ticket_id back to tk:coder"
+        tk assign "$ticket_id" "tk:coder"
+        # Add HEAD SHA note before relaunching coder
+        local launch_dir wt_name repo_tag
+        wt_name=$(worktree_name "$ticket_id")
+        repo_tag=$(tk query "select(.id == \"$ticket_id\")" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+        launch_dir="$PROJECT_DIR/$repo_tag/$wt_name"
+        local head_sha
+        head_sha=$(git -C "$launch_dir" rev-parse HEAD 2>/dev/null || echo "unknown")
+        tk add-note "$ticket_id" "[orchestrator] Assigned to coder. HEAD: $head_sha"
+        launch "$ticket_id" "task" || log "Could not immediately relaunch coder for $ticket_id"
         ;;
       escalate)
         log "ESCALATE: $ticket_id — ${SIGNAL_SUMMARY:-no summary}"
@@ -359,11 +471,33 @@ start-work:
     discover
 
     if (( ${#PID_TO_TICKET[@]} == 0 )); then
+      # Check if there are ready tickets that are all features (human review gate)
+      local ready_features_only=false
       ready_count=0
       ready_count=$(tk ready 2>/dev/null | grep -c '^[a-z]') || true
       if (( ready_count > 0 )); then
-        sleep 1
-        continue
+        # Check if ALL ready tickets are features
+        local ready_task_count=0
+        while IFS= read -r line; do
+          [[ -z "$line" ]] && continue
+          local rid
+          rid=$(echo "$line" | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
+          [[ -z "$rid" ]] && continue
+          local rtype
+          rtype=$(tk query "select(.id == \"$rid\")" | jq -r '.type' 2>/dev/null || true)
+          if [[ "$rtype" != "feature" ]]; then
+            ready_task_count=$((ready_task_count + 1))
+          fi
+        done < <(tk ready 2>/dev/null || true)
+
+        if (( ready_task_count > 0 )); then
+          sleep 1
+          continue
+        else
+          # All ready tickets are features — human review gate
+          log "All automated work complete — features awaiting human review"
+          exit 3
+        fi
       fi
       open_count=0
       open_count=$(tk query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
@@ -399,9 +533,27 @@ start-subagent ticket-id:
   cd "{{ justfile_directory() }}"
   ticket=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
   agent=$(echo "$ticket" | jq -r '.assignee')
+  ticket_type=$(echo "$ticket" | jq -r '.type')
   repo=$(echo "$ticket" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+
+  # Derive worktree from parent feature
   wt=$(just worktree-name "{{ ticket-id }}")
-  just create-worktree "$wt" "$repo" 2>/dev/null || true
+
+  # Resolve base branch for stacked features
+  parent=$(echo "$ticket" | jq -r '.parent // empty')
+  feature_id="${parent:-{{ ticket-id }}}"
+  # Simple base resolution — check feature deps for upstream features
+  base="origin/HEAD"
+  feature_json=$(tk query "select(.id == \"$feature_id\")")
+  for dep_id in $(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null); do
+    dep_type=$(tk query "select(.id == \"$dep_id\")" | jq -r '.type' 2>/dev/null || true)
+    if [[ "$dep_type" == "feature" ]]; then
+      base=$(just worktree-name "$dep_id")
+      break
+    fi
+  done
+
+  just create-worktree "$wt" "$repo" "$base" 2>/dev/null || true
   prompt=$(sed 's/\$ARGUMENTS\[0\]/{{ ticket-id }}/' .claude/commands/tk/subagent-task.md)
   launch_dir="{{ justfile_directory() }}/$repo/$wt"
   cd "$launch_dir"
@@ -448,23 +600,26 @@ watch ticket-id:
   ' 2>/dev/null
 
 # Output signal block and add completion note — use this instead of manual signal output
-signal type ticket-id summary details="":
+signal type ticket-id summary details="" role="":
   #!/usr/bin/env bash
   set -e
   type="{{ type }}"
   ticket="{{ ticket-id }}"
   summary="{{ summary }}"
   details="{{ details }}"
+  role="{{ role }}"
 
   case "$type" in
-    requesting-review) agent="coder"; prefix="Requesting review" ;;
-    approved) agent="code-reviewer"; prefix="APPROVED" ;;
-    changes-requested) agent="code-reviewer"; prefix="CHANGES REQUESTED" ;;
-    feature-approved) agent="architect"; prefix="APPROVED" ;;
-    task-rework) agent="architect"; prefix="REWORK NEEDED" ;;
+    requesting-review) agent="${role:-coder}"; prefix="Requesting review" ;;
+    approved) agent="${role:-code-reviewer}"; prefix="APPROVED" ;;
+    changes-requested) agent="${role:-code-reviewer}"; prefix="CHANGES REQUESTED" ;;
     escalate)
-      assignee=$(tk query "select(.id == \"$ticket\")" | jq -r '.assignee // "tk:coder"')
-      agent="${assignee#tk:}"
+      if [[ -n "$role" ]]; then
+        agent="$role"
+      else
+        assignee=$(tk query "select(.id == \"$ticket\")" | jq -r '.assignee // "tk:coder"')
+        agent="${assignee#tk:}"
+      fi
       prefix="Escalating"
       ;;
     *) echo "Unknown signal type: $type" >&2; exit 1 ;;
@@ -478,7 +633,7 @@ signal type ticket-id summary details="":
   [[ -n "$details" ]] && echo "details: $details"
   exit 0
 
-# Verify ticket structure — checks for cross-feature task dependencies and other invariants
+# Verify ticket structure — checks for linear chains, architect-review tags, and cross-feature deps
 verify-tickets:
   #!/usr/bin/env bash
   set -e
@@ -487,10 +642,18 @@ verify-tickets:
 
   errors=0
 
+  # Collect all features with their children
+  declare -A FEATURE_CHILDREN  # feature-id → space-separated list of child task IDs
+
+  while IFS= read -r task_json; do
+    [[ -z "$task_json" ]] && continue
+    task_id=$(echo "$task_json" | jq -r '.id')
+    task_parent=$(echo "$task_json" | jq -r '.parent // empty')
+    [[ -z "$task_parent" ]] && continue
+    FEATURE_CHILDREN[$task_parent]="${FEATURE_CHILDREN[$task_parent]:-} $task_id"
+  done < <(tk query 'select(.type == "task")' 2>/dev/null)
+
   # Check 1: No cross-feature task dependencies
-  # For each task, verify its dependencies are either:
-  #   - Features (any feature is OK)
-  #   - Tasks with the same parent (sibling tasks)
   while IFS= read -r task_json; do
     [[ -z "$task_json" ]] && continue
 
@@ -525,9 +688,117 @@ verify-tickets:
     done < <(echo "$task_json" | jq -r '.deps[]?' 2>/dev/null)
   done < <(tk query 'select(.type == "task")' 2>/dev/null)
 
+  # Check 2: Tasks within a feature form a linear chain
+  for feature_id in "${!FEATURE_CHILDREN[@]}"; do
+    children=(${FEATURE_CHILDREN[$feature_id]})
+    child_count=${#children[@]}
+
+    # Skip features with 0 or 1 children — trivially linear
+    if (( child_count <= 1 )); then
+      continue
+    fi
+
+    # Build a map of sibling deps: task → list of sibling tasks it depends on
+    declare -A SIBLING_DEP_COUNT  # task-id → count of sibling deps
+    declare -A HAS_SIBLING_DEPENDENT  # task-id → true if some sibling depends on it
+
+    for child_id in "${children[@]}"; do
+      SIBLING_DEP_COUNT[$child_id]=0
+      HAS_SIBLING_DEPENDENT[$child_id]=false
+    done
+
+    for child_id in "${children[@]}"; do
+      child_json=$(tk query "select(.id == \"$child_id\")" 2>/dev/null)
+      while IFS= read -r dep_id; do
+        [[ -z "$dep_id" ]] && continue
+        # Check if dep is a sibling
+        for sib in "${children[@]}"; do
+          if [[ "$dep_id" == "$sib" ]]; then
+            SIBLING_DEP_COUNT[$child_id]=$(( ${SIBLING_DEP_COUNT[$child_id]} + 1 ))
+            HAS_SIBLING_DEPENDENT[$sib]=true
+          fi
+        done
+      done < <(echo "$child_json" | jq -r '.deps[]?' 2>/dev/null)
+    done
+
+    # Linear chain validation:
+    # - Exactly one task has 0 sibling deps (first in chain)
+    # - Each other task has exactly 1 sibling dep
+    first_count=0
+    for child_id in "${children[@]}"; do
+      dep_count=${SIBLING_DEP_COUNT[$child_id]}
+      if (( dep_count == 0 )); then
+        ((first_count++)) || true
+      elif (( dep_count > 1 )); then
+        echo "ERROR: Non-linear task chain in feature $feature_id"
+        echo "  Task $child_id has $dep_count sibling dependencies (expected 0 or 1)"
+        echo
+        ((errors++)) || true
+      fi
+    done
+    if (( first_count != 1 )); then
+      echo "ERROR: Non-linear task chain in feature $feature_id"
+      echo "  Found $first_count tasks with no sibling deps (expected exactly 1)"
+      echo
+      ((errors++)) || true
+    fi
+
+    # Check 3: Last task (no sibling depends on it) must have architect-review tag
+    for child_id in "${children[@]}"; do
+      if [[ "${HAS_SIBLING_DEPENDENT[$child_id]}" == "false" ]]; then
+        # This is the last task in the chain — check for architect-review tag
+        child_tags=$(tk query "select(.id == \"$child_id\")" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
+        if ! echo "$child_tags" | grep -qx "architect-review"; then
+          echo "ERROR: Last task in chain missing architect-review tag"
+          echo "  Feature: $feature_id"
+          echo "  Last task: $child_id"
+          echo
+          ((errors++)) || true
+        fi
+      fi
+    done
+
+    unset SIBLING_DEP_COUNT
+    unset HAS_SIBLING_DEPENDENT
+  done
+
   if ((errors > 0)); then
     echo "Found $errors ticket verification error(s)"
     exit 1
   fi
 
   echo "All tickets valid"
+
+# Reopen an architect-review task for rework after human review feedback
+request-changes feature-id feedback:
+  #!/usr/bin/env bash
+  set -e
+  feature_id="{{ feature-id }}"
+  feedback="{{ feedback }}"
+
+  # Find the architect-review task among feature's children
+  arch_task=""
+  while IFS= read -r task_json; do
+    [[ -z "$task_json" ]] && continue
+    task_id=$(echo "$task_json" | jq -r '.id')
+    task_parent=$(echo "$task_json" | jq -r '.parent // empty')
+    [[ "$task_parent" != "$feature_id" ]] && continue
+    task_tags=$(echo "$task_json" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
+    if echo "$task_tags" | grep -qx "architect-review"; then
+      arch_task="$task_id"
+      break
+    fi
+  done < <(tk query 'select(.type == "task")' 2>/dev/null)
+
+  if [[ -z "$arch_task" ]]; then
+    echo "ERROR: No architect-review task found for feature $feature_id" >&2
+    exit 1
+  fi
+
+  # Add human feedback note, reassign to coder, and reopen
+  tk add-note "$arch_task" "[human] $feedback"
+  tk assign "$arch_task" "tk:coder"
+  tk reopen "$arch_task"
+
+  echo "Reopened $arch_task for rework (assigned to tk:coder)"
+  echo "Run 'just start-work' to begin the rework cycle"

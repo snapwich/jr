@@ -31,9 +31,14 @@ For each feature identified in the plan:
 ```sh
 tk create "<feature title>" \
   -t feature \
-  -a tk:architect-reviewer \
   -d "<plan context embedded in the description>"
 ```
+
+Features have **NO assignee** — they are human review gates that appear in `tk ready` when all child tasks close.
+
+If the user specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to the
+**feature** ticket. This overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of
+the value. Example: `--tags "prefix:PEX-1234"`.
 
 The description MUST include all relevant plan context for this feature. The plan is consumed — the original document is
 not referenced again. Include:
@@ -45,6 +50,9 @@ not referenced again. Include:
 
 ### 4. Create Task Tickets
 
+Tasks within a feature form a **linear chain** — no parallel tasks within a feature. Order them logically (e.g., backend
+before frontend, data model before API, etc.).
+
 For each task within a feature:
 
 ```sh
@@ -52,16 +60,22 @@ tk create "<task title>" \
   -t task \
   -a tk:coder \
   --parent <feature-id> \
-  --tags "repo:<repo-name>" \
   -d "<task description with implementation guidance>"
 ```
 
 In multi-repo mode, every task MUST have a `repo:<name>` tag matching the target repo directory name. In single-repo
 mode, omit the tag (the orchestrator defaults to `.`).
 
-If the user specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to all created
-tickets. This overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value.
-Example: `--tags "repo:backend,prefix:PEX-1234"`.
+**Always create an architect-review task** as the **last task** in each feature's chain:
+
+```sh
+tk create "Architect review" \
+  -t task \
+  -a tk:architect-reviewer \
+  --parent <feature-id> \
+  --tags "architect-review" \
+  -d "Review the full feature branch for cross-task coherence, integration quality, and architectural soundness."
+```
 
 The task description should include:
 
@@ -82,29 +96,33 @@ Every feature must depend on all its child tasks so it only appears in `tk ready
 ```sh
 tk dep <feature-id> <task-id-1>
 tk dep <feature-id> <task-id-2>
-# ... for each child task
+# ... for each child task (including the architect-review task)
 ```
 
-#### Inter-task dependencies (within the same feature only)
+#### Linear task chain within each feature
 
-Set up ordering between tasks **within the same feature** (e.g., frontend depends on backend):
+Tasks within a feature form a linear chain — each task depends on the previous one:
 
 ```sh
-tk dep <task-id-dependent> <task-id-dependency>
+tk dep <task-2> <task-1>
+tk dep <task-3> <task-2>
+# ... and so on
 ```
 
-**IMPORTANT**: Tasks must ONLY depend on other tasks within the same feature. If a task needs something from another
-feature, it should depend on the entire feature, not on a specific task within it.
+The architect-review task is always last in the chain.
 
 #### Cross-feature dependencies
 
 If one feature depends on another completing first:
 
 ```sh
-tk dep <feature-id-dependent> <feature-id-dependency>
+# Feature B depends on Feature A
+tk dep <feature-B-id> <feature-A-id>
+# First task of Feature B also depends on Feature A (blocks until A is human-reviewed and closed)
+tk dep <first-task-B-id> <feature-A-id>
 ```
 
-This blocks all tasks in the dependent feature until the dependency feature is architect-reviewed and closed.
+This blocks all tasks in the dependent feature until the dependency feature is closed by a human.
 
 ### 6. Verify
 
@@ -113,7 +131,7 @@ After creating all tickets:
 1. Show the full hierarchy: `tk tree`
 2. Check for dependency cycles: `tk dep cycle`
 3. Show what's immediately ready to work on: `tk ready`
-4. Run `just verify-tickets` to check for cross-feature task dependencies
+4. Run `just verify-tickets` to check for linear chains, architect-review tags, and cross-feature task dependencies
 5. Report a summary to the user
 
 ## Output
@@ -129,11 +147,15 @@ Present the user with:
 ## Rules
 
 - Embed plan context in feature descriptions — do not reference external plan files
-- Every feature gets assignee `tk:architect-reviewer`
-- Every task gets initial assignee `tk:coder`
+- Features have **NO assignee** — they are human review gates
+- Every implementation task gets initial assignee `tk:coder`
+- Every feature must have an architect-review task as the last task in its chain
 - Every feature must depend on all its child tasks
-- Keep task scope focused — one task = one worktree = one branch = one PR
+- Tasks within a feature form a **linear chain** — no parallel tasks
+- One feature = one worktree = one branch = one PR
 - Tasks must only depend on other tasks within the same feature — use feature-level dependencies for cross-feature
   ordering
+- Cross-feature deps: feature B depends on feature A, AND first task of feature B depends on feature A
 - In multi-repo mode, every task must have a `repo:<name>` tag
+- `prefix:<value>` tags go on **features** (not tasks) for worktree/branch naming
 - If the plan is ambiguous about task breakdown, propose your interpretation and ask the user before creating tickets

@@ -18,8 +18,9 @@ process, only the results. This is intentional: you evaluate the code on its own
 
 1. Read your task: `tk show <ticket-id>`
 2. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
-3. Read the parent feature for broader context: `tk show <parent-id>`
-4. Add the **after setup** checkpoint note (see Notes section)
+3. Find the `[orchestrator]` note with the HEAD SHA — this tells you where the current task's changes start
+4. Read the parent feature for broader context: `tk show <parent-id>`
+5. Add the **after setup** checkpoint note (see Notes section)
 
 ## Notes
 
@@ -51,12 +52,18 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 
 ### Code Review
 
-- Review the branch diff against the base branch to see all changes:
+- Focus your review on changes since the HEAD SHA from the `[orchestrator]` note. Prior commits are from earlier tasks
+  that have already been reviewed.
 
   ```sh
-  git diff $(git merge-base HEAD main)..HEAD
+  # Focused review — current task's changes only
+  git diff <HEAD-SHA>..HEAD
+
+  # Full branch context — for understanding integration
+  git diff $(git merge-base HEAD origin/HEAD)..HEAD
   ```
 
+- However, consider the full branch diff for integration issues between this task and earlier tasks.
 - Evaluate code quality: correctness, clarity, maintainability, style consistency with the existing codebase
 - Check for security issues, edge cases, error handling
 - Verify the implementation matches the task description and acceptance criteria
