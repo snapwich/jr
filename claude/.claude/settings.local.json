@@ -8,7 +8,8 @@
       "Bash(tk dep tree:*)",
       "Bash(tk list:*)",
       "Bash(tk undep:*)",
-      "Bash(tk dep:*)"
+      "Bash(tk dep:*)",
+      "mcp__atlassian__getJiraIssue"
     ]
   }
 }
