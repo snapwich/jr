@@ -593,10 +593,8 @@ watch:
 
   project_dir="{{ justfile_directory() }}"
 
-  # Build fzf entries from sessions log
+  # Build fzf entries with hidden tab-delimited fields: display\tsession_id\tworktree
   entries=()
-  session_ids=()
-  worktree_paths=()
 
   while IFS= read -r line; do
     s_ticket=$(echo "$line" | jq -r .ticket)
@@ -614,9 +612,7 @@ watch:
       status="done"
     fi
 
-    entries+=("$(printf '%-9s %-12s %-18s %s' "[$status]" "$s_ticket" "$s_agent" "$ts_short")")
-    session_ids+=("$s_session")
-    worktree_paths+=("$s_worktree")
+    entries+=("$(printf '%-9s %-12s %-18s %s' "[$status]" "$s_ticket" "$s_agent" "$ts_short")"$'\t'"${s_session}"$'\t'"${s_worktree}")
   done < "$sessions_file"
 
   if [[ ${#entries[@]} -eq 0 ]]; then
@@ -624,35 +620,8 @@ watch:
     exit 1
   fi
 
-  # Single session — skip fzf
-  if [[ ${#entries[@]} -eq 1 ]]; then
-    idx=0
-  else
-    selected=$(printf '%s\n' "${entries[@]}" | fzf --no-sort --prompt="Select session: " \
-      --header="STATUS    TICKET       AGENT              TIME") || exit 0
-    for i in "${!entries[@]}"; do
-      [[ "${entries[$i]}" == "$selected" ]] && idx=$i && break
-    done
-  fi
-
-  session="${session_ids[$idx]}"
-  wt="${worktree_paths[$idx]}"
-
-  # Resolve session JSONL path
-  worktree_path="$project_dir/$wt"
-  escaped_path=$(echo "$worktree_path" | sed 's|/|-|g')
-  session_dir="$HOME/.claude/projects/$escaped_path"
-  session_file="$session_dir/$session.jsonl"
-
-  if [[ ! -f "$session_file" ]]; then
-    echo "Session file not found: $session_file" >&2
-    exit 1
-  fi
-
-  echo "Watching: ${entries[$idx]}"
-  echo "File: $session_file"
-  echo "---"
-  tail -n +1 -f "$session_file" | stdbuf -oL jq -r --unbuffered '
+  export WATCH_PROJECT_DIR="$project_dir"
+  export WATCH_JQ_FILTER='
     select(.type == "assistant" and .message.content) |
     .message.content[] |
     if .type == "text" then .text
@@ -664,7 +633,39 @@ watch:
       else "[" + .name + "] " + (.input | tostring | .[0:150])
       end
     else empty end
-  ' 2>/dev/null
+  '
+
+  selected=$(printf '%s\n' "${entries[@]}" | fzf --no-sort \
+    --delimiter=$'\t' --with-nth=1 \
+    --prompt="Select session: " \
+    --header="STATUS    TICKET       AGENT              TIME" \
+    --preview='
+      session={2}; wt={3}
+      worktree_path="$WATCH_PROJECT_DIR/$wt"
+      escaped_path=$(echo "$worktree_path" | sed "s|/|-|g")
+      session_file="$HOME/.claude/projects/$escaped_path/$session.jsonl"
+      [[ -f "$session_file" ]] || { echo "Session file not found"; exit 0; }
+      tail -n +1 -f "$session_file" | stdbuf -oL jq -r --unbuffered "$WATCH_JQ_FILTER" 2>/dev/null
+    ' \
+    --preview-window='down:80%:follow:wrap') || exit 0
+
+  # Enter pressed — fullscreen tail of selected session
+  session=$(echo "$selected" | cut -d$'\t' -f2)
+  wt=$(echo "$selected" | cut -d$'\t' -f3)
+  worktree_path="$WATCH_PROJECT_DIR/$wt"
+  escaped_path=$(echo "$worktree_path" | sed 's|/|-|g')
+  session_file="$HOME/.claude/projects/$escaped_path/$session.jsonl"
+
+  if [[ ! -f "$session_file" ]]; then
+    echo "Session file not found: $session_file" >&2
+    exit 1
+  fi
+
+  display=$(echo "$selected" | cut -d$'\t' -f1)
+  echo "Watching: $display"
+  echo "File: $session_file"
+  echo "---"
+  tail -n +1 -f "$session_file" | stdbuf -oL jq -r --unbuffered "$WATCH_JQ_FILTER" 2>/dev/null
 
 # Output signal block and add completion note — use this instead of manual signal output
 [group('subagent')]
