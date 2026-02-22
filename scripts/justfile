@@ -246,7 +246,14 @@ start-work:
   create_worktree() {
     local name="$1" repo="${2:-.}" base="${3:-origin/HEAD}"
     git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
-    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" "$base" >/dev/null 2>&1 || true
+    if [[ -d "$PROJECT_DIR/$repo/$name" ]]; then
+      # Worktree already exists — still sync .claude/ but return 1
+      if [[ -d "$PROJECT_DIR/.claude" ]]; then
+        rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
+      fi
+      return 1
+    fi
+    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" "$base" >/dev/null 2>&1 || return 1
     if [[ -d "$PROJECT_DIR/.claude" && -d "$PROJECT_DIR/$repo/$name" ]]; then
       rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
     fi
@@ -314,15 +321,22 @@ start-work:
 
     # Create worktree if needed, resolving base branch for stacked features
     base_branch=$(resolve_base_branch "$feature_id")
-    create_worktree "$wt" "$repo" "$base_branch" 2>/dev/null || true
+    local wt_created=false
+    if create_worktree "$wt" "$repo" "$base_branch" 2>/dev/null; then
+      wt_created=true
+    fi
     local launch_dir="$PROJECT_DIR/$repo/$wt"
     [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
 
     # Record base SHA on feature (once per feature, for rebase-feature)
-    if ! tk show "$feature_id" 2>/dev/null | grep -q '\[orchestrator\] Worktree created\. Base:'; then
+    if ! tk show "$feature_id" 2>/dev/null | grep -q '\[orchestrator\].*Worktree:.*Base:'; then
       local base_sha
       base_sha=$(git -C "$PROJECT_DIR/$repo/default" rev-parse "$base_branch" 2>/dev/null || echo "unknown")
-      tk add-note "$feature_id" "[orchestrator] Worktree created. Worktree: $repo/$wt Base: $base_sha"
+      if [[ "$wt_created" == true ]]; then
+        tk add-note "$feature_id" "[orchestrator] Worktree created. Worktree: $repo/$wt Base: $base_sha"
+      else
+        tk add-note "$feature_id" "[orchestrator] Using existing worktree. Worktree: $repo/$wt Base: $base_sha"
+      fi
     fi
 
     # Add HEAD SHA note before launching coder
@@ -972,7 +986,7 @@ rebase-feature feature-id:
   fi
 
   # Read recorded base SHA from feature notes (last "Base:" value)
-  recorded_base=$(tk show "$feature_id" | grep -oP 'Worktree created\..*Base: \K\S+' | tail -1)
+  recorded_base=$(tk show "$feature_id" | grep -oP '\[orchestrator\].*Worktree:.*Base: \K\S+' | tail -1)
   if [[ -z "$recorded_base" ]]; then
     echo "ERROR: No recorded base SHA found in feature notes" >&2
     echo "Was this feature's worktree created by the orchestrator?" >&2
@@ -1003,5 +1017,5 @@ rebase-feature feature-id:
   fi
 
   # Record updated base SHA
-  tk add-note "$feature_id" "[orchestrator] Worktree created. Worktree: $repo/$wt Base: $correct_base_sha"
+  tk add-note "$feature_id" "[orchestrator] Worktree rebased. Worktree: $repo/$wt Base: $correct_base_sha"
   echo "Rebase complete — updated base to $correct_base_sha"

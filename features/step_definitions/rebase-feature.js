@@ -185,8 +185,8 @@ Then("the worktree for {string} should not have commit {string}", async function
 Then("feature {string} should have an updated base note", async function (featureName) {
   const featureId = this.ticketIds[featureName];
   const result = await this.exec("tk", ["show", featureId]);
-  // Should have at least 2 "Worktree created. Base:" notes (original + updated)
-  const baseNotes = result.stdout.match(/Worktree created\..*Base: \S+/g) || [];
+  // Should have at least 2 "Worktree:.*Base:" notes (original + rebased)
+  const baseNotes = result.stdout.match(/\[orchestrator\].*Worktree:.*Base: \S+/g) || [];
   assert.ok(
     baseNotes.length >= 2,
     `Expected at least 2 base notes on ${featureName}, found ${baseNotes.length}.\nTicket:\n${result.stdout}`,
