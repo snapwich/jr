@@ -2,6 +2,8 @@
 _default:
   just --list
 
+alias ls := worktree-list
+
 # Show project layout — repos and their worktrees (mirrors `git worktree list`)
 worktree-list:
   #!/usr/bin/env bash
