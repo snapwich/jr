@@ -1,5 +1,6 @@
 MD013: false # line-length (disabled because this is enforced by Prettier)
 MD022: false # blanks-around-headings
+MD024: false # no-duplicate-heading
 MD029: false # ol-prefix ordered (breaks with code blocks in lists)
 MD032: false # blanks-around-lists
 MD033: false # no-inline-html
