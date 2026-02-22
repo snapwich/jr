@@ -522,18 +522,16 @@ start-work:
 
     if (( ${#PID_TO_TICKET[@]} == 0 )); then
       # Check if there are ready tickets that are all features (human review gate)
-      local ready_features_only=false
+      ready_features_only=false
       ready_count=0
       ready_count=$(tk ready 2>/dev/null | grep -c '^[a-z]') || true
       if (( ready_count > 0 )); then
         # Check if ALL ready tickets are features
-        local ready_task_count=0
+        ready_task_count=0
         while IFS= read -r line; do
           [[ -z "$line" ]] && continue
-          local rid
           rid=$(echo "$line" | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
           [[ -z "$rid" ]] && continue
-          local rtype
           rtype=$(tk query "select(.id == \"$rid\")" | jq -r '.type' 2>/dev/null || true)
           if [[ "$rtype" != "feature" ]]; then
             ready_task_count=$((ready_task_count + 1))
