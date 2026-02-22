@@ -259,9 +259,9 @@ start-work:
     fi
   }
 
-  count_notes_by_prefix() {
+  count_review_rounds() {
     local ticket_id="$1" prefix="$2"
-    tk show "$ticket_id" | grep -cF "[$prefix] " || true
+    tk show "$ticket_id" | grep -cF "[signal:$prefix] CHANGES REQUESTED." || true
   }
 
   make_prompt() {
@@ -447,7 +447,7 @@ start-work:
         # Check iteration cap based on who sent the signal
         if [[ "$finished_agent" == "tk:architect-reviewer" ]]; then
           local arch_count
-          arch_count=$(count_notes_by_prefix "$ticket_id" "architect")
+          arch_count=$(count_review_rounds "$ticket_id" "architect")
           if (( arch_count >= 3 )); then
             log "ESCALATE: $ticket_id has $arch_count architect review rounds — max exceeded"
             ESCALATION="Max architect review iterations exceeded for $ticket_id"
@@ -455,7 +455,7 @@ start-work:
           fi
         else
           local cr_count
-          cr_count=$(count_notes_by_prefix "$ticket_id" "code-reviewer")
+          cr_count=$(count_review_rounds "$ticket_id" "code-reviewer")
           if (( cr_count >= 3 )); then
             log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
             ESCALATION="Max review iterations exceeded for $ticket_id"
@@ -604,8 +604,9 @@ start-work:
     fi
   done
 
-# Watch a running or completed subagent session
-watch:
+# Print tab-delimited session entries to stdout (used by watch + fzf reload)
+[group('watch')]
+_watch-list:
   #!/usr/bin/env bash
   set -euo pipefail
 
@@ -613,14 +614,8 @@ watch:
   sessions_file="$output_dir/sessions.jsonl"
 
   if [[ ! -f "$sessions_file" ]] || [[ ! -s "$sessions_file" ]]; then
-    echo "No sessions found. Is the orchestrator running?" >&2
-    exit 1
+    exit 0
   fi
-
-  project_dir="{{ justfile_directory() }}"
-
-  # Build fzf entries with hidden tab-delimited fields: display\tsession_id\tworktree
-  entries=()
 
   while IFS= read -r line; do
     s_ticket=$(echo "$line" | jq -r .ticket)
@@ -638,11 +633,22 @@ watch:
       status="done"
     fi
 
-    entries+=("$(printf '%-9s %-12s %-18s %s' "[$status]" "$s_ticket" "$s_agent" "$ts_short")"$'\t'"${s_session}"$'\t'"${s_worktree}")
+    printf '%-9s %-12s %-18s %s\t%s\t%s\n' "[$status]" "$s_ticket" "$s_agent" "$ts_short" "$s_session" "$s_worktree"
   done < "$sessions_file"
 
-  if [[ ${#entries[@]} -eq 0 ]]; then
-    echo "No sessions found" >&2
+# Watch a running or completed subagent session
+watch:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  project_dir="{{ justfile_directory() }}"
+  export TK_OUTPUT_DIR="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.agents/tmp}"
+
+  reload_cmd="just --justfile {{ justfile() }} --working-directory $project_dir _watch-list"
+
+  initial=$($reload_cmd)
+  if [[ -z "$initial" ]]; then
+    echo "No sessions found. Is the orchestrator running?" >&2
     exit 1
   fi
 
@@ -661,10 +667,11 @@ watch:
     else empty end
   '
 
-  selected=$(printf '%s\n' "${entries[@]}" | fzf --no-sort \
+  selected=$(echo "$initial" | fzf --no-sort \
     --delimiter=$'\t' --with-nth=1 \
     --prompt="Select session: " \
-    --header="STATUS    TICKET       AGENT              TIME" \
+    --header="STATUS    TICKET       AGENT              TIME  (ctrl-r: refresh)" \
+    --bind "ctrl-r:reload:$reload_cmd" \
     --preview='
       session={2}; wt={3}
       worktree_path="$WATCH_PROJECT_DIR/$wt"
@@ -720,7 +727,7 @@ signal type ticket-id summary details="" role="":
     *) echo "Unknown signal type: $type" >&2; exit 1 ;;
   esac
 
-  tk add-note "$ticket" "[$agent] $prefix. $summary"
+  tk add-note "$ticket" "[signal:$agent] $prefix. $summary"
   echo "---"
   echo "signal: $type"
   echo "ticket: $ticket"
