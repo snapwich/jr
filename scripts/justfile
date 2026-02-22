@@ -77,6 +77,7 @@ worktree-list:
 # Derive worktree/branch name from a ticket (resolves tasks to parent feature).
 # Uses prefix:<value> tag on the feature if present (preserving original case),
 # otherwise falls back to the tk feature ID.
+[group('orchestrator')]
 worktree-name ticket-id:
   #!/usr/bin/env bash
   ticket_json=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
@@ -105,6 +106,7 @@ worktree-name ticket-id:
   fi
 
 # Resolve the base branch for a feature — checks deps for upstream features (stacked branches)
+[group('orchestrator')]
 resolve-base-branch feature-id:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
@@ -125,6 +127,7 @@ resolve-base-branch feature-id:
   done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
   echo "origin/HEAD"
 
+[group('orchestrator')]
 create-worktree name repo="." base="origin/HEAD":
   #!/usr/bin/env bash
   # Fetch latest and create worktree from the specified base
@@ -138,6 +141,7 @@ create-worktree name repo="." base="origin/HEAD":
     || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
       >> "{{ repo }}/default/.git/info/exclude"
 
+[group('orchestrator')]
 remove-worktree name repo=".":
   git -C {{ repo }}/default worktree remove ../{{ name }}
   git -C {{ repo }}/default branch -d {{ name }}
@@ -612,6 +616,7 @@ watch ticket-id:
   ' 2>/dev/null
 
 # Output signal block and add completion note — use this instead of manual signal output
+[group('subagent')]
 signal type ticket-id summary details="" role="":
   #!/usr/bin/env bash
   set -e
@@ -646,6 +651,7 @@ signal type ticket-id summary details="" role="":
   exit 0
 
 # Verify ticket structure — checks for linear chains, architect-review tags, and cross-feature deps
+[group('create-features')]
 verify-tickets:
   #!/usr/bin/env bash
   set -e
