@@ -320,7 +320,7 @@ start-work:
     if ! tk show "$feature_id" 2>/dev/null | grep -q '\[orchestrator\] Worktree created\. Base:'; then
       local base_sha
       base_sha=$(git -C "$PROJECT_DIR/$repo/default" rev-parse "$base_branch" 2>/dev/null || echo "unknown")
-      tk add-note "$feature_id" "[orchestrator] Worktree created. Base: $base_sha"
+      tk add-note "$feature_id" "[orchestrator] Worktree created. Worktree: $repo/$wt Base: $base_sha"
     fi
 
     # Add HEAD SHA note before launching coder
@@ -970,7 +970,7 @@ rebase-feature feature-id:
   fi
 
   # Read recorded base SHA from feature notes (last "Base:" value)
-  recorded_base=$(tk show "$feature_id" | grep -oP '\[orchestrator\] Worktree created\. Base: \K\S+' | tail -1)
+  recorded_base=$(tk show "$feature_id" | grep -oP 'Worktree created\..*Base: \K\S+' | tail -1)
   if [[ -z "$recorded_base" ]]; then
     echo "ERROR: No recorded base SHA found in feature notes" >&2
     echo "Was this feature's worktree created by the orchestrator?" >&2
@@ -1001,5 +1001,5 @@ rebase-feature feature-id:
   fi
 
   # Record updated base SHA
-  tk add-note "$feature_id" "[orchestrator] Worktree created. Base: $correct_base_sha"
+  tk add-note "$feature_id" "[orchestrator] Worktree created. Worktree: $repo/$wt Base: $correct_base_sha"
   echo "Rebase complete — updated base to $correct_base_sha"

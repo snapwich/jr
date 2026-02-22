@@ -40,7 +40,11 @@ Given("a worktree for {string} with a commit {string}", async function (featureN
 
   // Record base SHA on feature (mimicking what orchestrator does)
   const baseSha = await execFileAsync("git", ["rev-parse", baseBranch], { cwd: defaultDir });
-  await this.exec("tk", ["add-note", featureId, `[orchestrator] Worktree created. Base: ${baseSha.stdout.trim()}`]);
+  await this.exec("tk", [
+    "add-note",
+    featureId,
+    `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${baseSha.stdout.trim()}`,
+  ]);
 
   // Make a commit in the worktree
   const wtDir = join(this.projectDir, wtName);
@@ -78,7 +82,11 @@ Given(
 
     // Record base SHA on feature
     const baseSha = await execFileAsync("git", ["rev-parse", baseBranch], { cwd: defaultDir });
-    await this.exec("tk", ["add-note", featureId, `[orchestrator] Worktree created. Base: ${baseSha.stdout.trim()}`]);
+    await this.exec("tk", [
+      "add-note",
+      featureId,
+      `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${baseSha.stdout.trim()}`,
+    ]);
 
     // Make a commit in the worktree
     const wtDir = join(this.projectDir, wtName);
@@ -178,7 +186,7 @@ Then("feature {string} should have an updated base note", async function (featur
   const featureId = this.ticketIds[featureName];
   const result = await this.exec("tk", ["show", featureId]);
   // Should have at least 2 "Worktree created. Base:" notes (original + updated)
-  const baseNotes = result.stdout.match(/\[orchestrator\] Worktree created\. Base: \S+/g) || [];
+  const baseNotes = result.stdout.match(/Worktree created\..*Base: \S+/g) || [];
   assert.ok(
     baseNotes.length >= 2,
     `Expected at least 2 base notes on ${featureName}, found ${baseNotes.length}.\nTicket:\n${result.stdout}`,
