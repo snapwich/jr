@@ -330,7 +330,7 @@ start-work:
       cd "$launch_dir"
       export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
       exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" --session-id "$session_uuid" --dangerously-skip-permissions \
-        -p "$prompt" > "$outfile" 2>&1
+        -p "$prompt" < /dev/null > "$outfile" 2>&1
     ) &
     local pid=$!
 
