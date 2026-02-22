@@ -2,11 +2,77 @@
 _default:
   just --list
 
-# Detect single-repo vs multi-repo mode
-# Single-repo: default/ exists at project root, use "." as repo
-# Multi-repo: repos are subdirectories, use repo name as repo
-detect-mode:
-  @test -d default && echo "single-repo" || echo "multi-repo"
+# Show project layout — repos and their worktrees (mirrors `git worktree list`)
+worktree-list:
+  #!/usr/bin/env bash
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  render_worktrees() {
+    local dir="$1" prefix="$2"
+    local entries=()
+
+    # Parse `git worktree list --porcelain` for worktree paths, extract basenames
+    if worktree_output=$(git -C "$dir/default" worktree list --porcelain 2>/dev/null); then
+      while IFS= read -r line; do
+        [[ "$line" == worktree\ * ]] || continue
+        local wt_path="${line#worktree }"
+        local name
+        name=$(basename "$wt_path")
+        entries+=("$name")
+      done <<< "$worktree_output"
+    fi
+
+    # Fallback: if git failed but default/ exists, show at least default
+    if [[ ${#entries[@]} -eq 0 && -d "$dir/default" ]]; then
+      entries=("default")
+    fi
+
+    # Sort: default/ first, then alphabetical
+    local sorted=()
+    for e in "${entries[@]}"; do
+      [[ "$e" == "default" ]] && sorted=("default" "${sorted[@]}") || sorted+=("$e")
+    done
+
+    local count=${#sorted[@]}
+    local i=0
+    for e in "${sorted[@]}"; do
+      ((i++))
+      if (( i == count )); then
+        echo "${prefix}└── ${e}/"
+      else
+        echo "${prefix}├── ${e}/"
+      fi
+    done
+  }
+
+  if [[ -d "default" ]]; then
+    # Single-repo mode
+    echo "."
+    render_worktrees "." ""
+  elif compgen -G "*/default" > /dev/null 2>&1; then
+    # Multi-repo mode
+    echo "."
+    repos=()
+    for d in */default; do
+      repos+=("$(dirname "$d")")
+    done
+    IFS=$'\n' repos=($(sort <<< "${repos[*]}")); unset IFS
+
+    repo_count=${#repos[@]}
+    ri=0
+    for repo in "${repos[@]}"; do
+      ((ri++))
+      if (( ri == repo_count )); then
+        echo "└── ${repo}/"
+        render_worktrees "$repo" "    "
+      else
+        echo "├── ${repo}/"
+        render_worktrees "$repo" "│   "
+      fi
+    done
+  else
+    echo ".  (no repos — run \`git clone\` then \`git worktree add default\`)"
+  fi
 
 # Derive worktree/branch name from a ticket (resolves tasks to parent feature).
 # Uses prefix:<value> tag on the feature if present (preserving original case),

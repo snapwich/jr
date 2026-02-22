@@ -87,8 +87,9 @@ The toolkit supports two modes depending on whether the project works with one r
         └── feat-efgh-frontend-feature/
 ```
 
-**Mode detection:** Run `just detect-mode` — returns `single-repo` if `default/` exists at project root, otherwise
-`multi-repo`. In single-repo mode, pass `.` as the `repo` parameter to justfile recipes.
+**Project layout:** Run `just worktree-list` — displays a tree of repos and their worktrees. A single level of entries
+under `.` means single-repo mode (pass `.` as the `repo` parameter to justfile recipes). Entries grouped under named
+subdirectories means multi-repo mode.
 
 Claude Code doesn't recursively search parent directories for `.claude/`, so each worktree needs its own copy.
 `just create-worktree <name> [repo] [base]` handles this — it copies the project-level `.claude/` into the worktree

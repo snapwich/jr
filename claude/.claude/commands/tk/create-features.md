@@ -46,13 +46,15 @@ Wait for the user to answer all open questions before proceeding. Use the resolv
 descriptions — replace every ambiguity with the concrete decision. **No ticket description should contain unresolved
 language.** If you find yourself writing "TBD" or "or" between alternatives in a ticket, stop and ask the user.
 
-### 3. Detect Project Mode
+### 3. Discover Project Layout
 
 ```sh
-just detect-mode
+just worktree-list
 ```
 
-In multi-repo mode, each task should specify which repo it targets.
+This shows the project structure — repos and their worktrees. A single level of entries under `.` means single-repo
+mode. Entries grouped under named subdirectories means multi-repo mode — use those directory names as `repo:<name>` tag
+values on tasks.
 
 ### 4. Create Feature Tickets
 
