@@ -14,3 +14,11 @@ Feature: Stacked branch resolution
     And feature "feat-downstream" depends on "feat-upstream"
     When I resolve the base branch for "feat-downstream"
     Then the base branch should end with "upstream-work"
+
+  Scenario: Closed upstream feature falls back to origin/HEAD
+    Given a feature "feat-upstream" titled "Upstream Work"
+    And a feature "feat-downstream" titled "Downstream Work"
+    And feature "feat-downstream" depends on "feat-upstream"
+    And feature "feat-upstream" is closed
+    When I resolve the base branch for "feat-downstream"
+    Then the base branch should be "origin/HEAD"

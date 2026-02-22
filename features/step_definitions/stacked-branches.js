@@ -24,6 +24,11 @@ Given("feature {string} depends on {string}", async function (featureName, depNa
   await this.addDep(featureId, depId);
 });
 
+Given("feature {string} is closed", async function (featureName) {
+  const featureId = this.ticketIds[featureName];
+  await this.closeTicket(featureId);
+});
+
 // --- Actions ---
 
 When("I resolve the base branch for {string}", async function (featureName) {

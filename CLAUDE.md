@@ -318,6 +318,9 @@ resort.
 - Markdown linting via markdownlint (MD013 disabled, MD041 disabled)
 - Agent definitions, commands, and rules are the main development surface
 - The `init` recipe should be idempotent: safe to run on a fresh project or to deploy new files added since last init
+- **Justfile group convention**: Recipes in `scripts/justfile` that are internal to a process use `[group('name')]`
+  (e.g. `orchestrator`, `subagent`, `create-features`). Human-facing recipes have **no group** — they appear at the top
+  level of `just --list`
 
 ## Testing
 

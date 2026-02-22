@@ -125,6 +125,25 @@ class OrchestratorWorld extends World {
     });
   }
 
+  async setupSingleRepo() {
+    // Create a bare "remote" repo so origin/HEAD resolves
+    const bareDir = join(this.projectDir, "bare-remote");
+    await mkdir(bareDir, { recursive: true });
+    await execFileAsync("git", ["init", "--bare"], { cwd: bareDir });
+
+    const defaultDir = join(this.projectDir, "default");
+    await mkdir(defaultDir, { recursive: true });
+    await execFileAsync("git", ["init"], { cwd: defaultDir });
+    await execFileAsync("git", ["config", "user.email", "test@test.com"], { cwd: defaultDir });
+    await execFileAsync("git", ["config", "user.name", "Test"], { cwd: defaultDir });
+    await execFileAsync("git", ["remote", "add", "origin", bareDir], { cwd: defaultDir });
+    await writeFile(join(defaultDir, ".gitkeep"), "");
+    await execFileAsync("git", ["add", "."], { cwd: defaultDir });
+    await execFileAsync("git", ["commit", "-m", "init"], { cwd: defaultDir });
+    await execFileAsync("git", ["push", "-u", "origin", "HEAD"], { cwd: defaultDir });
+    await execFileAsync("git", ["remote", "set-head", "origin", "--auto"], { cwd: defaultDir });
+  }
+
   async setupMultiRepo(repoName) {
     // Create a bare "remote" repo so origin/HEAD resolves
     const bareDir = join(this.projectDir, `${repoName}-bare`);

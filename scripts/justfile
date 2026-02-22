@@ -117,6 +117,11 @@ resolve-base-branch feature-id:
     [[ -z "$dep_json" ]] && continue
     dep_type=$(echo "$dep_json" | jq -r '.type')
     if [[ "$dep_type" == "feature" ]]; then
+      dep_status=$(echo "$dep_json" | jq -r '.status')
+      if [[ "$dep_status" == "closed" ]]; then
+        echo "origin/HEAD"
+        exit 0
+      fi
       upstream_wt=$(just --justfile "{{ justfile() }}" \
         --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$dep_id")
       if [[ -n "$upstream_wt" ]]; then
@@ -310,6 +315,13 @@ start-work:
     create_worktree "$wt" "$repo" "$base_branch" 2>/dev/null || true
     local launch_dir="$PROJECT_DIR/$repo/$wt"
     [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
+
+    # Record base SHA on feature (once per feature, for rebase-feature)
+    if ! tk show "$feature_id" 2>/dev/null | grep -q '\[orchestrator\] Worktree created\. Base:'; then
+      local base_sha
+      base_sha=$(git -C "$PROJECT_DIR/$repo/default" rev-parse "$base_branch" 2>/dev/null || echo "unknown")
+      tk add-note "$feature_id" "[orchestrator] Worktree created. Base: $base_sha"
+    fi
 
     # Add HEAD SHA note before launching coder
     if [[ "$agent" == "tk:coder" ]]; then
@@ -871,3 +883,123 @@ request-changes feature-id feedback:
 
   echo "Reopened $arch_task for rework (assigned to tk:coder)"
   echo "Run 'just start-work' to begin the rework cycle"
+
+# Approve a feature — validates, closes, prints next steps
+approve feature-id:
+  #!/usr/bin/env bash
+  set -e
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  feature_id="{{ feature-id }}"
+
+  # Validate ticket exists and is a feature
+  feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
+  if [[ -z "$feature_json" ]]; then
+    echo "ERROR: Ticket $feature_id not found" >&2
+    exit 1
+  fi
+  feature_type=$(echo "$feature_json" | jq -r '.type')
+  if [[ "$feature_type" != "feature" ]]; then
+    echo "ERROR: $feature_id is a $feature_type, not a feature" >&2
+    exit 1
+  fi
+
+  # Verify all child tasks are closed
+  open_children=0
+  while IFS= read -r task_json; do
+    [[ -z "$task_json" ]] && continue
+    task_id=$(echo "$task_json" | jq -r '.id')
+    task_parent=$(echo "$task_json" | jq -r '.parent // empty')
+    [[ "$task_parent" != "$feature_id" ]] && continue
+    task_status=$(echo "$task_json" | jq -r '.status')
+    if [[ "$task_status" != "closed" ]]; then
+      echo "ERROR: Child task $task_id is still $task_status" >&2
+      open_children=$((open_children + 1))
+    fi
+  done < <(tk query 'select(.type == "task")' 2>/dev/null)
+
+  if (( open_children > 0 )); then
+    echo "ERROR: $open_children child task(s) not closed" >&2
+    exit 1
+  fi
+
+  tk close "$feature_id"
+
+  # Derive worktree location for display
+  repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+  wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$feature_id")
+  wt_path="$repo/$wt"
+
+  echo "Feature $feature_id approved and closed"
+  echo "Worktree: $wt_path"
+  echo ""
+  echo "Next steps:"
+  echo "  - Create PR from branch: $wt"
+  echo "  - Or merge locally and run: just rebase-feature <downstream-feature>"
+
+# Rebase a feature's worktree onto its correct base (lazy — run when ready to merge)
+rebase-feature feature-id:
+  #!/usr/bin/env bash
+  set -e
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  feature_id="{{ feature-id }}"
+
+  # Validate feature is closed
+  feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
+  if [[ -z "$feature_json" ]]; then
+    echo "ERROR: Ticket $feature_id not found" >&2
+    exit 1
+  fi
+  feature_type=$(echo "$feature_json" | jq -r '.type')
+  if [[ "$feature_type" != "feature" ]]; then
+    echo "ERROR: $feature_id is a $feature_type, not a feature" >&2
+    exit 1
+  fi
+  feature_status=$(echo "$feature_json" | jq -r '.status')
+  if [[ "$feature_status" != "closed" ]]; then
+    echo "ERROR: Feature $feature_id is not closed (status: $feature_status)" >&2
+    exit 1
+  fi
+
+  # Derive repo and worktree
+  repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+  wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$feature_id")
+
+  if [[ ! -d "$repo/$wt" ]]; then
+    echo "ERROR: Worktree $repo/$wt does not exist" >&2
+    exit 1
+  fi
+
+  # Read recorded base SHA from feature notes (last "Base:" value)
+  recorded_base=$(tk show "$feature_id" | grep -oP '\[orchestrator\] Worktree created\. Base: \K\S+' | tail -1)
+  if [[ -z "$recorded_base" ]]; then
+    echo "ERROR: No recorded base SHA found in feature notes" >&2
+    echo "Was this feature's worktree created by the orchestrator?" >&2
+    exit 1
+  fi
+
+  # Determine correct base via resolve-base-branch
+  correct_base=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-base-branch "$feature_id")
+  git -C "$repo/default" fetch origin >/dev/null 2>&1 || true
+  correct_base_sha=$(git -C "$repo/default" rev-parse "$correct_base" 2>/dev/null)
+
+  # No-op check: is recorded base already an ancestor of the correct base?
+  if git -C "$repo/$wt" merge-base --is-ancestor "$recorded_base" "$correct_base_sha" 2>/dev/null; then
+    echo "Already up to date — base $recorded_base is ancestor of $correct_base"
+    exit 0
+  fi
+
+  # Rebase needed (e.g. squash merge of upstream)
+  echo "Rebasing $wt onto $correct_base (from $recorded_base)..."
+  if ! git -C "$repo/$wt" rebase --onto "$correct_base_sha" "$recorded_base" 2>&1; then
+    git -C "$repo/$wt" rebase --abort 2>/dev/null || true
+    echo "" >&2
+    echo "ERROR: Rebase failed due to conflicts" >&2
+    echo "Resolve manually:" >&2
+    echo "  cd $repo/$wt" >&2
+    echo "  git rebase --onto $correct_base_sha $recorded_base" >&2
+    exit 1
+  fi
+
+  # Record updated base SHA
+  tk add-note "$feature_id" "[orchestrator] Worktree created. Base: $correct_base_sha"
+  echo "Rebase complete — updated base to $correct_base_sha"
