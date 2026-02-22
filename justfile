@@ -48,9 +48,12 @@ init dir:
   PKGJSON
   fi
 
-  # Ensure .gitignore has node_modules/
+  # Ensure .gitignore has node_modules/ and tmp/
   if ! grep -q '^node_modules/$' "$dir/.agents/.gitignore" 2>/dev/null; then
     echo 'node_modules/' >> "$dir/.agents/.gitignore"
+  fi
+  if ! grep -q '^tmp/$' "$dir/.agents/.gitignore" 2>/dev/null; then
+    echo 'tmp/' >> "$dir/.agents/.gitignore"
   fi
 
   # Install pre-commit hook (direct, no husky dependency)

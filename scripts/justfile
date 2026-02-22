@@ -153,10 +153,10 @@ start-work:
 
   # --- Configuration ---
   MAX_CONCURRENT="${TK_MAX_CONCURRENT:-3}"
-  OUTPUT_DIR="${TK_OUTPUT_DIR:-/tmp/tk-orchestrator}"
+  PROJECT_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  OUTPUT_DIR="${TK_OUTPUT_DIR:-$PROJECT_DIR/.agents/tmp}"
   LOCK_DIR="$OUTPUT_DIR/locks"
   CLAUDE="${CLAUDE_CMD:-claude}"
-  PROJECT_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
   JUSTFILE="{{ justfile() }}"
   AGENT_TIMEOUT="${TK_AGENT_TIMEOUT:-1800}"
 
@@ -175,6 +175,7 @@ start-work:
 
   setup() {
     mkdir -p "$OUTPUT_DIR" "$LOCK_DIR"
+    : > "$OUTPUT_DIR/sessions.jsonl"
     # Clean stale lockfiles (symlinks: target is the PID)
     for lockfile in "$LOCK_DIR"/*.lock; do
       [[ -L "$lockfile" ]] || continue
@@ -344,6 +345,8 @@ start-work:
     BUSY_WORKTREES[$lock_name]="$pid"
 
     log "Launched $agent on $ticket_id in $repo/$wt (pid: $pid)"
+    echo "{\"ticket\":\"$ticket_id\",\"agent\":\"$agent\",\"session\":\"$session_uuid\",\"worktree\":\"$repo/$wt\",\"pid\":$pid,\"ts\":\"$(date -Iseconds)\"}" \
+      >> "$OUTPUT_DIR/sessions.jsonl"
     return 0
   }
 
@@ -575,33 +578,81 @@ start-work:
     fi
   done
 
-# Watch a running subagent's output by ticket ID
-watch ticket-id:
+# Watch a running or completed subagent session
+watch:
   #!/usr/bin/env bash
-  ticket="{{ ticket-id }}"
-  wt=$(just worktree-name "$ticket")
+  set -euo pipefail
 
-  # Derive escaped project path (matches claude's path escaping)
+  output_dir="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.agents/tmp}"
+  sessions_file="$output_dir/sessions.jsonl"
+
+  if [[ ! -f "$sessions_file" ]] || [[ ! -s "$sessions_file" ]]; then
+    echo "No sessions found. Is the orchestrator running?" >&2
+    exit 1
+  fi
+
   project_dir="{{ justfile_directory() }}"
-  repo=$(tk query "select(.id == \"$ticket\")" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
-  worktree_path="$project_dir/$repo/$wt"
+
+  # Build fzf entries from sessions log
+  entries=()
+  session_ids=()
+  worktree_paths=()
+
+  while IFS= read -r line; do
+    s_ticket=$(echo "$line" | jq -r .ticket)
+    s_agent=$(echo "$line" | jq -r '.agent | ltrimstr("tk:")')
+    s_pid=$(echo "$line" | jq -r .pid)
+    s_session=$(echo "$line" | jq -r .session)
+    s_worktree=$(echo "$line" | jq -r .worktree)
+    s_ts=$(echo "$line" | jq -r .ts)
+
+    ts_short=$(date -d "$s_ts" +%H:%M 2>/dev/null || echo "$s_ts")
+
+    if kill -0 "$s_pid" 2>/dev/null; then
+      status="running"
+    else
+      status="done"
+    fi
+
+    entries+=("$(printf '%-9s %-12s %-18s %s' "[$status]" "$s_ticket" "$s_agent" "$ts_short")")
+    session_ids+=("$s_session")
+    worktree_paths+=("$s_worktree")
+  done < "$sessions_file"
+
+  if [[ ${#entries[@]} -eq 0 ]]; then
+    echo "No sessions found" >&2
+    exit 1
+  fi
+
+  # Single session — skip fzf
+  if [[ ${#entries[@]} -eq 1 ]]; then
+    idx=0
+  else
+    selected=$(printf '%s\n' "${entries[@]}" | fzf --no-sort --prompt="Select session: " \
+      --header="STATUS    TICKET       AGENT              TIME") || exit 0
+    for i in "${!entries[@]}"; do
+      [[ "${entries[$i]}" == "$selected" ]] && idx=$i && break
+    done
+  fi
+
+  session="${session_ids[$idx]}"
+  wt="${worktree_paths[$idx]}"
+
+  # Resolve session JSONL path
+  worktree_path="$project_dir/$wt"
   escaped_path=$(echo "$worktree_path" | sed 's|/|-|g')
-
   session_dir="$HOME/.claude/projects/$escaped_path"
-  if [[ ! -d "$session_dir" ]]; then
-    echo "No session found for $ticket at $session_dir" >&2
+  session_file="$session_dir/$session.jsonl"
+
+  if [[ ! -f "$session_file" ]]; then
+    echo "Session file not found: $session_file" >&2
     exit 1
   fi
 
-  # Find most recent session jsonl
-  latest=$(ls -t "$session_dir"/*.jsonl 2>/dev/null | head -1)
-  if [[ -z "$latest" ]]; then
-    echo "No session files found" >&2
-    exit 1
-  fi
-
-  echo "Watching: $latest"
-  tail -n +1 -f "$latest" | stdbuf -oL jq -r --unbuffered '
+  echo "Watching: ${entries[$idx]}"
+  echo "File: $session_file"
+  echo "---"
+  tail -n +1 -f "$session_file" | stdbuf -oL jq -r --unbuffered '
     select(.type == "assistant" and .message.content) |
     .message.content[] |
     if .type == "text" then .text
