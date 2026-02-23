@@ -623,9 +623,7 @@ _watch-list:
     s_pid=$(echo "$line" | jq -r .pid)
     s_session=$(echo "$line" | jq -r .session)
     s_worktree=$(echo "$line" | jq -r .worktree)
-    s_ts=$(echo "$line" | jq -r .ts)
-
-    ts_short=$(date -d "$s_ts" +%H:%M 2>/dev/null || echo "$s_ts")
+    s_title=$(tk show "$s_ticket" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //' || true)
 
     if kill -0 "$s_pid" 2>/dev/null; then
       status="running"
@@ -633,8 +631,8 @@ _watch-list:
       status="done"
     fi
 
-    printf '%-9s %-12s %-18s %s\t%s\t%s\n' "[$status]" "$s_ticket" "$s_agent" "$ts_short" "$s_session" "$s_worktree"
-  done < "$sessions_file"
+    printf '%d\t%-9s %-12s %-18s %-30s %s\t%s\t%s\n' "$( [[ "$status" == "running" ]] && echo 0 || echo 1 )" "[$status]" "$s_ticket" "$s_agent" "$s_title" "$s_worktree" "$s_session" "$s_worktree"
+  done < "$sessions_file" | sort -t$'\t' -k1,1n | cut -f2-
 
 # Watch a running or completed subagent session
 watch:
@@ -670,7 +668,7 @@ watch:
   selected=$(echo "$initial" | fzf --no-sort \
     --delimiter=$'\t' --with-nth=1 \
     --prompt="Select session: " \
-    --header="STATUS    TICKET       AGENT              TIME  (ctrl-r: refresh)" \
+    --header="STATUS    TICKET       AGENT              TASK                           WORKTREE  (ctrl-r: refresh)" \
     --bind "ctrl-r:reload:$reload_cmd" \
     --preview='
       session={2}; wt={3}
@@ -678,7 +676,8 @@ watch:
       escaped_path=$(echo "$worktree_path" | sed "s|/|-|g")
       session_file="$HOME/.claude/projects/$escaped_path/$session.jsonl"
       [[ -f "$session_file" ]] || { echo "Session file not found"; exit 0; }
-      tail -n +1 -f "$session_file" | stdbuf -oL jq -r --unbuffered "$WATCH_JQ_FILTER" 2>/dev/null
+      jq -r "$WATCH_JQ_FILTER" "$session_file" 2>/dev/null
+      tail -n 0 -f "$session_file" | stdbuf -oL jq -r --unbuffered "$WATCH_JQ_FILTER" 2>/dev/null
     ' \
     --preview-window='down:80%:follow:wrap') || exit 0
 
