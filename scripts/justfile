@@ -1255,7 +1255,7 @@ rebase-feature feature-id:
   # stale (recorded before the upstream had commits). Detect the actual fork point by finding
   # the commit in the branch whose tree matches the new base's tree — that's where upstream
   # work ends and downstream work begins.
-  recorded_base=$(tk show "$feature_id" | grep -oP '\[orchestrator\].*Worktree:.*Base: \K\S+' | tail -1)
+  recorded_base=$(tk show "$feature_id" | tr '\n' ' ' | grep -oP '\[orchestrator\].*?Worktree:.*?Base:\s*\K[0-9a-f]+' | grep -oP '[0-9a-f]+$')
   if [[ -z "$recorded_base" ]]; then
     echo "ERROR: No recorded base SHA found in feature notes" >&2
     exit 1
