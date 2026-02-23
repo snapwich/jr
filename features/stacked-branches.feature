@@ -15,10 +15,20 @@ Feature: Stacked branch resolution
     When I resolve the base branch for "feat-downstream"
     Then the base branch should end with "upstream-work"
 
-  Scenario: Closed upstream feature falls back to origin/HEAD
+  Scenario: Closed upstream with deleted branch falls back to origin/HEAD
     Given a feature "feat-upstream" titled "Upstream Work"
     And a feature "feat-downstream" titled "Downstream Work"
     And feature "feat-downstream" depends on "feat-upstream"
     And feature "feat-upstream" is closed
     When I resolve the base branch for "feat-downstream"
     Then the base branch should be "origin/HEAD"
+
+  Scenario: Closed upstream with branch still present resolves to upstream branch
+    Given a single-repo project layout
+    And a feature "feat-upstream" titled "Upstream Work"
+    And a feature "feat-downstream" titled "Downstream Work"
+    And feature "feat-downstream" depends on "feat-upstream"
+    And a worktree for "feat-upstream" with a commit "upstream change"
+    And feature "feat-upstream" is closed
+    When I resolve the base branch for "feat-downstream"
+    Then the base branch should end with "upstream-work"

@@ -132,6 +132,56 @@ Given("the branch for {string} is squash-merged into default", async function (f
   await execFileAsync("git", ["push", "origin", "HEAD"], { cwd: defaultDir });
 });
 
+Given("the worktree and branch for {string} is removed", async function (featureName) {
+  const wtName = this.ticketIds[`${featureName}:wt`];
+  const defaultDir = join(this.projectDir, "default");
+  await execFileAsync("git", ["worktree", "remove", `../${wtName}`], { cwd: defaultDir });
+  await execFileAsync("git", ["branch", "-D", wtName], { cwd: defaultDir });
+});
+
+Given(
+  "a worktree for {string} with stale base, rebased onto {string} with a commit {string}",
+  async function (featureName, upstreamName, commitMsg) {
+    const featureId = this.ticketIds[featureName];
+    const upstreamWt = this.ticketIds[`${upstreamName}:wt`];
+    const justfile = join(REPO_ROOT, "scripts", "justfile");
+
+    // Derive worktree name
+    const nameResult = await this.exec(
+      "just",
+      ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
+      { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    );
+    const wtName = nameResult.stdout.trim();
+    this.ticketIds[`${featureName}:wt`] = wtName;
+
+    const defaultDir = join(this.projectDir, "default");
+
+    // Record stale base: origin/HEAD SHA (BEFORE creating from upstream)
+    const staleBase = await execFileAsync("git", ["rev-parse", "origin/HEAD"], { cwd: defaultDir });
+
+    // Create worktree from origin/HEAD (mimics orchestrator when upstream was already closed)
+    await execFileAsync("git", ["worktree", "add", "-b", wtName, `../${wtName}`, "origin/HEAD"], { cwd: defaultDir });
+
+    const wtDir = join(this.projectDir, wtName);
+
+    // Rebase onto upstream branch (mimics coder rebasing to get upstream's code)
+    await execFileAsync("git", ["rebase", upstreamWt], { cwd: wtDir });
+
+    // Record the stale base (origin/HEAD, not the upstream tip) — this is the bug condition
+    await this.exec("tk", [
+      "add-note",
+      featureId,
+      `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${staleBase.stdout.trim()}`,
+    ]);
+
+    // Make a downstream commit
+    await writeFile(join(wtDir, `${wtName}.txt`), commitMsg);
+    await execFileAsync("git", ["add", "."], { cwd: wtDir });
+    await execFileAsync("git", ["commit", "-m", commitMsg], { cwd: wtDir });
+  },
+);
+
 Given("the branch for {string} is merged into default", async function (featureName) {
   const wtName = this.ticketIds[`${featureName}:wt`];
   const defaultDir = join(this.projectDir, "default");

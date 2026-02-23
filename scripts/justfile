@@ -3,6 +3,7 @@ _default:
   just --list
 
 alias ls := worktree-list
+alias deps := worktree-deps
 
 # Show project layout — repos and their worktrees (mirrors `git worktree list`)
 worktree-list:
@@ -76,6 +77,214 @@ worktree-list:
     echo ".  (no repos — run \`git clone\` then \`git worktree add default\`)"
   fi
 
+# Show worktrees in dependency order — merge leaves first, roots last
+worktree-deps:
+  #!/usr/bin/env bash
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  JUSTFILE="{{ justfile() }}"
+  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  # 1. Discover repos and worktrees (same pattern as worktree-list)
+  if [[ -d "default" ]]; then
+    repos=(".")
+  elif compgen -G "*/default" > /dev/null 2>&1; then
+    repos=()
+    for d in */default; do repos+=("$(dirname "$d")"); done
+  else
+    echo "(no repos)"
+    exit 0
+  fi
+
+  single_repo=false
+  [[ ${#repos[@]} -eq 1 && "${repos[0]}" == "." ]] && single_repo=true
+
+  declare -A all_wts  # "repo/wt_name" → 1
+  for repo in "${repos[@]}"; do
+    if wt_output=$(git -C "$repo/default" worktree list --porcelain 2>/dev/null); then
+      while IFS= read -r line; do
+        [[ "$line" == worktree\ * ]] || continue
+        name=$(basename "${line#worktree }")
+        [[ "$name" == "default" ]] && continue
+        all_wts["$repo/$name"]=1
+      done <<< "$wt_output"
+    fi
+  done
+
+  if [[ ${#all_wts[@]} -eq 0 ]]; then
+    echo "(no feature worktrees)"
+    exit 0
+  fi
+
+  # 2. Map features → worktrees, extract upstream feature deps
+  declare -A feat_wt feat_repo feat_exists feat_upstream feat_closed
+  declare -A matched  # "repo/wt_name" → 1
+
+  while IFS= read -r feat_json; do
+    [[ -z "$feat_json" ]] && continue
+    feat_id=$(echo "$feat_json" | jq -r '.id')
+    feat_status=$(echo "$feat_json" | jq -r '.status // "open"')
+    [[ "$feat_status" == "closed" ]] && feat_closed["$feat_id"]=1
+    repo_tag=$(echo "$feat_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+
+    wt_name=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "$feat_id" 2>/dev/null)
+    [[ -z "$wt_name" ]] && continue
+
+    feat_wt["$feat_id"]="$wt_name"
+
+    # Match worktree: try repo tag first, then search all repos as fallback
+    key="$repo_tag/$wt_name"
+    if [[ -v "all_wts[$key]" ]]; then
+      feat_exists["$feat_id"]=1
+      feat_repo["$feat_id"]="$repo_tag"
+      matched["$key"]=1
+    else
+      # Fallback: search all repos for this worktree name (handles missing repo: tags)
+      found=false
+      for candidate in "${!all_wts[@]}"; do
+        if [[ "$candidate" == *"/$wt_name" ]]; then
+          feat_exists["$feat_id"]=1
+          feat_repo["$feat_id"]="${candidate%/$wt_name}"
+          matched["$candidate"]=1
+          found=true
+          break
+        fi
+      done
+      if [[ "$found" != "true" ]]; then
+        feat_exists["$feat_id"]=0
+        feat_repo["$feat_id"]="$repo_tag"
+      fi
+    fi
+
+    # Find upstream feature dep (first feature-type dep)
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+      dep_type=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null | jq -r '.type // empty')
+      if [[ "$dep_type" == "feature" ]]; then
+        feat_upstream["$feat_id"]="$dep_id"
+        break
+      fi
+    done < <(echo "$feat_json" | jq -r '.deps[]?' 2>/dev/null)
+  done < <(tk query 'select(.type == "feature")' 2>/dev/null)
+
+  # 2.5. Prune resolved upstream deps (downstream already rebased onto origin/HEAD)
+  for fid in "${!feat_upstream[@]}"; do
+    up="${feat_upstream[$fid]}"
+    # Only prune when upstream is closed (merged), has no worktree, and downstream has a worktree
+    if [[ "${feat_closed[$up]:-0}" == "1" && "${feat_exists[$up]:-0}" == "0" && "${feat_exists[$fid]:-0}" == "1" ]]; then
+      repo="${feat_repo[$fid]}"
+      wt="${feat_wt[$fid]}"
+      if [[ -d "$repo/$wt" ]] && git -C "$repo/$wt" merge-base --is-ancestor origin/HEAD HEAD 2>/dev/null; then
+        unset "feat_upstream[$fid]"
+      fi
+    fi
+  done
+
+  # 3. Determine visible set + ghost detection
+  declare -A visible ghost
+
+  # Features with existing worktrees are always visible
+  for fid in "${!feat_exists[@]}"; do
+    [[ "${feat_exists[$fid]}" == "1" ]] && visible["$fid"]=1
+  done
+
+  # Walk upstream from each visible feature — missing worktrees become ghosts
+  # Inherit repo from the descendant that triggered the ghost
+  for fid in "${!visible[@]}"; do
+    current="${feat_upstream[$fid]:-}"
+    child="$fid"
+    while [[ -n "$current" && -v "feat_wt[$current]" ]]; do
+      if [[ "${feat_exists[$current]:-0}" == "0" && ! -v "visible[$current]" ]]; then
+        visible["$current"]=1
+        ghost["$current"]=1
+        feat_repo["$current"]="${feat_repo[$child]:-${feat_repo[$current]:-}}"
+      fi
+      child="$current"
+      current="${feat_upstream[$current]:-}"
+    done
+  done
+
+  # 4. Build children map + find roots
+  declare -A children  # feat_id → space-separated child feat_ids
+  roots=()
+
+  for fid in "${!visible[@]}"; do
+    up="${feat_upstream[$fid]:-}"
+    if [[ -n "$up" && -v "visible[$up]" ]]; then
+      children["$up"]="${children[$up]:-} $fid"
+    else
+      roots+=("$fid")
+    fi
+  done
+
+  # Sort roots by worktree name
+  if [[ ${#roots[@]} -gt 0 ]]; then
+    IFS=$'\n' roots=($(for r in "${roots[@]}"; do echo "${feat_wt[$r]} $r"; done | sort | awk '{print $2}')); unset IFS
+  fi
+
+  # 5. Render tree
+  render_node() {
+    local fid="$1" prefix="$2" connector="$3"
+    local wt="${feat_wt[$fid]}"
+    local label="$wt/"
+
+    if [[ "$single_repo" != "true" ]]; then
+      label="${feat_repo[$fid]}/$label"
+    fi
+
+    if [[ -v "ghost[$fid]" ]]; then
+      label="$label  (merged — rebase children with just rebase-feature)"
+    fi
+
+    echo "${prefix}${connector}${label}"
+
+    local child_prefix="$prefix"
+    if [[ "$connector" == "├── " ]]; then
+      child_prefix="${prefix}│   "
+    elif [[ "$connector" == "└── " ]]; then
+      child_prefix="${prefix}    "
+    fi
+
+    local kids=(${children[$fid]:-})
+    if [[ ${#kids[@]} -gt 0 ]]; then
+      IFS=$'\n' kids=($(for k in "${kids[@]}"; do echo "${feat_wt[$k]} $k"; done | sort | awk '{print $2}')); unset IFS
+      local count=${#kids[@]}
+      local i=0
+      for kid in "${kids[@]}"; do
+        ((i++))
+        if (( i == count )); then
+          render_node "$kid" "$child_prefix" "└── "
+        else
+          render_node "$kid" "$child_prefix" "├── "
+        fi
+      done
+    fi
+  }
+
+  for root in "${roots[@]}"; do
+    render_node "$root" "" ""
+  done
+
+  # 6. Unmatched worktrees (no feature ticket)
+  unmatched=()
+  for key in "${!all_wts[@]}"; do
+    if [[ ! -v "matched[$key]" ]]; then
+      if [[ "$single_repo" == "true" ]]; then
+        unmatched+=("${key#./}/")
+      else
+        unmatched+=("$key/")
+      fi
+    fi
+  done
+
+  if [[ ${#unmatched[@]} -gt 0 ]]; then
+    IFS=$'\n' unmatched=($(sort <<< "${unmatched[*]}")); unset IFS
+    echo ""
+    echo "(unmatched — no feature ticket)"
+    for u in "${unmatched[@]}"; do
+      echo "  $u"
+    done
+  fi
+
 # Derive worktree/branch name from a ticket (resolves tasks to parent feature).
 # Uses prefix:<value> tag on the feature if present (preserving original case),
 # otherwise falls back to the tk feature ID.
@@ -107,25 +316,69 @@ worktree-name ticket-id:
     echo "$ticket_id-$slug"
   fi
 
+# Resolve which repo directory a feature's worktree lives in.
+# Checks repo: tag first, then searches the filesystem as fallback.
+[group('orchestrator')]
+resolve-repo feature-id:
+  #!/usr/bin/env bash
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  feature_json=$(tk query "select(.id == \"{{ feature-id }}\")" 2>/dev/null)
+  repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+  wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "{{ feature-id }}")
+
+  # Direct match
+  if [[ -d "$repo/$wt" ]]; then
+    echo "$repo"
+    exit 0
+  fi
+
+  # Fallback: search all repo directories for this worktree
+  if [[ -d "default" ]]; then
+    candidates=(".")
+  elif compgen -G "*/default" > /dev/null 2>&1; then
+    candidates=()
+    for d in */default; do candidates+=("$(dirname "$d")"); done
+  fi
+
+  for candidate in "${candidates[@]:-}"; do
+    if [[ -d "$candidate/$wt" ]]; then
+      echo "$candidate"
+      exit 0
+    fi
+  done
+
+  # Nothing found — return the tag value (caller will get the error on dir check)
+  echo "$repo"
+
 # Resolve the base branch for a feature — checks deps for upstream features (stacked branches)
 [group('orchestrator')]
 resolve-base-branch feature-id:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_json=$(tk query "select(.id == \"{{ feature-id }}\")")
+
+  # Find repo for this feature (needed to check branch existence)
+  repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+
   while IFS= read -r dep_id; do
     [[ -z "$dep_id" ]] && continue
     dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
     [[ -z "$dep_json" ]] && continue
     dep_type=$(echo "$dep_json" | jq -r '.type')
     if [[ "$dep_type" == "feature" ]]; then
-      dep_status=$(echo "$dep_json" | jq -r '.status')
-      if [[ "$dep_status" == "closed" ]]; then
-        echo "origin/HEAD"
-        exit 0
-      fi
       upstream_wt=$(just --justfile "{{ justfile() }}" \
         --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$dep_id")
+      dep_status=$(echo "$dep_json" | jq -r '.status')
+      if [[ "$dep_status" == "closed" ]]; then
+        # Upstream closed — use its branch if it still exists (not yet merged/deleted),
+        # otherwise fall back to origin/HEAD
+        if [[ -n "$upstream_wt" ]] && git -C "$repo/default" rev-parse --verify "$upstream_wt" &>/dev/null; then
+          echo "$upstream_wt"
+        else
+          echo "origin/HEAD"
+        fi
+        exit 0
+      fi
       if [[ -n "$upstream_wt" ]]; then
         echo "$upstream_wt"
         exit 0
@@ -947,7 +1200,7 @@ approve feature-id:
   tk close "$feature_id"
 
   # Derive worktree location for display
-  repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+  repo=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-repo "$feature_id")
   wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$feature_id")
   wt_path="$repo/$wt"
 
@@ -965,7 +1218,7 @@ rebase-feature feature-id:
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
 
-  # Validate feature is closed
+  # Validate feature exists and is a feature
   feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
   if [[ -z "$feature_json" ]]; then
     echo "ERROR: Ticket $feature_id not found" >&2
@@ -976,14 +1229,9 @@ rebase-feature feature-id:
     echo "ERROR: $feature_id is a $feature_type, not a feature" >&2
     exit 1
   fi
-  feature_status=$(echo "$feature_json" | jq -r '.status')
-  if [[ "$feature_status" != "closed" ]]; then
-    echo "ERROR: Feature $feature_id is not closed (status: $feature_status)" >&2
-    exit 1
-  fi
 
   # Derive repo and worktree
-  repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+  repo=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-repo "$feature_id")
   wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$feature_id")
 
   if [[ ! -d "$repo/$wt" ]]; then
@@ -991,34 +1239,49 @@ rebase-feature feature-id:
     exit 1
   fi
 
-  # Read recorded base SHA from feature notes (last "Base:" value)
-  recorded_base=$(tk show "$feature_id" | grep -oP '\[orchestrator\].*Worktree:.*Base: \K\S+' | tail -1)
-  if [[ -z "$recorded_base" ]]; then
-    echo "ERROR: No recorded base SHA found in feature notes" >&2
-    echo "Was this feature's worktree created by the orchestrator?" >&2
-    exit 1
-  fi
-
-  # Determine correct base via resolve-base-branch
+  # Determine correct new base via resolve-base-branch
   correct_base=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-base-branch "$feature_id")
   git -C "$repo/default" fetch origin >/dev/null 2>&1 || true
   correct_base_sha=$(git -C "$repo/default" rev-parse "$correct_base" 2>/dev/null)
 
-  # No-op check: is recorded base already an ancestor of the correct base?
-  if git -C "$repo/$wt" merge-base --is-ancestor "$recorded_base" "$correct_base_sha" 2>/dev/null; then
-    echo "Already up to date — base $recorded_base is ancestor of $correct_base"
+  # No-op check: is the new base already an ancestor of HEAD?
+  # If so, origin/HEAD's changes are already incorporated — nothing to rebase.
+  if git -C "$repo/$wt" merge-base --is-ancestor "$correct_base_sha" HEAD 2>/dev/null; then
+    echo "Already up to date — $correct_base is ancestor of HEAD"
     exit 0
   fi
 
-  # Rebase needed (e.g. squash merge of upstream)
-  echo "Rebasing $wt onto $correct_base (from $recorded_base)..."
-  if ! git -C "$repo/$wt" rebase --onto "$correct_base_sha" "$recorded_base" 2>&1; then
+  # Find the fork point. For stacked branches after a squash merge, the recorded base may be
+  # stale (recorded before the upstream had commits). Detect the actual fork point by finding
+  # the commit in the branch whose tree matches the new base's tree — that's where upstream
+  # work ends and downstream work begins.
+  recorded_base=$(tk show "$feature_id" | grep -oP '\[orchestrator\].*Worktree:.*Base: \K\S+' | tail -1)
+  if [[ -z "$recorded_base" ]]; then
+    echo "ERROR: No recorded base SHA found in feature notes" >&2
+    exit 1
+  fi
+
+  new_tree=$(git -C "$repo/$wt" rev-parse "$correct_base_sha^{tree}")
+  fork_point=""
+  while IFS= read -r commit; do
+    commit_tree=$(git -C "$repo/$wt" rev-parse "$commit^{tree}")
+    if [[ "$commit_tree" == "$new_tree" ]]; then
+      fork_point="$commit"
+      break
+    fi
+  done < <(git -C "$repo/$wt" rev-list --reverse "$recorded_base"..HEAD)
+
+  old_base="${fork_point:-$recorded_base}"
+
+  # Rebase: replay commits after old_base onto the correct base
+  echo "Rebasing $wt onto $correct_base (from $old_base)..."
+  if ! git -C "$repo/$wt" rebase --onto "$correct_base_sha" "$old_base" 2>&1; then
     git -C "$repo/$wt" rebase --abort 2>/dev/null || true
     echo "" >&2
     echo "ERROR: Rebase failed due to conflicts" >&2
     echo "Resolve manually:" >&2
     echo "  cd $repo/$wt" >&2
-    echo "  git rebase --onto $correct_base_sha $recorded_base" >&2
+    echo "  git rebase --onto $correct_base_sha $old_base" >&2
     exit 1
   fi
 

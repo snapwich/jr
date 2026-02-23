@@ -68,9 +68,10 @@ tk create "<feature title>" \
 
 Features have **NO assignee** — they are human review gates that appear in `tk ready` when all child tasks close.
 
-If the user specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to the
-**feature** ticket. This overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of
-the value. Example: `--tags "prefix:PEX-1234"`.
+In multi-repo mode, add a `repo:<name>` tag to each feature matching the target repo directory name. If the user also
+specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to the **feature** ticket.
+This overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value. Example:
+`--tags "prefix:PEX-1234,repo:backend"`.
 
 The description MUST include all relevant plan context for this feature. The plan is consumed — the original document is
 not referenced again. Include:
@@ -98,7 +99,8 @@ tk create "<task title>" \
   -d "<task description with implementation guidance>"
 ```
 
-In multi-repo mode, every task MUST have a `repo:<name>` tag matching the target repo directory name. In single-repo
+In multi-repo mode, every task MUST have a `repo:<name>` tag matching the target repo directory name. Features MUST also
+have a `repo:<name>` tag in multi-repo mode (used by `rebase-feature`, `approve`, and `worktree-deps`). In single-repo
 mode, omit the tag (the orchestrator defaults to `.`).
 
 **Always create an architect-review task** as the **last task** in each feature's chain:
