@@ -57,6 +57,16 @@ Prefix every note with your agent role in brackets:
 Rule of thumb: if only the next agent on this task needs it, note on the task. If sibling tasks or the architect needs
 it, note on the feature.
 
+## Skills
+
+Some projects provide skills — project-specific commands for running tests, linting, formatting, type-checking, and
+other operations. If skills are listed in your system prompt, prefer using them over guessing at shell commands. Skills
+encode the correct commands, flags, and paths for the specific project.
+
+Before running a project operation (tests, lint, format, type-check, etc.), check if a matching skill is available. If
+one exists, invoke it with the Skill tool. If no matching skill exists, fall back to CLAUDE.md, justfile, package.json,
+or other project docs for the correct command.
+
 ## Context Scoping
 
 - **Primary context**: task description + task notes (focused, immediate)

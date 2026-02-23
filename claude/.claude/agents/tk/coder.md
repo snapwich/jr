@@ -67,6 +67,8 @@ touched. You don't need to backfill the entire file, but the code paths you chan
 
 ### Run Tests
 
+- If test runner skills are available (unit, integration, e2e), use them — they encode the correct commands and paths
+  for the project.
 - Run the full relevant test suite before signaling for review
 - Do not request review if tests fail — fix them first
 - If unrelated tests are failing, note this in your task notes but do not ignore your own test failures

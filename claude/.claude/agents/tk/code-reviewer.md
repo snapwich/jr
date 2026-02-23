@@ -82,11 +82,8 @@ defect.
   invalid inputs, and edge cases are covered.
 - **New/changed code coverage**: Code paths introduced or modified by this task should have tests. If the coder touched
   existing untested code, the surrounding coverage gap should be partially filled.
-- **Run the tests** to confirm they pass:
-
-  ```sh
-  # Use whatever test command the project provides (check CLAUDE.md, justfile, package.json, etc.)
-  ```
+- **Run the tests** to confirm they pass. If test runner skills are available, use them; otherwise check CLAUDE.md,
+  justfile, or package.json for the correct command.
 
 When requesting changes for insufficient tests, be specific: name what's missing (e.g., "no test for the error case when
 the API returns 404", "the validation logic in `parser.ts:45` has no coverage") so a fresh coder can act on it without

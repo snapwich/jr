@@ -103,7 +103,8 @@ Review whether tests use the right level of abstraction:
 
 ### Integration and API Boundary Testing
 
-- Run integration tests if available
+- Run integration tests if available. If test runner skills are available, use them; otherwise check CLAUDE.md,
+  justfile, or package.json for the correct command.
 - Review integration test coverage across tasks: do the tests verify that components from different tasks work together
   correctly? Are API contracts tested on both sides?
 - If integration test coverage is insufficient for cross-task interactions that exist in this feature, request changes
