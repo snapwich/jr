@@ -392,7 +392,7 @@ create-worktree name repo="." base="origin/HEAD":
   #!/usr/bin/env bash
   # Fetch latest and create worktree from the specified base
   git -C "{{ repo }}/default" fetch origin 2>/dev/null || true
-  git -C "{{ repo }}/default" worktree add -b "{{ name }}" "../{{ name }}" "{{ base }}" 2>/dev/null || true
+  git -C "{{ repo }}/default" worktree add --no-track -b "{{ name }}" "../{{ name }}" "{{ base }}" 2>/dev/null || true
   if [[ -d ".claude" && -d "{{ repo }}/{{ name }}" ]]; then
     # Use rsync to merge without overwriting — copies missing files/dirs only
     rsync -a --ignore-existing --exclude='settings.local.json' .claude/ "{{ repo }}/{{ name }}/.claude/"
