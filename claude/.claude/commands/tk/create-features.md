@@ -124,6 +124,16 @@ The task description should include:
 - **Acceptance criteria**: observable conditions for the task to be considered complete
 - Any relevant technical context from the plan
 
+Task descriptions should focus on **what** to accomplish, not **how** to run commands:
+
+- "Run the type checker on the components package" — good
+- `pnpm --filter @mc/components type-check` — bad (explicit command becomes stale)
+- "Run unit tests for the auth module" — good
+- `npm test -- --testPathPattern=auth` — bad
+
+The coder discovers correct commands via skills (if available), CLAUDE.md, justfile, or package.json at implementation
+time.
+
 **Last implementation task owns feature-level test verification.** The last implementation task (immediately before the
 architect-review task) has access to all prior tasks' code in the worktree. If the feature's acceptance criteria require
 verification beyond what individual tasks test, add a "Feature verification" section to this task's description listing
@@ -225,3 +235,7 @@ Present the user with:
 - `prefix:<value>` tags go on **features** (not tasks) for worktree/branch naming
 - **No unresolved questions in tickets** — every TBD, open alternative, or ambiguity in the plan must be resolved with
   the user before creating tickets. Coders implement exactly what the ticket says; if it says "TBD", they're stuck.
+- **No explicit shell commands in task descriptions** — describe WHAT to do (run tests, type-check, lint, build), not
+  HOW (specific pnpm/npm/yarn/make commands). Coders discover the correct commands at implementation time via skills,
+  CLAUDE.md, justfile, or project docs. This keeps tickets timeless — project tooling may change between ticket creation
+  and implementation.

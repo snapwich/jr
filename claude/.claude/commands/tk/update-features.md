@@ -199,3 +199,5 @@ All rules from `create-features` apply, plus:
   ordering
 - In multi-repo mode, every task must have a `repo:<name>` tag
 - **No unresolved questions in tickets** — resolve all ambiguities with the user before creating or modifying tickets
+- **No explicit shell commands in task descriptions** — describe WHAT to do, not HOW. Coders discover commands via
+  skills or project docs at implementation time.
