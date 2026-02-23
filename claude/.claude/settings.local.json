@@ -9,7 +9,8 @@
       "Bash(tk list:*)",
       "Bash(tk undep:*)",
       "Bash(tk dep:*)",
-      "mcp__atlassian__getJiraIssue"
+      "mcp__atlassian__getJiraIssue",
+      "Bash(just worktree-list:*)"
     ]
   }
 }

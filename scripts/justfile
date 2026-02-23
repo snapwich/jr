@@ -498,6 +498,7 @@ start-work:
 
   create_worktree() {
     local name="$1" repo="${2:-.}" base="${3:-origin/HEAD}"
+    local git_dir="$PROJECT_DIR/$repo/default/.git"
     git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
     if [[ -d "$PROJECT_DIR/$repo/$name" ]]; then
       # Worktree already exists — still sync .claude/ but return 1
@@ -506,10 +507,14 @@ start-work:
       fi
       return 1
     fi
-    git -C "$PROJECT_DIR/$repo/default" worktree add -b "$name" "../$name" "$base" >/dev/null 2>&1 || return 1
+    git -C "$PROJECT_DIR/$repo/default" worktree add --no-track -b "$name" "../$name" "$base" >/dev/null 2>&1 || return 1
     if [[ -d "$PROJECT_DIR/.claude" && -d "$PROJECT_DIR/$repo/$name" ]]; then
       rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
     fi
+    # Ensure tk-specific paths are excluded from git status
+    grep -qxF '.claude/agents/tk/' "$git_dir/info/exclude" 2>/dev/null \
+      || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
+        >> "$git_dir/info/exclude"
   }
 
   count_review_rounds() {
