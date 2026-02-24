@@ -182,15 +182,25 @@ worktree-deps:
     done < <(echo "$feat_json" | jq -r '.deps[]?' 2>/dev/null)
   done < <(tk query 'select(.type == "feature")' 2>/dev/null)
 
-  # 2.5. Prune resolved upstream deps (downstream already rebased onto origin/HEAD)
+  # 2.5. Prune resolved upstream deps (parent's merge commit is in downstream's history)
   for fid in "${!feat_upstream[@]}"; do
     up="${feat_upstream[$fid]}"
     # Only prune when upstream is closed (merged), has no worktree, and downstream has a worktree
     if [[ "${feat_closed[$up]:-0}" == "1" && "${feat_exists[$up]:-0}" == "0" && "${feat_exists[$fid]:-0}" == "1" ]]; then
       repo="${feat_repo[$fid]}"
       wt="${feat_wt[$fid]}"
-      if [[ -d "$repo/$wt" ]] && git -C "$repo/$wt" merge-base --is-ancestor origin/HEAD HEAD 2>/dev/null; then
-        unset "feat_upstream[$fid]"
+      up_wt="${feat_wt[$up]}"
+      if [[ -d "$repo/$wt" && -n "$up_wt" ]]; then
+        # Extract ticket prefix from parent's worktree name
+        # Handles Jira-style (PEX-13664-...) and tk-style (rep-rhgv-...)
+        up_prefix=$(echo "$up_wt" | sed -n 's/^\([A-Za-z]*-[a-z0-9]*\)-.*/\1/p')
+        if [[ -n "$up_prefix" ]]; then
+          # Find parent's squash merge on origin/HEAD by searching commit messages
+          merge_sha=$(git -C "$repo/$wt" log --oneline --grep="$up_prefix" origin/HEAD 2>/dev/null | head -1 | cut -d' ' -f1)
+          if [[ -n "$merge_sha" ]] && git -C "$repo/$wt" merge-base --is-ancestor "$merge_sha" HEAD 2>/dev/null; then
+            unset "feat_upstream[$fid]"
+          fi
+        fi
       fi
     fi
   done
