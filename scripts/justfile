@@ -590,7 +590,7 @@ start-work:
     local agent parent title
     agent=$(echo "$ticket_json" | jq -r '.assignee')
     parent=$(echo "$ticket_json" | jq -r '.parent // empty')
-    title=$(echo "$ticket_json" | jq -r '.title')
+    title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
 
     # Add run marker if first launch this session (resets review counter)
     if [[ -z "${LAUNCHED_THIS_RUN[$ticket_id]:-}" ]]; then
