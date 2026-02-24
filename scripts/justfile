@@ -443,6 +443,7 @@ start-work:
   declare -A PID_TO_AGENT      # pid → agent name
   declare -A PID_TO_WORKTREE   # pid → worktree-name (lock name)
   declare -A PID_TO_START_TS   # pid → epoch seconds when launched
+  declare -A PID_TO_TITLE      # pid → ticket title
   declare -A BUSY_WORKTREES    # worktree-name → pid
   ESCALATION=""                # non-empty = stop launching, drain, exit
 
@@ -566,9 +567,10 @@ start-work:
     # Get ticket metadata
     local ticket_json
     ticket_json=$(tk query "select(.id == \"$ticket_id\")")
-    local agent parent
+    local agent parent title
     agent=$(echo "$ticket_json" | jq -r '.assignee')
     parent=$(echo "$ticket_json" | jq -r '.parent // empty')
+    title=$(echo "$ticket_json" | jq -r '.title')
 
     # Derive worktree from parent feature (not task)
     local repo wt feature_id base_branch
@@ -646,9 +648,10 @@ start-work:
     PID_TO_AGENT[$pid]="$agent"
     PID_TO_WORKTREE[$pid]="$lock_name"
     PID_TO_START_TS[$pid]=$(date +%s)
+    PID_TO_TITLE[$pid]="$title"
     BUSY_WORKTREES[$lock_name]="$pid"
 
-    log "Launched $agent on $ticket_id in $repo/$wt (pid: $pid)"
+    log "Launched $agent on $ticket_id \"$title\" in $repo/$wt (pid: $pid)"
     echo "{\"ticket\":\"$ticket_id\",\"agent\":\"$agent\",\"session\":\"$session_uuid\",\"worktree\":\"$repo/$wt\",\"pid\":$pid,\"ts\":\"$(date -Iseconds)\"}" \
       >> "$OUTPUT_DIR/sessions.jsonl"
     return 0
@@ -677,10 +680,12 @@ start-work:
 
     # Clean up tracking state (save start_ts before unset for timeout detection)
     local start_ts="${PID_TO_START_TS[$finished_pid]:-0}"
+    local title="${PID_TO_TITLE[$finished_pid]:-}"
     unset PID_TO_TICKET[$finished_pid]
     unset PID_TO_AGENT[$finished_pid]
     unset PID_TO_WORKTREE[$finished_pid]
     unset PID_TO_START_TS[$finished_pid]
+    unset PID_TO_TITLE[$finished_pid]
     unset BUSY_WORKTREES[$wt]
     release_lock "$wt"
 
@@ -688,7 +693,7 @@ start-work:
     local outfile="$OUTPUT_DIR/output-$ticket_id.txt"
     parse_signal "$outfile"
 
-    log "Finished $ticket_id — signal: ${SIGNAL:-NONE}"
+    log "Finished $ticket_id \"$title\" — signal: ${SIGNAL:-NONE}"
 
     # Drain mode: skip dispatch if escalation already triggered
     if [[ -n "$ESCALATION" ]]; then
