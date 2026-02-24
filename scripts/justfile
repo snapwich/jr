@@ -1355,8 +1355,11 @@ rebase-feature feature-id:
     [[ -z "$CLAUDE" ]] && CLAUDE='claude'
     AGENT_TIMEOUT="${TK_AGENT_TIMEOUT}"
     [[ -z "$AGENT_TIMEOUT" ]] && AGENT_TIMEOUT='1800'
-    rebaser_output=$(timeout "$AGENT_TIMEOUT" $CLAUDE --agent tk:rebaser --dangerously-skip-permissions \
-      -p "$rebaser_prompt" 2>&1 | tee /dev/stderr) || true
+    rebaser_tmpfile=$(mktemp)
+    timeout --foreground "$AGENT_TIMEOUT" $CLAUDE --agent tk:rebaser --dangerously-skip-permissions \
+      -p "$rebaser_prompt" 2>&1 | tee "$rebaser_tmpfile" || true
+    rebaser_output=$(cat "$rebaser_tmpfile")
+    rm -f "$rebaser_tmpfile"
 
     # Parse signal from output
     signal_type=$(echo "$rebaser_output" | tail -20 | grep -oP '^signal:\s*\K\S+' || true)
