@@ -1261,11 +1261,13 @@ approve feature-id:
   echo "  - Or merge locally and run: just rebase-feature <downstream-feature>"
 
 # Rebase a feature's worktree onto its correct base (lazy — run when ready to merge)
-rebase-feature feature-id:
+# Optional rework-notes: if provided, triggers a rework cycle after rebase (for API changes)
+rebase-feature feature-id rework-notes="":
   #!/usr/bin/env bash
   set -e
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
+  rework_notes="{{ rework-notes }}"
 
   # Validate feature exists and is a feature
   feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
@@ -1295,36 +1297,45 @@ rebase-feature feature-id:
 
   # No-op check: is the new base already an ancestor of HEAD?
   # If so, origin/HEAD's changes are already incorporated — nothing to rebase.
+  already_up_to_date=false
+  old_base=""
   if git -C "$repo/$wt" merge-base --is-ancestor "$correct_base_sha" HEAD 2>/dev/null; then
     echo "Already up to date — $correct_base is ancestor of HEAD"
-    exit 0
-  fi
-
-  # Find the fork point. For stacked branches after a squash merge, the recorded base may be
-  # stale (recorded before the upstream had commits). Detect the actual fork point by finding
-  # the commit in the branch whose tree matches the new base's tree — that's where upstream
-  # work ends and downstream work begins.
-  recorded_base=$(tk show "$feature_id" | tr '\n' ' ' | grep -oP '\[orchestrator\].*?Worktree:.*?Base:\s*\K[0-9a-f]+' | grep -oP '[0-9a-f]+$' | tail -1)
-  if [[ -z "$recorded_base" ]]; then
-    echo "ERROR: No recorded base SHA found in feature notes" >&2
-    exit 1
-  fi
-
-  new_tree=$(git -C "$repo/$wt" rev-parse "$correct_base_sha^{tree}")
-  fork_point=""
-  while IFS= read -r commit; do
-    commit_tree=$(git -C "$repo/$wt" rev-parse "$commit^{tree}")
-    if [[ "$commit_tree" == "$new_tree" ]]; then
-      fork_point="$commit"
-      break
+    already_up_to_date=true
+    if [[ -z "$rework_notes" ]]; then
+      exit 0
     fi
-  done < <(git -C "$repo/$wt" rev-list --reverse "$recorded_base"..HEAD)
+    echo "Proceeding to trigger rework cycle..."
+  fi
 
-  old_base="${fork_point:-$recorded_base}"
+  if [[ "$already_up_to_date" != "true" ]]; then
+    # Find the fork point. For stacked branches after a squash merge, the recorded base may be
+    # stale (recorded before the upstream had commits). Detect the actual fork point by finding
+    # the commit in the branch whose tree matches the new base's tree — that's where upstream
+    # work ends and downstream work begins.
+    recorded_base=$(tk show "$feature_id" | tr '\n' ' ' | grep -oP '\[orchestrator\].*?Worktree:.*?Base:\s*\K[0-9a-f]+' | grep -oP '[0-9a-f]+$' | tail -1)
+    if [[ -z "$recorded_base" ]]; then
+      echo "ERROR: No recorded base SHA found in feature notes" >&2
+      exit 1
+    fi
 
-  # Rebase: replay commits after old_base onto the correct base
-  echo "Rebasing $wt onto $correct_base (from $old_base)..."
-  if ! git -C "$repo/$wt" rebase --onto "$correct_base_sha" "$old_base" 2>&1; then
+    new_tree=$(git -C "$repo/$wt" rev-parse "$correct_base_sha^{tree}")
+    fork_point=""
+    while IFS= read -r commit; do
+      commit_tree=$(git -C "$repo/$wt" rev-parse "$commit^{tree}")
+      if [[ "$commit_tree" == "$new_tree" ]]; then
+        fork_point="$commit"
+        break
+      fi
+    done < <(git -C "$repo/$wt" rev-list --reverse "$recorded_base"..HEAD)
+
+    old_base="${fork_point:-$recorded_base}"
+
+    # Rebase: replay commits after old_base onto the correct base
+    echo "Rebasing $wt onto $correct_base (from $old_base)..."
+  fi
+
+  if [[ "$already_up_to_date" != "true" ]] && ! git -C "$repo/$wt" rebase --onto "$correct_base_sha" "$old_base" 2>&1; then
     echo "Rebase encountered conflicts - launching rebaser agent..."
 
     # Find upstream feature ID (if stacked)
@@ -1373,26 +1384,91 @@ rebase-feature feature-id:
     # Parse signal from output
     signal_type=$(echo "$rebaser_output" | tail -20 | grep -oP '^signal:\s*\K\S+' || true)
 
-    if [[ "$signal_type" == "rebase-complete" ]]; then
-      echo "Rebaser resolved conflicts successfully"
-      echo "Rebase complete - updated base to $correct_base_sha"
+    if [[ "$signal_type" != "rebase-complete" ]]; then
+      # Escalation or failure - abort rebase and print manual instructions
+      git -C "$repo/$wt" rebase --abort 2>/dev/null || true
+      echo "" >&2
+      echo "ERROR: Rebaser could not resolve conflicts" >&2
+      if [[ "$signal_type" == "escalate" ]]; then
+        signal_summary=$(echo "$rebaser_output" | tail -20 | grep -oP '^summary:\s*\K.*' || true)
+        echo "Reason: $signal_summary" >&2
+      fi
+      echo "Resolve manually:" >&2
+      echo "  cd $repo/$wt" >&2
+      echo "  git rebase --onto $correct_base_sha $old_base" >&2
+      exit 1
+    fi
+    echo "Rebaser resolved conflicts successfully"
+  fi
+
+  # Record updated base SHA (only if we actually rebased)
+  if [[ "$already_up_to_date" != "true" ]]; then
+    tk add-note "$feature_id" "[orchestrator] Worktree rebased. Worktree: $repo/$wt Base: $correct_base_sha"
+    echo "Rebase complete — updated base to $correct_base_sha"
+  fi
+
+  # If rework notes provided, trigger rework cycle for API changes
+  if [[ -n "$rework_notes" ]]; then
+    echo ""
+    echo "Triggering rework cycle..."
+
+    # Find upstream feature ID from deps
+    upstream_feature_id=""
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+      [[ -z "$dep_json" ]] && continue
+      dep_type=$(echo "$dep_json" | jq -r '.type')
+      if [[ "$dep_type" == "feature" ]]; then
+        upstream_feature_id="$dep_id"
+        break
+      fi
+    done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
+
+    # Get new commits from upstream (between old base and new base)
+    # Skip if already up to date (old_base not set) or if range is invalid
+    commit_shas=""
+    if [[ -n "$old_base" ]]; then
+      commit_shas=$(git -C "$repo/$wt" log --format="%h" "$old_base".."$correct_base_sha" 2>/dev/null | tr '\n' ', ' | sed 's/, $//')
+    fi
+    if [[ -z "$commit_shas" ]]; then
+      commit_shas="(already incorporated)"
+    fi
+
+    # Add feature note about upstream change
+    if [[ -n "$upstream_feature_id" ]]; then
+      upstream_note=$(printf '[upstream-change] API change from %s (commits: %s)\n\n%s' "$upstream_feature_id" "$commit_shas" "$rework_notes")
+    else
+      upstream_note=$(printf '[upstream-change] API change from origin (commits: %s)\n\n%s' "$commit_shas" "$rework_notes")
+    fi
+    tk add-note "$feature_id" "$upstream_note"
+    echo "Added upstream-change note to feature $feature_id"
+
+    # Find the architect-review task among feature's children
+    arch_task=""
+    while IFS= read -r task_json; do
+      [[ -z "$task_json" ]] && continue
+      task_id=$(echo "$task_json" | jq -r '.id')
+      task_parent=$(echo "$task_json" | jq -r '.parent // empty')
+      [[ "$task_parent" != "$feature_id" ]] && continue
+      task_tags=$(echo "$task_json" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
+      if echo "$task_tags" | grep -qx "architect-review"; then
+        arch_task="$task_id"
+        break
+      fi
+    done < <(tk query 'select(.type == "task")' 2>/dev/null)
+
+    if [[ -z "$arch_task" ]]; then
+      echo "WARNING: No architect-review task found for feature $feature_id" >&2
+      echo "Add rework instructions manually to the appropriate task" >&2
       exit 0
     fi
 
-    # Escalation or failure - abort rebase and print manual instructions
-    git -C "$repo/$wt" rebase --abort 2>/dev/null || true
-    echo "" >&2
-    echo "ERROR: Rebaser could not resolve conflicts" >&2
-    if [[ "$signal_type" == "escalate" ]]; then
-      signal_summary=$(echo "$rebaser_output" | tail -20 | grep -oP '^summary:\s*\K.*' || true)
-      echo "Reason: $signal_summary" >&2
-    fi
-    echo "Resolve manually:" >&2
-    echo "  cd $repo/$wt" >&2
-    echo "  git rebase --onto $correct_base_sha $old_base" >&2
-    exit 1
-  fi
+    # Trigger request-changes flow: add note, reassign to coder, reopen
+    tk add-note "$arch_task" "[human] $rework_notes"
+    tk assign "$arch_task" "tk:coder"
+    tk reopen "$arch_task"
 
-  # Record updated base SHA
-  tk add-note "$feature_id" "[orchestrator] Worktree rebased. Worktree: $repo/$wt Base: $correct_base_sha"
-  echo "Rebase complete — updated base to $correct_base_sha"
+    echo "Reopened $arch_task for rework (assigned to tk:coder)"
+    echo "Run 'just start-work' to begin the rework cycle"
+  fi
