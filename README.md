@@ -65,25 +65,76 @@ Before running `just start-work`, verify:
 When the orchestrator exits with code 3, features are ready for human review:
 
 ```sh
-# Approve a feature (unblocks downstream features)
-tk close <feature-id>
+# Review the feature branch
+just worktree-list            # find the worktree location
+cd <repo>/<worktree>          # inspect the code
 
-# Request changes (reopens architect-review task for rework)
+# Approve a feature (validates all tasks closed, then closes feature)
+just approve <feature-id>
+
+# Or request changes (reopens architect-review task for rework)
 just request-changes <feature-id> "Fix error handling in auth module"
 ```
 
 After `request-changes`, run `just start-work` again to begin the rework cycle.
 
+## Stacked Features
+
+When features depend on each other (stacked branches), use `just deps` to see the merge order:
+
+```sh
+# Show worktrees in dependency order (merge leaves first, roots last)
+just deps
+```
+
+This helps you merge PRs in the correct order — start from the leaves (no dependents) and work toward the roots.
+
+After merging an upstream feature, rebase downstream branches:
+
+```sh
+# Rebase a downstream feature onto its updated base
+just rebase-feature <downstream-feature-id>
+```
+
+This rebases the downstream worktree onto the updated base. If conflicts occur, a rebaser agent resolves them
+automatically when possible.
+
+To trigger rework after an API change in upstream:
+
+```sh
+just rebase-feature <feature-id> "API changed: method() now takes Options object"
+```
+
+This rebases AND reopens the architect-review task for the coder to update call sites.
+
 ## Useful Commands
 
 ```sh
+# Pre-flight
 just verify-tickets          # Validate ticket structure before running orchestrator
 tk tree                      # Show full ticket hierarchy
 tk plan                      # Show execution plan (order, parallelism, deps)
 tk ready                     # Show tickets ready to be worked on
-just worktree-name <id>      # Show the worktree/branch name for a ticket
-just watch <ticket-id>       # Watch a running subagent's live output
+
+# During orchestration
+just watch                   # Interactive session watcher (fzf-based)
+just ls                      # Show repos and their worktrees (alias: just worktree-list)
+
+# After orchestration
+just approve <feature-id>    # Validate and close a feature
+just request-changes <id> "feedback"  # Reopen for rework
+just deps                    # Show merge order for stacked features (alias: worktree-deps)
+just rebase-feature <id>     # Rebase a stacked feature after upstream merges
 ```
+
+## Configuration
+
+Environment variables for tuning the orchestrator:
+
+| Variable            | Default | Description                       |
+| ------------------- | ------- | --------------------------------- |
+| `TK_MAX_CONCURRENT` | 3       | Max concurrent subagents          |
+| `TK_AGENT_TIMEOUT`  | 1800    | Agent timeout in seconds (30 min) |
 
 ## Details
 
