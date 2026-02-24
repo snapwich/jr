@@ -67,6 +67,12 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 - Evaluate code quality: correctness, clarity, maintainability, style consistency with the existing codebase
 - Check for security issues, edge cases, error handling
 - Verify the implementation matches the task description and acceptance criteria
+- **Deprecation completeness**: When deprecation notices are added to a file, verify ALL public exports (components,
+  types, utilities) from that file have the `@deprecated` JSDoc tag, not just the ones shown in examples. Check the
+  file's export statements against the deprecation notices.
+- **Documentation-code consistency**: When documentation files (MDX, README) are part of the diff, verify type names,
+  function signatures, and interfaces in documentation exactly match the actual code exports. Cross-reference
+  `interface Foo` in docs against the exported type name in the source file.
 
 ### Test Review
 
@@ -80,6 +86,10 @@ defect.
   check "it doesn't throw" or that duplicate implementation logic in test form.
 - **Error and edge cases**: Happy-path-only tests are insufficient. Check that error conditions, boundary values,
   invalid inputs, and edge cases are covered.
+- **Callback behavior analysis**: When reviewing code that accepts callbacks (like `onError`, `onSuccess`), trace what
+  happens if the callback: does nothing (empty function), doesn't call expected helpers (e.g., provided
+  `handle.setError()` but doesn't use it), or throws an exception. Verify the component remains in a valid state in all
+  cases.
 - **New/changed code coverage**: Code paths introduced or modified by this task should have tests. If the coder touched
   existing untested code, the surrounding coverage gap should be partially filled.
 - **Run the tests** to confirm they pass. If test runner skills are available, use them; otherwise check CLAUDE.md,
