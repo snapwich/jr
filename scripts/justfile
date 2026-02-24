@@ -9,6 +9,17 @@ alias deps := worktree-deps
 worktree-list:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  JUSTFILE="{{ justfile() }}"
+  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  # Build worktree-name → feature-id map
+  declare -A wt_to_fid
+  while IFS= read -r feat_json; do
+    [[ -z "$feat_json" ]] && continue
+    feat_id=$(echo "$feat_json" | jq -r '.id')
+    wt_name=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "$feat_id" 2>/dev/null)
+    [[ -n "$wt_name" ]] && wt_to_fid["$wt_name"]="$feat_id"
+  done < <(tk query 'select(.type == "feature")' 2>/dev/null)
 
   render_worktrees() {
     local dir="$1" prefix="$2"
@@ -40,10 +51,15 @@ worktree-list:
     local i=0
     for e in "${sorted[@]}"; do
       ((i++))
+      local label="${e}/"
+      # Append feature ID if this worktree has a matching feature
+      if [[ -v "wt_to_fid[$e]" ]]; then
+        label="$label  (${wt_to_fid[$e]})"
+      fi
       if (( i == count )); then
-        echo "${prefix}└── ${e}/"
+        echo "${prefix}└── ${label}"
       else
-        echo "${prefix}├── ${e}/"
+        echo "${prefix}├── ${label}"
       fi
     done
   }
@@ -225,7 +241,7 @@ worktree-deps:
   render_node() {
     local fid="$1" prefix="$2" connector="$3"
     local wt="${feat_wt[$fid]}"
-    local label="$wt/"
+    local label="$wt/  ($fid)"
 
     if [[ "$single_repo" != "true" ]]; then
       label="${feat_repo[$fid]}/$label"
