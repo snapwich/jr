@@ -445,6 +445,7 @@ start-work:
   declare -A PID_TO_START_TS   # pid → epoch seconds when launched
   declare -A PID_TO_TITLE      # pid → ticket title
   declare -A BUSY_WORKTREES    # worktree-name → pid
+  declare -A LOGGED_FEATURES   # feature-id → 1 (already logged as ready for human review)
   ESCALATION=""                # non-empty = stop launching, drain, exit
 
   # --- Functions ---
@@ -558,9 +559,12 @@ start-work:
       return 1
     fi
 
-    # Features are human review gates — skip them
+    # Features are human review gates — skip them (log once)
     if [[ "$ticket_type" == "feature" ]]; then
-      log "Feature $ticket_id ready for human review"
+      if [[ -z "${LOGGED_FEATURES[$ticket_id]:-}" ]]; then
+        log "Feature $ticket_id ready for human review"
+        LOGGED_FEATURES[$ticket_id]=1
+      fi
       return 1
     fi
 
