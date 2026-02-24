@@ -1295,7 +1295,7 @@ rebase-feature feature-id:
   # stale (recorded before the upstream had commits). Detect the actual fork point by finding
   # the commit in the branch whose tree matches the new base's tree — that's where upstream
   # work ends and downstream work begins.
-  recorded_base=$(tk show "$feature_id" | tr '\n' ' ' | grep -oP '\[orchestrator\].*?Worktree:.*?Base:\s*\K[0-9a-f]+' | grep -oP '[0-9a-f]+$')
+  recorded_base=$(tk show "$feature_id" | tr '\n' ' ' | grep -oP '\[orchestrator\].*?Worktree:.*?Base:\s*\K[0-9a-f]+' | grep -oP '[0-9a-f]+$' | tail -1)
   if [[ -z "$recorded_base" ]]; then
     echo "ERROR: No recorded base SHA found in feature notes" >&2
     exit 1
@@ -1356,7 +1356,7 @@ rebase-feature feature-id:
     AGENT_TIMEOUT="${TK_AGENT_TIMEOUT}"
     [[ -z "$AGENT_TIMEOUT" ]] && AGENT_TIMEOUT='1800'
     rebaser_output=$(timeout "$AGENT_TIMEOUT" $CLAUDE --agent tk:rebaser --dangerously-skip-permissions \
-      -p "$rebaser_prompt" 2>&1) || true
+      -p "$rebaser_prompt" 2>&1 | tee /dev/stderr) || true
 
     # Parse signal from output
     signal_type=$(echo "$rebaser_output" | tail -20 | grep -oP '^signal:\s*\K\S+' || true)
