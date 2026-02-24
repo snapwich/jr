@@ -418,7 +418,7 @@ start-work:
   LOCK_DIR="$OUTPUT_DIR/locks"
   CLAUDE="${CLAUDE_CMD:-claude}"
   JUSTFILE="{{ justfile() }}"
-  AGENT_TIMEOUT="${TK_AGENT_TIMEOUT:-1800}"
+  AGENT_TIMEOUT="${TK_AGENT_TIMEOUT:-3600}"
 
   cd "$PROJECT_DIR"
 
@@ -426,6 +426,7 @@ start-work:
   declare -A PID_TO_TICKET     # pid → ticket-id
   declare -A PID_TO_AGENT      # pid → agent name
   declare -A PID_TO_WORKTREE   # pid → worktree-name (lock name)
+  declare -A PID_TO_START_TS   # pid → epoch seconds when launched
   declare -A BUSY_WORKTREES    # worktree-name → pid
   ESCALATION=""                # non-empty = stop launching, drain, exit
 
@@ -628,6 +629,7 @@ start-work:
     PID_TO_TICKET[$pid]="$ticket_id"
     PID_TO_AGENT[$pid]="$agent"
     PID_TO_WORKTREE[$pid]="$lock_name"
+    PID_TO_START_TS[$pid]=$(date +%s)
     BUSY_WORKTREES[$lock_name]="$pid"
 
     log "Launched $agent on $ticket_id in $repo/$wt (pid: $pid)"
@@ -657,10 +659,12 @@ start-work:
       return
     fi
 
-    # Clean up tracking state
+    # Clean up tracking state (save start_ts before unset for timeout detection)
+    local start_ts="${PID_TO_START_TS[$finished_pid]:-0}"
     unset PID_TO_TICKET[$finished_pid]
     unset PID_TO_AGENT[$finished_pid]
     unset PID_TO_WORKTREE[$finished_pid]
+    unset PID_TO_START_TS[$finished_pid]
     unset BUSY_WORKTREES[$wt]
     release_lock "$wt"
 
@@ -737,12 +741,26 @@ start-work:
         ESCALATION="Escalation from $ticket_id: ${SIGNAL_SUMMARY:-no details}"
         ;;
       *)
-        log "ESCALATE: $ticket_id returned no valid signal"
-        if [[ -f "$outfile" ]]; then
-          log "Last 5 lines of output:"
-          tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
+        local now duration
+        now=$(date +%s)
+        duration=$((now - start_ts))
+
+        if [[ $duration -ge $((AGENT_TIMEOUT - 10)) ]]; then
+          # Timeout detected
+          log "TIMEOUT: $ticket_id timed out after ${duration}s"
+          local session_uuid
+          session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
+          tk add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
+          ESCALATION="Timeout on $ticket_id after ${duration}s"
+        else
+          # Unknown failure
+          log "ESCALATE: $ticket_id returned no valid signal"
+          if [[ -f "$outfile" ]]; then
+            log "Last 5 lines of output:"
+            tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
+          fi
+          ESCALATION="No valid signal from $ticket_id"
         fi
-        ESCALATION="No valid signal from $ticket_id"
         ;;
     esac
   }
