@@ -29,6 +29,7 @@ Valid signals:
 | `requesting-review` | coder                             | Implementation done, tests pass, ready for CR |
 | `approved`          | code-reviewer, architect-reviewer | Code/feature looks good                       |
 | `changes-requested` | code-reviewer, architect-reviewer | Issues found, coder should address feedback   |
+| `rebase-complete`   | rebaser                           | Rebase conflicts resolved, rebase finished    |
 | `escalate`          | any                               | Blocker that needs human attention            |
 
 ## Note Conventions

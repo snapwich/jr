@@ -16,8 +16,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Extract ticket ID from prompt — pattern: "tk show <ticket-id>"
-ticket_id=$(echo "$prompt" | grep -oP 'tk show \K[a-zA-Z0-9_-]+' | head -1)
+# Extract ticket ID from prompt
+# Standard pattern: "tk show <ticket-id>"
+# Rebaser pattern: "feature-id: <ticket-id>" (multiline prompt)
+ticket_id=$(echo "$prompt" | grep -oP 'tk show \K[a-zA-Z0-9_-]+' | head -1 || true)
+if [[ -z "$ticket_id" ]]; then
+  ticket_id=$(echo "$prompt" | grep -oP 'feature-id:\s*\K[a-zA-Z0-9_-]+' | head -1 || true)
+fi
 
 if [[ -z "$ticket_id" || -z "$agent" ]]; then
   echo "mock-subagent: could not determine ticket_id ($ticket_id) or agent ($agent)" >&2

@@ -78,3 +78,33 @@ Feature: Rebase feature worktree
     And feature "feat-upstream" is closed
     When I run rebase-feature for "feat-downstream"
     Then feature "feat-downstream" should have an updated base note
+
+  Scenario: Rebaser resolves simple conflict
+    Given a feature "feat-upstream" titled "Upstream Work"
+    And a feature "feat-downstream" titled "Downstream Work"
+    And feature "feat-downstream" depends on "feat-upstream"
+    And a worktree for "feat-upstream" with a conflicting commit on "shared.txt"
+    And a worktree for "feat-downstream" branched from "feat-upstream" with a conflicting commit on "shared.txt"
+    And the branch for "feat-upstream" is squash-merged into default
+    And the worktree and branch for "feat-upstream" is removed
+    And feature "feat-upstream" is closed
+    And a mock rebaser response for "feat-downstream" that signals "rebase-complete"
+    When I run rebase-feature for "feat-downstream"
+    Then the output should contain "Rebaser resolved conflicts successfully"
+    And the output should contain "Rebase complete"
+    And the last command should exit with code 0
+
+  Scenario: Rebaser escalates on unresolvable conflict
+    Given a feature "feat-upstream" titled "Upstream Work"
+    And a feature "feat-downstream" titled "Downstream Work"
+    And feature "feat-downstream" depends on "feat-upstream"
+    And a worktree for "feat-upstream" with a conflicting commit on "shared.txt"
+    And a worktree for "feat-downstream" branched from "feat-upstream" with a conflicting commit on "shared.txt"
+    And the branch for "feat-upstream" is squash-merged into default
+    And the worktree and branch for "feat-upstream" is removed
+    And feature "feat-upstream" is closed
+    And a mock rebaser response for "feat-downstream" that signals "escalate" with summary "Semantic conflict requires human judgment"
+    When I run rebase-feature for "feat-downstream"
+    Then the output should contain "Rebaser could not resolve conflicts"
+    And the output should contain "Semantic conflict requires human judgment"
+    And the last command should exit with code 1

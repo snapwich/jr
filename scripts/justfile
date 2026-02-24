@@ -1006,6 +1006,7 @@ signal type ticket-id summary details="" role="":
     requesting-review) agent="${role:-coder}"; prefix="Requesting review" ;;
     approved) agent="${role:-code-reviewer}"; prefix="APPROVED" ;;
     changes-requested) agent="${role:-code-reviewer}"; prefix="CHANGES REQUESTED" ;;
+    rebase-complete) agent="${role:-rebaser}"; prefix="Rebase complete" ;;
     escalate)
       if [[ -n "$role" ]]; then
         agent="$role"
@@ -1315,9 +1316,65 @@ rebase-feature feature-id:
   # Rebase: replay commits after old_base onto the correct base
   echo "Rebasing $wt onto $correct_base (from $old_base)..."
   if ! git -C "$repo/$wt" rebase --onto "$correct_base_sha" "$old_base" 2>&1; then
+    echo "Rebase encountered conflicts - launching rebaser agent..."
+
+    # Find upstream feature ID (if stacked)
+    upstream_feature_id=""
+    upstream_wt=""
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+      [[ -z "$dep_json" ]] && continue
+      dep_type=$(echo "$dep_json" | jq -r '.type')
+      if [[ "$dep_type" == "feature" ]]; then
+        upstream_feature_id="$dep_id"
+        upstream_wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$dep_id" 2>/dev/null || true)
+        break
+      fi
+    done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
+
+    # Build rebaser prompt
+    wt_abs_path="$(cd "$repo/$wt" && pwd)"
+    upstream_wt_abs="none"
+    if [[ -n "$upstream_wt" && -d "$repo/$upstream_wt" ]]; then
+      upstream_wt_abs="$(cd "$repo/$upstream_wt" && pwd)"
+    fi
+    [[ -z "$upstream_feature_id" ]] && upstream_feature_id="none"
+
+    rebaser_prompt=$(printf '%s\n\n%s\n%s\n%s\n%s\n%s\n%s' \
+      "Resolve rebase conflicts." \
+      "feature-id: $feature_id" \
+      "upstream-feature-id: $upstream_feature_id" \
+      "worktree-path: $wt_abs_path" \
+      "upstream-worktree: $upstream_wt_abs" \
+      "rebase-onto: $correct_base_sha" \
+      "original-base: $old_base")
+
+    # Launch rebaser synchronously
+    CLAUDE="${CLAUDE_CMD}"
+    [[ -z "$CLAUDE" ]] && CLAUDE='claude'
+    AGENT_TIMEOUT="${TK_AGENT_TIMEOUT}"
+    [[ -z "$AGENT_TIMEOUT" ]] && AGENT_TIMEOUT='1800'
+    rebaser_output=$(timeout "$AGENT_TIMEOUT" $CLAUDE --agent tk:rebaser --dangerously-skip-permissions \
+      -p "$rebaser_prompt" 2>&1) || true
+
+    # Parse signal from output
+    signal_type=$(echo "$rebaser_output" | tail -20 | grep -oP '^signal:\s*\K\S+' || true)
+
+    if [[ "$signal_type" == "rebase-complete" ]]; then
+      echo "Rebaser resolved conflicts successfully"
+      echo "Rebase complete - updated base to $correct_base_sha"
+      exit 0
+    fi
+
+    # Escalation or failure - abort rebase and print manual instructions
     git -C "$repo/$wt" rebase --abort 2>/dev/null || true
     echo "" >&2
-    echo "ERROR: Rebase failed due to conflicts" >&2
+    echo "ERROR: Rebaser could not resolve conflicts" >&2
+    if [[ "$signal_type" == "escalate" ]]; then
+      signal_summary=$(echo "$rebaser_output" | tail -20 | grep -oP '^summary:\s*\K.*' || true)
+      echo "Reason: $signal_summary" >&2
+    fi
     echo "Resolve manually:" >&2
     echo "  cd $repo/$wt" >&2
     echo "  git rebase --onto $correct_base_sha $old_base" >&2
