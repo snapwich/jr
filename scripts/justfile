@@ -446,6 +446,7 @@ start-work:
   declare -A PID_TO_TITLE      # pid → ticket title
   declare -A BUSY_WORKTREES    # worktree-name → pid
   declare -A LOGGED_FEATURES   # feature-id → 1 (already logged as ready for human review)
+  declare -A LAUNCHED_THIS_RUN # ticket-id → 1 (launched this orchestrator run)
   ESCALATION=""                # non-empty = stop launching, drain, exit
 
   # --- Functions ---
@@ -538,7 +539,22 @@ start-work:
 
   count_review_rounds() {
     local ticket_id="$1" prefix="$2"
-    tk show "$ticket_id" | grep -cF "[signal:$prefix] CHANGES REQUESTED." || true
+    local notes
+    notes=$(tk show "$ticket_id")
+
+    # Find reset points: last APPROVED or last Run started
+    local last_approved last_run last_reset=0
+    last_approved=$(echo "$notes" | grep -n "\[signal:$prefix\] APPROVED\." | tail -1 | cut -d: -f1)
+    last_run=$(echo "$notes" | grep -n "\[orchestrator\] Run started" | tail -1 | cut -d: -f1)
+
+    [[ -n "$last_approved" ]] && (( last_approved > last_reset )) && last_reset=$last_approved
+    [[ -n "$last_run" ]] && (( last_run > last_reset )) && last_reset=$last_run
+
+    if (( last_reset > 0 )); then
+      echo "$notes" | tail -n +"$last_reset" | grep -cF "[signal:$prefix] CHANGES REQUESTED." || true
+    else
+      echo "$notes" | grep -cF "[signal:$prefix] CHANGES REQUESTED." || true
+    fi
   }
 
   make_prompt() {
@@ -575,6 +591,12 @@ start-work:
     agent=$(echo "$ticket_json" | jq -r '.assignee')
     parent=$(echo "$ticket_json" | jq -r '.parent // empty')
     title=$(echo "$ticket_json" | jq -r '.title')
+
+    # Add run marker if first launch this session (resets review counter)
+    if [[ -z "${LAUNCHED_THIS_RUN[$ticket_id]:-}" ]]; then
+      tk add-note "$ticket_id" "[orchestrator] Run started"
+      LAUNCHED_THIS_RUN[$ticket_id]=1
+    fi
 
     # Derive worktree from parent feature (not task)
     local repo wt feature_id base_branch
