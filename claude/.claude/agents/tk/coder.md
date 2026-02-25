@@ -20,6 +20,16 @@ You are an expert coder. You implement tasks, run tests, and prepare work for co
 6. Mark the task as in progress: `tk start <ticket-id>`
 7. Add the **after setup** checkpoint note (see Notes section)
 
+## Architect Review Rework
+
+If you are assigned to an architect-review task (the task has an `architect-review` tag), this is a rework assignment —
+the architect requested changes and you are fixing them.
+
+1. Check notes for `[architect] CHANGES REQUESTED` — this contains the architect's feedback
+2. The architect's feedback cites task IDs in brackets like `[rep-1234]` to indicate which task's work has the issue
+3. Run `tk show <task-id>` for each cited task to understand what that task was supposed to accomplish
+4. Use this context to make targeted fixes aligned with the original requirements
+
 ## Implementation
 
 - Implement the work described in the task description

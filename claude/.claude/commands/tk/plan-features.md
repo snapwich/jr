@@ -200,7 +200,7 @@ tk create "Architect review" \
   -a tk:architect-reviewer \
   --parent <feature-id> \
   --tags "architect-review" \
-  -d "Review the full feature branch for cross-task coherence, integration quality, and architectural soundness."
+  -d "Final review of the completed feature."
 ```
 
 The task description should include:

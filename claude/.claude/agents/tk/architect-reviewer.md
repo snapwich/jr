@@ -139,9 +139,13 @@ If issues are found:
 
    ```sh
    tk add-note <ticket-id> '[architect] CHANGES REQUESTED.
-   1. <specific issue and what to change>
-   2. <specific issue and what to change>'
+   1. [<task-id>] <specific issue and what to change>
+   2. [<task-id>] <specific issue and what to change>'
    ```
+
+   **Why cite task IDs**: The coder fixing these issues only sees the architect-review task description — they don't
+   have access to sibling task descriptions. Citing the originating task ID (e.g., `[rep-1234]`) gives the coder context
+   about what that task was supposed to accomplish. For cross-task issues, cite both tasks involved.
 
 2. Run the signal command:
 
