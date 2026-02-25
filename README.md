@@ -27,7 +27,7 @@ cd ../my-project
 
 # Break a plan into features and tasks
 # (from within the project, using Claude Code)
-/tk:create-features path/to/plan.md
+/tk:plan-features path/to/plan.md
 
 # Review ticket structure before starting
 just verify-tickets          # checks linear chains, architect-review tags, deps

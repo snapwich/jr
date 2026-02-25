@@ -1069,7 +1069,7 @@ signal type ticket-id summary details="" role="":
   exit 0
 
 # Verify ticket structure — checks for linear chains, architect-review tags, and cross-feature deps
-[group('create-features')]
+[group('plan-features')]
 verify-tickets:
   #!/usr/bin/env bash
   set -e

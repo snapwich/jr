@@ -154,7 +154,7 @@ Three Claude subagents plus a bash orchestrator:
 Two levels: **Feature** and **Task**.
 
 - **Feature** (`type: feature`, no assignee) — logical grouping of related work. One feature = one worktree = one branch
-  = one PR. Created by `/tk:create-features` from a plan document. Depends on all its child tasks (appears in `tk ready`
+  = one PR. Created by `/tk:plan-features` from a plan document. Depends on all its child tasks (appears in `tk ready`
   when all children close). Features are **human review gates** — when they appear in `tk ready`, the orchestrator logs
   it and exits with code 3. Humans close features directly or use `just request-changes` to trigger rework.
 - **Task** (`type: task`, parent: feature) — sequential unit of work within a feature. Tasks form a linear chain within
@@ -251,7 +251,7 @@ claude/.claude/
     architect-reviewer.md             # architect reviewer agent (opus, read-only, magenta)
   commands/tk/
     subagent-task.md                  # slash command: work on a ticket by ID
-    create-features.md                 # slash command: break down plans into features/tasks
+    plan-features.md                  # slash command: create/modify features and tasks
   rules/
     tk-agents.md                      # behavioral rules for subagents
 scripts/
@@ -267,7 +267,7 @@ package.json                          # prettier + lint-staged dev deps
 1. `just init ../<project>` — deploys agent configs and ticket infrastructure
 2. User clones repos as named subdirectories (e.g. `repo-a/`, `repo-b/`), each with `default/` as the main checkout
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
-4. User runs `/tk:create-features` to break work into tk tickets (features → linear task chains with architect review)
+4. User runs `/tk:plan-features` to break work into tk tickets (features → linear task chains with architect review)
 5. User runs `just start-work` to start the orchestration loop
 6. Orchestrator: `tk ready` → create/reuse feature worktrees → start subagents → react to signals → close tasks
 7. All automated work done → orchestrator exits 3 → human reviews feature branches
@@ -283,7 +283,7 @@ package.json                          # prettier + lint-staged dev deps
 ## Testing Strategy
 
 Testing is requirements-driven at two levels: task requirements drive per-task tests, feature acceptance criteria drive
-feature-level verification. `/tk:create-features` embeds testable requirements in each task description and testable
+feature-level verification. `/tk:plan-features` embeds testable requirements in each task description and testable
 acceptance criteria in each feature description. The testing strategy follows a cost pyramid: prefer unit tests
 (exhaustive), use integration tests only where unit tests can't cover the interaction, and e2e tests only as a last
 resort.
@@ -319,7 +319,7 @@ resort.
 - Agent definitions, commands, and rules are the main development surface
 - The `init` recipe should be idempotent: safe to run on a fresh project or to deploy new files added since last init
 - **Justfile group convention**: Recipes in `scripts/justfile` that are internal to a process use `[group('name')]`
-  (e.g. `orchestrator`, `subagent`, `create-features`). Human-facing recipes have **no group** — they appear at the top
+  (e.g. `orchestrator`, `subagent`, `plan-features`). Human-facing recipes have **no group** — they appear at the top
   level of `just --list`
 
 ## Testing

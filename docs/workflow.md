@@ -10,7 +10,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 │                         (markdown, user-provided)                               │
 └────────────────────────────────┬────────────────────────────────────────────────┘
                                  │
-                         create-features command
+                          plan-features command
                      (consumes plan, creates tickets)
                                  │
               ┌──────────────────┴──────────────────┐
