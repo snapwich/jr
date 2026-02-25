@@ -58,6 +58,37 @@ Prefix every note with your agent role in brackets:
 Rule of thumb: if only the next agent on this task needs it, note on the task. If sibling tasks or the architect needs
 it, note on the feature.
 
+## Scope Escalation
+
+Use `escalate` with a **scope discovery** prefix when you discover the task scope is fundamentally larger than planned.
+This is distinct from a blocker (external impediment) — it means the plan underestimated the work.
+
+**When to escalate for scope**:
+
+- The migration pattern doesn't apply as documented
+- A "syntax change" turns out to be a behavioral change requiring broader updates
+- Discovered dependencies on components/patterns not identified in the plan
+- Test coverage gaps suggest the plan underestimated scope
+
+**Format**:
+
+```sh
+just signal escalate <ticket-id> "SCOPE: <what was planned vs. what you discovered>"
+```
+
+**What to include**:
+
+- What the plan assumed
+- What you discovered
+- Specific examples of the expanded scope
+- Whether partial implementation is possible
+
+**Do NOT**:
+
+- Silently apply patterns that seem wrong
+- Complete tasks you know are incomplete
+- Assume the plan author understood implications you're discovering
+
 ## Skills
 
 Some projects provide skills — project-specific commands for running tests, linting, formatting, type-checking, and

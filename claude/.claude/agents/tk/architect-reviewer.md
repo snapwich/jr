@@ -103,16 +103,23 @@ Review whether tests use the right level of abstraction:
 
 ### Integration and API Boundary Testing
 
-- Run integration tests if available. If test runner skills are available, use them; otherwise check CLAUDE.md,
-  justfile, or package.json for the correct command.
-- Review integration test coverage across tasks: do the tests verify that components from different tasks work together
-  correctly? Are API contracts tested on both sides?
-- If integration test coverage is insufficient for cross-task interactions that exist in this feature, request changes
-  with concrete guidance on what scenarios are missing
-- Unit test review is not your primary concern (the code-reviewer handles that), but flag gaps at API boundaries where
-  unit tests should verify the contract a component exposes
-- If the feature needs integration/e2e tests that span beyond its scope (involving other features), note this as a
-  finding on the parent feature — do not request them as changes to this feature's tasks
+Integration tests are important for features that modify shared components or cross-cutting concerns:
+
+1. **Discovery**: Find integration tests covering the feature's scope. Use skills (if available), project docs, or
+   explore the test structure. Consider a broader set of tests than individual tasks — you're reviewing the feature as a
+   whole.
+
+2. **Execution**: Run relevant integration tests
+   - If they pass, note this in your checkpoint note
+   - If they fail, this is grounds for `changes-requested`
+   - If no integration tests exist but this is a shared component feature, note on the feature as a risk
+
+3. **Cross-task verification**: Do integration tests verify that components from different tasks work together?
+   - Are API contracts tested on both sides?
+   - If gaps exist for cross-task interactions, request changes with specific scenarios
+
+4. **Scope boundaries**: If the feature needs integration/e2e tests spanning beyond its scope (involving other
+   features), note this on the parent feature — do not request them as changes to this feature's tasks
 
 ## Outcomes
 

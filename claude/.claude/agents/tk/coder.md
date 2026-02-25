@@ -73,6 +73,60 @@ touched. You don't need to backfill the entire file, but the code paths you chan
 - Do not request review if tests fail — fix them first
 - If unrelated tests are failing, note this in your task notes but do not ignore your own test failures
 
+### Integration Test Verification
+
+If your task description includes an "Integration verification" section:
+
+1. **Find relevant integration tests** — Use skills (if available), project docs, or explore the test structure to find
+   integration tests that cover the modified code. Focus on tests impacted by your changes, not the entire suite.
+2. **Run the relevant tests** — Execute only the integration tests that verify the behavior you changed or added
+3. **Include results in your completion note**: "Integration tests: X/Y pass" or "No relevant integration tests found"
+4. **If integration tests fail**, fix the issue before signaling — same as unit test failures
+
+### Static Checks
+
+Before signaling for review, ensure your changes pass the project's static checks:
+
+1. **Discover what exists** — Check CLAUDE.md, justfile, package.json, or Makefile for lint/format commands. Projects
+   may use eslint, prettier, oxc, biome, ruff, or other tools.
+2. **Run the checks** — Execute lint and format-check commands on the files you modified
+3. **Fix violations** — Formatting and lint errors should be fixed before requesting review, same as test failures
+4. **Include in completion note** — "Static checks: pass" or note any issues with unrelated files
+
+If the project has no configured linter/formatter, skip this step.
+
+## Handling Unexpected Complexity
+
+If you discover the task is more complex than the description suggests:
+
+### Minor gaps (proceed with note)
+
+When additional work is needed but scope is fundamentally the same:
+
+- Document the additional work in your task notes
+- Complete the task with the expanded scope
+- Example: "Task said update component A, also needed to update A's test helper"
+
+### Major scope expansion (escalate)
+
+When the task description fundamentally underestimated the work:
+
+- The migration pattern doesn't apply as documented
+- Behavioral changes require tracing dependencies not mentioned
+- The scope is significantly larger than what's described
+
+Signal escalation with scope details:
+
+```sh
+just signal escalate <ticket-id> "SCOPE: Plan showed X, but this requires Y. See task notes for details."
+```
+
+Before escalating, add a note documenting what you discovered:
+
+```sh
+tk add-note <ticket-id> '[coder] SCOPE DISCOVERY: <detailed explanation of what the plan missed>'
+```
+
 ## Git Workflow
 
 - Make logical commits as you work — meaningful units of change, not one giant commit

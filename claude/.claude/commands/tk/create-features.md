@@ -46,6 +46,47 @@ Wait for the user to answer all open questions before proceeding. Use the resolv
 descriptions — replace every ambiguity with the concrete decision. **No ticket description should contain unresolved
 language.** If you find yourself writing "TBD" or "or" between alternatives in a ticket, stop and ask the user.
 
+### 2.5. Behavioral Impact Analysis
+
+Before creating tickets, scan the plan for **behavioral breaking changes** — places where the new pattern fundamentally
+changes how code executes, not just how it's written. These require explicit warnings in task descriptions.
+
+**Checklist** (check each that applies):
+
+- [ ] **Async/await implications** — Does the new pattern wait for operations that were previously fire-and-forget? Does
+      it change what happens on success/failure?
+- [ ] **Control flow changes** — Does lifecycle management shift (e.g., state-controlled → promise-controlled)? Does
+      error handling responsibility move?
+- [ ] **State management shifts** — Does the pattern change from declarative (React state) to imperative (function
+      calls)? Vice versa?
+- [ ] **Callback behavior** — Do callbacks need to be awaited that weren't before? Do return values now matter?
+- [ ] **Side effect timing** — Does the order or timing of side effects change? Are there new race conditions?
+
+For each "yes" answer, add an explicit **BEHAVIORAL CHANGE** callout to the affected task description:
+
+> **BEHAVIORAL CHANGE**: [Old pattern] becomes [new pattern].
+>
+> - Old behavior: [what happened before]
+> - New behavior: [what happens now]
+> - Patterns that will break: [fire-and-forget, early returns, etc.]
+> - What to look for: [callback chains, async operations, etc.]
+
+### 2.6. Integration Test Analysis
+
+For tasks that modify shared components, APIs, or cross-cutting concerns, identify integration test requirements:
+
+1. **Discovery**: Determine if integration tests exist that exercise the modified code. Use project skills (if
+   available), CLAUDE.md, or explore the test structure to understand how integration tests are organized.
+
+2. **Add to task description** when integration tests are relevant:
+
+   > **Integration verification**: Verify integration tests covering [affected area] pass before marking complete.
+
+3. **When to require**: Migration tasks, API changes, shared component modifications, changes with many consumers
+
+If no integration tests exist but should (shared component migration), note this as a gap on the feature description —
+but don't block task creation on it.
+
 ### 3. Discover Project Layout
 
 ```sh

@@ -99,6 +99,27 @@ When requesting changes for insufficient tests, be specific: name what's missing
 the API returns 404", "the validation logic in `parser.ts:45` has no coverage") so a fresh coder can act on it without
 guessing.
 
+### Integration Test Verification
+
+If the task description includes integration test requirements:
+
+1. Check that the coder's completion note mentions running integration tests
+2. If relevant integration tests exist and weren't run, request changes — focus on tests impacted by the changes, not
+   the entire suite
+3. If integration tests don't exist for a migration task, note this on the **feature** (not the task) as a gap — but
+   don't block the task on it (that's a planning gap, not a coder gap)
+
+### Static Check Verification
+
+If the project has a configured linter or formatter:
+
+1. Check that the coder's completion note mentions static checks passing
+2. If static checks weren't run and the project has them configured, request changes
+3. Optionally run lint/format-check yourself on modified files to verify
+
+Do not block on unrelated lint violations in files the coder didn't touch — note those on the feature as pre-existing
+technical debt.
+
 ### Iteration Cap
 
 Before writing your review, check how many prior `[code-reviewer]` notes exist on this task. If there are already 3 or
