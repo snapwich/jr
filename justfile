@@ -10,6 +10,14 @@ init dir:
   # Create .agents directory structure
   mkdir -p "$dir/.agents/.tickets" "$dir/.agents/plans"
 
+  # Create project-level claude extension structure
+  mkdir -p "$dir/.agents/claude/_/agents/tk"
+  mkdir -p "$dir/.agents/claude/_/commands/tk"
+  mkdir -p "$dir/.agents/claude/_/rules"
+
+  # Copy README explaining the extension pattern
+  cp "$(dirname "{{ justfile() }}")/templates/claude-extensions-readme.md" "$dir/.agents/claude/README.md"
+
   # Initialize git repo for .agents
   git -C "$dir/.agents" init
 

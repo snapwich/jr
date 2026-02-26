@@ -192,8 +192,8 @@ worktree-deps:
       up_wt="${feat_wt[$up]}"
       if [[ -d "$repo/$wt" && -n "$up_wt" ]]; then
         # Extract ticket prefix from parent's worktree name
-        # Handles Jira-style (PEX-13664-...) and tk-style (rep-rhgv-...)
-        up_prefix=$(echo "$up_wt" | sed -n 's/^\([A-Za-z]*-[a-z0-9]*\)-.*/\1/p')
+        # Handles Jira-style (PEX-13664-...) and tk-style (tt4-rhgv-...)
+        up_prefix=$(echo "$up_wt" | sed -n 's/^\([A-Za-z0-9]*-[a-z0-9]*\)-.*/\1/p')
         if [[ -n "$up_prefix" ]]; then
           # Find parent's squash merge on origin/HEAD by searching commit messages
           merge_sha=$(git -C "$repo/$wt" log --oneline --grep="$up_prefix" origin/HEAD 2>/dev/null | head -1 | cut -d' ' -f1)
@@ -416,13 +416,52 @@ resolve-base-branch feature-id:
 [group('orchestrator')]
 create-worktree name repo="." base="origin/HEAD":
   #!/usr/bin/env bash
+  set -euo pipefail
+  PROJECT_DIR="{{ justfile_directory() }}"
+  WORKTREE_DIR="{{ repo }}/{{ name }}"
+  REPO="{{ repo }}"
+
   # Fetch latest and create worktree from the specified base
   git -C "{{ repo }}/default" fetch origin 2>/dev/null || true
   git -C "{{ repo }}/default" worktree add --no-track -b "{{ name }}" "../{{ name }}" "{{ base }}" 2>/dev/null || true
-  if [[ -d ".claude" && -d "{{ repo }}/{{ name }}" ]]; then
-    # Use rsync to merge without overwriting — copies missing files/dirs only
-    rsync -a --ignore-existing --exclude='settings.local.json' .claude/ "{{ repo }}/{{ name }}/.claude/"
+
+  if [[ -d ".claude" && -d "$WORKTREE_DIR" ]]; then
+    # Merge tk agents (creates actual files from base + extensions)
+    BASE_DIR="$PROJECT_DIR/.claude/agents/tk"
+    DEFAULT_DIR="$PROJECT_DIR/.agents/claude/_/agents/tk"
+    REPO_DIR="$PROJECT_DIR/.agents/claude/$REPO/agents/tk"
+    TARGET_DIR="$WORKTREE_DIR/.claude/agents/tk"
+
+    if [[ -d "$BASE_DIR" ]]; then
+      mkdir -p "$TARGET_DIR"
+      for base in "$BASE_DIR"/*.md; do
+        [[ -f "$base" ]] || continue
+        agent=$(basename "$base" .md)
+        merged="$TARGET_DIR/$agent.md"
+        cat "$base" > "$merged"
+        [[ -f "$DEFAULT_DIR/$agent.md" ]] && { echo -e "\n" >> "$merged"; cat "$DEFAULT_DIR/$agent.md" >> "$merged"; }
+        [[ "$REPO" != "." && -f "$REPO_DIR/$agent.md" ]] && { echo -e "\n" >> "$merged"; cat "$REPO_DIR/$agent.md" >> "$merged"; }
+      done
+    fi
+
+    # Copy project-level .agents rules
+    DEFAULT_RULES="$PROJECT_DIR/.agents/claude/_/rules"
+    REPO_RULES="$PROJECT_DIR/.agents/claude/$REPO/rules"
+    TARGET_RULES="$WORKTREE_DIR/.claude/rules"
+
+    if [[ -d "$DEFAULT_RULES" ]] && compgen -G "$DEFAULT_RULES/*.md" >/dev/null; then
+      mkdir -p "$TARGET_RULES"
+      cp "$DEFAULT_RULES"/*.md "$TARGET_RULES/"
+    fi
+    if [[ "$REPO" != "." && -d "$REPO_RULES" ]] && compgen -G "$REPO_RULES/*.md" >/dev/null; then
+      mkdir -p "$TARGET_RULES"
+      cp "$REPO_RULES"/*.md "$TARGET_RULES/"
+    fi
+
+    # Then rsync the rest (--ignore-existing preserves our files)
+    rsync -a --ignore-existing --exclude='settings.local.json' .claude/ "$WORKTREE_DIR/.claude/"
   fi
+
   grep -qxF '.claude/agents/tk/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
     || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
       >> "{{ repo }}/default/.git/info/exclude"
@@ -526,20 +565,86 @@ start-work:
     just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" resolve-base-branch "$feature_id"
   }
 
+  merge_tk_agents() {
+    local worktree_dir="$1" repo="$2"
+    local base_dir="$PROJECT_DIR/.claude/agents/tk"
+    local default_dir="$PROJECT_DIR/.agents/claude/_/agents/tk"
+    local repo_dir="$PROJECT_DIR/.agents/claude/$repo/agents/tk"
+    local target_dir="$worktree_dir/.claude/agents/tk"
+
+    # Skip if no base agents directory
+    [[ -d "$base_dir" ]] || return 0
+
+    mkdir -p "$target_dir"
+
+    # Dynamic discovery: glob all .md files in base agents/tk/
+    for base in "$base_dir"/*.md; do
+      [[ -f "$base" ]] || continue
+      local agent
+      agent=$(basename "$base" .md)
+      local merged="$target_dir/$agent.md"
+
+      # Start with base (cat resolves symlinks to get actual content)
+      cat "$base" > "$merged"
+
+      # Append default (_) extension if exists
+      [[ -f "$default_dir/$agent.md" ]] && {
+        echo -e "\n" >> "$merged"
+        cat "$default_dir/$agent.md" >> "$merged"
+      }
+
+      # Append repo-specific extension if exists (skip if repo is ".")
+      [[ "$repo" != "." && -f "$repo_dir/$agent.md" ]] && {
+        echo -e "\n" >> "$merged"
+        cat "$repo_dir/$agent.md" >> "$merged"
+      }
+    done
+  }
+
+  copy_tk_rules() {
+    local worktree_dir="$1" repo="$2"
+    local default_dir="$PROJECT_DIR/.agents/claude/_/rules"
+    local repo_dir="$PROJECT_DIR/.agents/claude/$repo/rules"
+    local target_dir="$worktree_dir/.claude/rules"
+
+    # Copy default (_) rules if any exist
+    if [[ -d "$default_dir" ]] && compgen -G "$default_dir/*.md" >/dev/null; then
+      mkdir -p "$target_dir"
+      cp "$default_dir"/*.md "$target_dir/"
+    fi
+
+    # Copy repo-specific rules (overwrites default if same name)
+    if [[ "$repo" != "." && -d "$repo_dir" ]] && compgen -G "$repo_dir/*.md" >/dev/null; then
+      mkdir -p "$target_dir"
+      cp "$repo_dir"/*.md "$target_dir/"
+    fi
+  }
+
   create_worktree() {
     local name="$1" repo="${2:-.}" base="${3:-origin/HEAD}"
     local git_dir="$PROJECT_DIR/$repo/default/.git"
+    local worktree_dir="$PROJECT_DIR/$repo/$name"
     git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
-    if [[ -d "$PROJECT_DIR/$repo/$name" ]]; then
+    if [[ -d "$worktree_dir" ]]; then
       # Worktree already exists — still sync .claude/ but return 1
       if [[ -d "$PROJECT_DIR/.claude" ]]; then
-        rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
+        # Merge tk agents (creates actual files, not symlinks)
+        merge_tk_agents "$worktree_dir" "$repo"
+        # Copy project-level .agents rules
+        copy_tk_rules "$worktree_dir" "$repo"
+        # Then rsync the rest (--ignore-existing preserves our files)
+        rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
       fi
       return 1
     fi
     git -C "$PROJECT_DIR/$repo/default" worktree add --no-track -b "$name" "../$name" "$base" >/dev/null 2>&1 || return 1
-    if [[ -d "$PROJECT_DIR/.claude" && -d "$PROJECT_DIR/$repo/$name" ]]; then
-      rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$PROJECT_DIR/$repo/$name/.claude/"
+    if [[ -d "$PROJECT_DIR/.claude" && -d "$worktree_dir" ]]; then
+      # Merge tk agents (creates actual files, not symlinks)
+      merge_tk_agents "$worktree_dir" "$repo"
+      # Copy project-level .agents rules
+      copy_tk_rules "$worktree_dir" "$repo"
+      # Then rsync the rest (--ignore-existing preserves our files)
+      rsync -a --ignore-existing --exclude='settings.local.json' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
     fi
     # Ensure tk-specific paths are excluded from git status
     grep -qxF '.claude/agents/tk/' "$git_dir/info/exclude" 2>/dev/null \
@@ -568,13 +673,31 @@ start-work:
   }
 
   make_prompt() {
-    local ticket_id="$1"
+    local ticket_id="$1" repo="$2"
     local template="$PROJECT_DIR/.claude/commands/tk/subagent-task.md"
+    local default_ext="$PROJECT_DIR/.agents/claude/_/commands/tk/subagent-task.md"
+    local repo_ext="$PROJECT_DIR/.agents/claude/$repo/commands/tk/subagent-task.md"
+
+    local prompt=""
+
+    # Start with base template
     if [[ -f "$template" ]]; then
-      sed "s/\\\$ARGUMENTS\\[0\\]/$ticket_id/" "$template"
+      prompt=$(sed "s/\\\$ARGUMENTS\\[0\\]/$ticket_id/" "$template")
     else
-      echo "Work on \`tk show $ticket_id\`."
+      prompt="Work on \`tk show $ticket_id\`."
     fi
+
+    # Append default (_) extension if exists
+    if [[ -f "$default_ext" ]]; then
+      prompt="$prompt"$'\n\n'"$(cat "$default_ext")"
+    fi
+
+    # Append repo-specific extension if exists (skip if repo is ".")
+    if [[ "$repo" != "." && -f "$repo_ext" ]]; then
+      prompt="$prompt"$'\n\n'"$(cat "$repo_ext")"
+    fi
+
+    echo "$prompt"
   }
 
   launch() {
@@ -660,7 +783,7 @@ start-work:
     fi
 
     local prompt outfile session_uuid
-    prompt=$(make_prompt "$ticket_id")
+    prompt=$(make_prompt "$ticket_id" "$repo")
     outfile="$OUTPUT_DIR/output-$ticket_id.txt"
     session_uuid=$(uuidgen)
 
@@ -1067,6 +1190,64 @@ signal type ticket-id summary details="" role="":
   echo "summary: $summary"
   [[ -n "$details" ]] && echo "details: $details"
   exit 0
+
+# Acquire exclusive lock on a named resource, then run command.
+# Usage: just with-lock <resource> <command> [args...]
+[group('subagent')]
+with-lock resource *command:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.agents/tmp/locks"
+  LOCK_FILE="$LOCK_DIR/{{ resource }}.lock"
+  LOCK_INFO="$LOCK_FILE.info"
+  mkdir -p "$LOCK_DIR"
+
+  exec 200>"$LOCK_FILE"
+
+  if ! flock --nonblock 200 2>/dev/null; then
+    HOLDER=""
+    [[ -f "$LOCK_INFO" ]] && HOLDER=" ($(cat "$LOCK_INFO"))"
+    echo "[with-lock:{{ resource }}] Waiting...${HOLDER}"
+  fi
+
+  flock 200
+
+  echo "worktree=$(basename "$PWD") pid=$$ time=$(date -Iseconds)" > "$LOCK_INFO"
+  echo "[with-lock:{{ resource }}] Acquired"
+
+  set +e
+  {{ command }}
+  EXIT_CODE=$?
+  set -e
+
+  echo "[with-lock:{{ resource }}] Released"
+  exit $EXIT_CODE
+
+# Show status of all resource locks
+locks:
+  #!/usr/bin/env bash
+  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.agents/tmp/locks"
+
+  if [[ ! -d "$LOCK_DIR" ]] || ! compgen -G "$LOCK_DIR/*.lock" >/dev/null; then
+    echo "No locks found"
+    exit 0
+  fi
+
+  for lockfile in "$LOCK_DIR"/*.lock; do
+    resource=$(basename "$lockfile" .lock)
+    info_file="$lockfile.info"
+
+    if flock --nonblock "$lockfile" -c true 2>/dev/null; then
+      echo "$resource: free"
+    else
+      if [[ -f "$info_file" ]]; then
+        echo "$resource: held ($(cat "$info_file"))"
+      else
+        echo "$resource: held (unknown)"
+      fi
+    fi
+  done
 
 # Verify ticket structure — checks for linear chains, architect-review tags, and cross-feature deps
 [group('plan-features')]
