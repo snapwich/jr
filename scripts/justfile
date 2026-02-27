@@ -1193,6 +1193,7 @@ signal type ticket-id summary details="" role="":
 
 # Acquire exclusive lock on a named resource, then run command.
 # Usage: just with-lock <resource> <command> [args...]
+[no-cd]
 [group('subagent')]
 with-lock resource *command:
   #!/usr/bin/env bash
