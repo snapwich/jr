@@ -94,6 +94,10 @@ defect.
   existing untested code, the surrounding coverage gap should be partially filled.
 - **Run the tests** to confirm they pass. If test runner skills are available, use them; otherwise check CLAUDE.md,
   justfile, or package.json for the correct command.
+- **Test scope is narrow** — run only the tests the coder should have run:
+  - Unit tests for the changed code (the relevant test files, not the entire unit test suite)
+  - The specific integration/e2e tests that were added or modified
+- Do NOT run broad integration/e2e suites — the architect-reviewer handles regression testing
 
 When requesting changes for insufficient tests, be specific: name what's missing (e.g., "no test for the error case when
 the API returns 404", "the validation logic in `parser.ts:45` has no coverage") so a fresh coder can act on it without

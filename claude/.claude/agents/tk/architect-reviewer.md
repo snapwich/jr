@@ -101,25 +101,39 @@ Review whether tests use the right level of abstraction:
   flow with no other verification path
 - Check for over-testing: redundant tests that cover the same scenario at multiple levels without adding confidence
 
-### Integration and API Boundary Testing
+### Regression Testing — Integration and E2E Suites
 
-Integration tests are important for features that modify shared components or cross-cutting concerns:
+You are the regression gate. Coders and code-reviewers run only the specific tests they added or modified — your job is
+to run broader test suites that could catch regressions from the feature's changes.
 
-1. **Discovery**: Find integration tests covering the feature's scope. Use skills (if available), project docs, or
-   explore the test structure. Consider a broader set of tests than individual tasks — you're reviewing the feature as a
-   whole.
+1. **Detect affected apps**: Analyze the changed files in the branch to identify which apps/modules were touched. Look
+   at file paths to determine scope (e.g., `apps/foo/`, `packages/bar/`, `services/baz/`).
 
-2. **Execution**: Run relevant integration tests
-   - If they pass, note this in your checkpoint note
-   - If they fail, this is grounds for `changes-requested`
-   - If no integration tests exist but this is a shared component feature, note on the feature as a risk
+2. **Run broader test suites**: For each affected app/module, run its integration and e2e test suites — not just the
+   tests that were directly modified. This catches regressions in tests that weren't touched but whose behavior could be
+   affected.
+   - If suites are very large, run at minimum the tests covering the modules/areas touched by the feature
+   - Use test runner skills if available, or find the correct commands in project docs
 
-3. **Cross-task verification**: Do integration tests verify that components from different tasks work together?
+3. **Report results**: Include in your checkpoint note:
+
+   ```
+   Integration suite (<app>): X/Y pass
+   E2E suite (<app>): X/Y pass (if applicable)
+   ```
+
+4. **Failures are blocking**: If broader regression tests fail, this is grounds for `changes-requested`. Be specific
+   about which tests failed and how they relate to the feature's changes.
+
+5. **Cross-task verification**: Do the regression tests verify that components from different tasks work together?
    - Are API contracts tested on both sides?
    - If gaps exist for cross-task interactions, request changes with specific scenarios
 
-4. **Scope boundaries**: If the feature needs integration/e2e tests spanning beyond its scope (involving other
+6. **Scope boundaries**: If the feature needs integration/e2e tests spanning beyond its scope (involving other
    features), note this on the parent feature — do not request them as changes to this feature's tasks
+
+7. **Missing coverage**: If no integration tests exist but this is a shared component feature, note on the feature as a
+   risk
 
 ## Outcomes
 

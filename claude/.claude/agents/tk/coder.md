@@ -79,7 +79,11 @@ touched. You don't need to backfill the entire file, but the code paths you chan
 
 - If test runner skills are available (unit, integration, e2e), use them — they encode the correct commands and paths
   for the project.
-- Run the full relevant test suite before signaling for review
+- **Test scope is narrow** — run only what you need for your task:
+  - Run **unit tests** for the code you're changing (the relevant test files, not the entire unit test suite)
+  - Run **only the specific integration/e2e tests you added or modified** — do not run the full integration/e2e suites
+  - If you modified existing integration/e2e tests, run those specific tests to verify they pass
+- The architect-reviewer runs broader test suites for regression testing — your job is task-focused verification
 - Do not request review if tests fail — fix them first
 - If unrelated tests are failing, note this in your task notes but do not ignore your own test failures
 
