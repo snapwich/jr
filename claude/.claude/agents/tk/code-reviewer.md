@@ -119,7 +119,7 @@ If the project has a configured linter or formatter:
 
 1. Check that the coder's completion note mentions static checks passing
 2. If static checks weren't run and the project has them configured, request changes
-3. Optionally run lint/format-check yourself on modified files to verify
+3. Run lint/format-check yourself on modified files to verify
 
 Do not block on unrelated lint violations in files the coder didn't touch — note those on the feature as pre-existing
 technical debt.
