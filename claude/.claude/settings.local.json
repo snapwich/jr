@@ -11,7 +11,8 @@
       "Bash(tk dep:*)",
       "mcp__atlassian__getJiraIssue",
       "Bash(just worktree-list:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(tk tree:*)"
     ]
   }
 }

@@ -5,6 +5,21 @@ Break down a plan document into features and tasks, or modify existing ticket st
 The user provides a plan document or update request — either as a file path (`$ARGUMENTS`) or pasted directly. The input
 describes work to be done: new features, new tasks, or modifications to existing tickets.
 
+## Tools
+
+**Use `tk` CLI for ALL ticket operations.** This orchestration framework uses its own git-backed ticket system accessed
+via the `tk` command (always in PATH). Do NOT use MCP task tools (`mcp__mc-dev__tasks`, `TaskCreate`, `TaskUpdate`,
+`TaskList`, `TaskGet`) — those are generic Claude Code task tracking, unrelated to this system's tickets.
+
+- `tk create` — create tickets
+- `tk show` — read ticket content
+- `tk query` — query tickets with jq filters
+- `tk tree` — show hierarchy
+- `tk dep` / `tk undep` — manage dependencies
+- `tk assign` — set assignee
+- `tk add-note` — add notes
+- `tk reopen` / `tk close` — change status
+
 ## Process
 
 ### 1. Discover Current State
@@ -366,6 +381,17 @@ Present the user with:
 - Any cross-feature dependencies
 - Confirmation that no dependency cycles exist
 
+## Scope Boundary
+
+**STOP after verification.** This command creates and modifies tickets ONLY. Do NOT:
+
+- Spawn agents to work on tickets (e.g., `Task` tool with `subagent_type="tk:coder"`)
+- Run `just start-work`
+- Start implementing task requirements
+- Make code changes
+
+Work on tickets happens through the orchestrator: `just start-work`. The human decides when to start work.
+
 ## Edge Cases
 
 - **Feature with in-progress task**: Warn the user and recommend waiting. Modifying the chain while a coder is active
@@ -405,3 +431,5 @@ Present the user with:
 - Add `[human]` notes explaining what was changed and why on reopened tickets
 - Identify architect-review by `architect-review` **tag**, never by assignee
 - New tasks default to insertion before architect-review unless user specifies otherwise
+- Use `tk` CLI for all ticket operations — NOT MCP task tools
+- STOP after verification — do not spawn agents or start implementation

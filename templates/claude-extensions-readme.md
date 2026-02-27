@@ -1,5 +1,10 @@
 # Project-Level Agent Extensions
 
+This directory is deployed to `<project>/.agents/claude/` via stow. Extensions live at:
+
+- `<project>/.agents/claude/_/...` for project-wide extensions
+- `<project>/.agents/claude/<repo>/...` for repo-specific extensions
+
 This directory contains project-specific extensions for tk subagents.
 
 ## Structure
@@ -32,7 +37,3 @@ When running integration or e2e tests, wrap with lock:
 just with-lock app-server pnpm test:integration amx -b
 ```
 ````
-
-```
-
-```
