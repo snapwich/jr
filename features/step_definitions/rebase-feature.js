@@ -127,7 +127,7 @@ Given("the branch for {string} is squash-merged into default", async function (f
 
   // Squash merge the feature branch into default
   await execFileAsync("git", ["merge", "--squash", wtName], { cwd: defaultDir });
-  await execFileAsync("git", ["commit", "-m", `squash merge ${wtName}`], { cwd: defaultDir });
+  await execFileAsync("git", ["commit", "-m", `squash merge feature`], { cwd: defaultDir });
   // Push to origin so origin/HEAD updates
   await execFileAsync("git", ["push", "origin", "HEAD"], { cwd: defaultDir });
 });
@@ -342,17 +342,14 @@ Given(
   },
 );
 
-Given(
-  "a mock rebaser response for {string} that signals {string}",
-  async function (featureName, signalType) {
-    const featureId = this.ticketIds[featureName];
-    const content = `---
+Given("a mock rebaser response for {string} that signals {string}", async function (featureName, signalType) {
+  const featureId = this.ticketIds[featureName];
+  const content = `---
 signal: ${signalType}
 ticket: ${featureId}
 summary: Mock rebaser completed`;
-    await this.setMockResponse(featureId, "tk:rebaser", content);
-  },
-);
+  await this.setMockResponse(featureId, "tk:rebaser", content);
+});
 
 Given(
   "a mock rebaser response for {string} that signals {string} with summary {string}",
