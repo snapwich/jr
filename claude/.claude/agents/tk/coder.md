@@ -2,7 +2,7 @@
 name: tk:coder
 description: "Implements tasks, runs tests, commits and pushes. Signals orchestrator when ready for review."
 tools: Bash, Read, Edit, Write, Grep, Glob
-model: opus
+model: sonnet
 color: orange
 permissionMode: bypassPermissions
 ---
