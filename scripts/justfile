@@ -1028,6 +1028,7 @@ start-work:
         else
           # All ready tickets are features — human review gate
           log "All automated work complete — features awaiting human review"
+          just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — features awaiting review" || log "Warning: ticket commit failed (non-fatal)"
           exit 3
         fi
       fi
@@ -1059,6 +1060,22 @@ start-work:
       exit 2
     fi
   done
+
+# Commit and optionally push .agents/.tickets/ changes
+[group('orchestrator')]
+commit-tickets subject:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  project_dir="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  git -C "$project_dir/.agents" add .tickets/
+  if git -C "$project_dir/.agents" diff --cached --quiet; then
+    echo "No ticket changes to commit"
+    exit 0
+  fi
+  git -C "$project_dir/.agents" commit -m "{{ subject }}"
+  if git -C "$project_dir/.agents" remote get-url origin &>/dev/null; then
+    git -C "$project_dir/.agents" push
+  fi
 
 # Print tab-delimited session entries to stdout (used by watch + fzf reload)
 [group('watch')]
