@@ -79,6 +79,10 @@ touched. You don't need to backfill the entire file, but the code paths you chan
 it produces, how it handles errors. Prefer testing through public APIs rather than reaching into internals. A good test
 breaks when behavior changes, not when implementation is refactored.
 
+**Mocking modules**: When mocking a module, import the original and override only the specific exports you need to mock.
+This is self-documenting (shows exactly what's mocked), maintainable (won't break if the real module changes), and
+avoids duplicating values like enums or constants that should come from the source.
+
 ### Run Tests
 
 - If test runner skills are available (unit, integration, e2e), use them — they encode the correct commands and paths
