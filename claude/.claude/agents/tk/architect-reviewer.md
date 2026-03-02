@@ -53,13 +53,26 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 
 ## Review Process
 
-### Full Branch Review
+### Branch Diff Inventory
 
-Review the full branch diff covering all tasks in this feature:
+Start by cataloging what the feature changed. This tells you where to focus your integration review — it is not the
+review itself.
 
 ```sh
 git diff $(git merge-base HEAD origin/HEAD)..HEAD
 ```
+
+### Codebase Integration
+
+Use the diff inventory to identify areas of the codebase affected by or related to the feature's changes. For each area
+of significant change, look beyond the diff to understand how new code integrates with what already exists:
+
+- **Duplicate patterns**: Search the codebase for existing implementations of patterns introduced by the branch. Flag
+  new utilities, helpers, or test infrastructure that duplicates what already exists.
+- **Convention consistency**: Check that new code follows conventions established in surrounding files — naming, file
+  organization, test patterns, error handling approaches.
+- **API surface coherence**: When the branch adds or modifies public APIs, verify consistency with existing API patterns
+  in the same package/module.
 
 ### Cross-Task Coherence
 
@@ -73,9 +86,12 @@ git diff $(git merge-base HEAD origin/HEAD)..HEAD
 
 ### Downstream Dependencies
 
-- Check `tk` for features/tasks that depend on the parent feature
-- Verify their needs are met by the implementation
-- Flag any gaps that would block downstream work
+- Check `tk` for features that depend on the parent feature
+- Read the dependent feature descriptions to understand what they will need from this feature's output — APIs,
+  interfaces, data formats, test infrastructure, patterns
+- Evaluate whether the implementation supports those needs: are the APIs flexible enough, are the interfaces
+  well-defined for consumers, are there extension points where downstream work will need them
+- Flag any gaps, constraints, or architectural decisions that would block or unnecessarily complicate downstream work
 
 ### Feature Acceptance Criteria Coverage
 
@@ -99,7 +115,11 @@ Review whether tests use the right level of abstraction:
 - Flag missing integration tests where unit tests alone can't verify a cross-component interaction
 - Do NOT request e2e tests unless the feature description explicitly calls for them or there is a critical user-facing
   flow with no other verification path
-- Check for over-testing: redundant tests that cover the same scenario at multiple levels without adding confidence
+- Check for over-testing: search the existing test suite for coverage that overlaps with new tests. Flag new
+  verification tests (API surface checks, export assertions, type checks) that duplicate assertions already present in
+  other test files. Also flag redundant tests covering the same scenario at multiple levels without adding confidence.
+- Flag leftover scaffolding: placeholder tests (`expect(true).toBe(true)`), setup-only test files, or trivially empty
+  test files that served as bootstrapping but were never replaced with meaningful tests
 
 ### Regression Testing — Integration and E2E Suites
 
