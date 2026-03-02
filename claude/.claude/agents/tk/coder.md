@@ -75,6 +75,10 @@ worktree.
 **Coverage gaps**: If you're modifying existing code that lacks test coverage, fill in the gaps for the code you
 touched. You don't need to backfill the entire file, but the code paths you changed or depend on should be tested.
 
+**Test at API boundaries**: Tests should verify the behavioral contract — what the code accepts, returns, side effects
+it produces, how it handles errors. Prefer testing through public APIs rather than reaching into internals. A good test
+breaks when behavior changes, not when implementation is refactored.
+
 ### Run Tests
 
 - If test runner skills are available (unit, integration, e2e), use them — they encode the correct commands and paths

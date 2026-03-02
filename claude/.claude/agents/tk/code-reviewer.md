@@ -1,7 +1,7 @@
 ---
 name: tk:code-reviewer
 description: "Reviews code and test quality for completed tasks. Approves or requests changes."
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Edit, Grep, Glob
 model: opus
 color: cyan
 permissionMode: bypassPermissions
@@ -46,7 +46,13 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
    tk add-note <ticket-id> '[code-reviewer] Tests: <X/Y pass>'
    ```
 
-4. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
+4. **After mutation testing** — Log mutation testing results:
+
+   ```sh
+   tk add-note <ticket-id> '[code-reviewer] Mutation testing: <N mutations, M caught>. <brief findings or "skipped: <reason>">'
+   ```
+
+5. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
 
 ## Review Process
 
@@ -102,6 +108,39 @@ defect.
 When requesting changes for insufficient tests, be specific: name what's missing (e.g., "no test for the error case when
 the API returns 404", "the validation logic in `parser.ts:45` has no coverage") so a fresh coder can act on it without
 guessing.
+
+### Mutation Testing
+
+After reviewing tests conceptually, introduce targeted mutations to empirically verify that tests catch real bugs.
+
+**When to skip:** Skip mutation testing if: the diff is config/docs-only with no behavioral code, there are no test
+files in the diff, or you are already requesting changes for clearly insufficient tests (no point mutating code when
+tests are fundamentally inadequate).
+
+**Process:**
+
+1. Select 3–5 mutations targeting API boundaries — return values, validation logic, error handling, conditional
+   operators, side-effect calls (e.g., removing a function call that triggers an important side effect). Focus on the
+   changes since the HEAD SHA from the `[orchestrator]` note, same scope as your code review.
+2. For each mutation:
+   - Use Edit to introduce the mutation (e.g., flip a conditional, change a return value, remove a validation check)
+   - Run the narrow test set — the same unit/integration tests the coder should have run for this task
+   - Record whether the mutation was caught (test failed) or survived (tests still passed)
+   - Revert immediately: `git checkout -- <file>`
+3. After all mutations, run `git diff --stat` to verify the worktree is clean. If dirty, run `git checkout -- .` to
+   reset.
+
+**Interpreting results:**
+
+- **Mutation caught** (test failed) — test is valid, no action needed
+- **Mutation survived, no test intended to catch it** — suggest a specific test case to add (name the scenario and
+  expected behavior)
+- **Mutation survived, a test exists that _should_ catch it but didn't** — flag for rework. The test is likely testing
+  implementation details rather than behavior. Cite the test and the mutation it missed.
+- **Most or all mutations survived** — tests may need fundamental rework. Weight this heavily in your review decision.
+
+Surviving mutations on critical boundaries (error handling, validation, return values that drive control flow) are
+grounds for `changes-requested`, same as any other test quality issue.
 
 ### Integration Test Verification
 
@@ -177,7 +216,9 @@ Valid signal types for this agent: `approved`, `changes-requested`, `escalate`
 
 ## Rules
 
-- Do NOT use Edit or Write tools — you evaluate, you do not modify code
+- **Leave no trace** — the worktree MUST be exactly as you found it when you finish. No commits, no staged changes, no
+  unstaged changes. After mutation testing, run `git diff --stat` to verify clean state; if dirty, `git checkout -- .`
+  to reset. Do NOT use the Write tool — only Edit for mutations, Read/Grep/Glob for review.
 - Do NOT approve code with failing tests
 - Be specific in feedback — file paths, line numbers, concrete suggestions
 - Review against the task's acceptance criteria, not your own preferences
