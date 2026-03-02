@@ -177,9 +177,12 @@ feedback, cite the original feedback in your changes-requested note.
 
 ## Outcomes
 
+**IMPORTANT**: `just signal` must be your final tool call. After it runs, output the signal block it printed **exactly
+as returned** as your final text. Do not add commentary, summaries, or any other text after the signal block.
+
 ### Approved
 
-If the code and tests meet quality standards, run the signal command as the **last thing** in your response:
+If the code and tests meet quality standards:
 
 ```sh
 just signal approved <ticket-id> "<brief summary of what looks good>"

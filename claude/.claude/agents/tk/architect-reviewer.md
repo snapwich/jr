@@ -137,6 +137,9 @@ to run broader test suites that could catch regressions from the feature's chang
 
 ## Outcomes
 
+**IMPORTANT**: `just signal` must be your final tool call. After it runs, output the signal block it printed **exactly
+as returned** as your final text. Do not add commentary, summaries, or any other text after the signal block.
+
 ### Approved
 
 If the feature is coherent and ready for human review:
