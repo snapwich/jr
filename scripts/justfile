@@ -487,6 +487,7 @@ start-work:
   declare -A PID_TO_WORKTREE   # pid → worktree-name (lock name)
   declare -A PID_TO_START_TS   # pid → epoch seconds when launched
   declare -A PID_TO_TITLE      # pid → ticket title
+  declare -A PID_TO_TYPE       # pid → ticket type (task or feature)
   declare -A BUSY_WORKTREES    # worktree-name → pid
   declare -A LOGGED_FEATURES   # feature-id → 1 (already logged as ready for human review)
   declare -A LAUNCHED_THIS_RUN # ticket-id → 1 (launched this orchestrator run)
@@ -702,25 +703,33 @@ start-work:
       return 1
     fi
 
-    # Features are human review gates — skip them (log once)
-    if [[ "$ticket_type" == "feature" ]]; then
-      if [[ -z "${LOGGED_FEATURES[$ticket_id]:-}" ]]; then
-        log "Feature $ticket_id ready for human review"
-        LOGGED_FEATURES[$ticket_id]=1
-      fi
-      return 1
-    fi
-
     # Get ticket metadata
     local ticket_json
     ticket_json=$(tk query "select(.id == \"$ticket_id\")")
     local agent parent title
     agent=$(echo "$ticket_json" | jq -r '.assignee')
+
+    # Feature handling: launch if architect-assigned, skip if human or unassigned
+    if [[ "$ticket_type" == "feature" ]]; then
+      if [[ "$agent" == "tk:architect-reviewer" ]]; then
+        : # Fall through to launch architect for feature review
+      elif [[ "$agent" == "human" ]]; then
+        if [[ -z "${LOGGED_FEATURES[$ticket_id]:-}" ]]; then
+          log "Feature $ticket_id ready for human review"
+          LOGGED_FEATURES[$ticket_id]=1
+        fi
+        return 1
+      else
+        # Unassigned or unknown — skip
+        return 1
+      fi
+    fi
     parent=$(echo "$ticket_json" | jq -r '.parent // empty')
     title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
 
-    # Add run marker if first launch this session (resets review counter)
-    if [[ -z "${LAUNCHED_THIS_RUN[$ticket_id]:-}" ]]; then
+    # Add run marker if first launch this session (resets code-reviewer counter for tasks)
+    # Skip for features — architect iteration count persists across runs
+    if [[ "$ticket_type" != "feature" && -z "${LAUNCHED_THIS_RUN[$ticket_id]:-}" ]]; then
       tk add-note "$ticket_id" "[orchestrator] Run started"
       LAUNCHED_THIS_RUN[$ticket_id]=1
     fi
@@ -802,6 +811,7 @@ start-work:
     PID_TO_WORKTREE[$pid]="$lock_name"
     PID_TO_START_TS[$pid]=$(date +%s)
     PID_TO_TITLE[$pid]="$title"
+    PID_TO_TYPE[$pid]="$ticket_type"
     BUSY_WORKTREES[$lock_name]="$pid"
 
     log "Launched $agent on $ticket_id \"$title\" in $repo/$wt (pid: $pid)"
@@ -825,6 +835,7 @@ start-work:
     local ticket_id="${PID_TO_TICKET[$finished_pid]:-}"
     local finished_agent="${PID_TO_AGENT[$finished_pid]:-}"
     local wt="${PID_TO_WORKTREE[$finished_pid]:-}"
+    local ticket_type="${PID_TO_TYPE[$finished_pid]:-task}"
 
     if [[ -z "$ticket_id" ]]; then
       log "WARNING: Unknown PID $finished_pid finished"
@@ -839,6 +850,7 @@ start-work:
     unset PID_TO_WORKTREE[$finished_pid]
     unset PID_TO_START_TS[$finished_pid]
     unset PID_TO_TITLE[$finished_pid]
+    unset PID_TO_TYPE[$finished_pid]
     unset BUSY_WORKTREES[$wt]
     release_lock "$wt"
 
@@ -854,14 +866,53 @@ start-work:
       return
     fi
 
-    # Check if task has architect-review tag
-    local has_architect_tag=false
-    local ticket_tags
-    ticket_tags=$(tk query "select(.id == \"$ticket_id\")" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
-    if echo "$ticket_tags" | grep -qx "architect-review"; then
-      has_architect_tag=true
+    # Feature-level signals (from architect reviewing a feature)
+    if [[ "$ticket_type" == "feature" ]]; then
+      case "${SIGNAL:-}" in
+        approved)
+          # Architect approved — assign to human for final review
+          tk assign "$ticket_id" human
+          log "Feature $ticket_id approved by architect — assigned to human for review"
+          ;;
+        changes-requested)
+          # Architect reopened tasks — check iteration cap then let discover() find them
+          local arch_count
+          arch_count=$(count_review_rounds "$ticket_id" "architect")
+          if (( arch_count >= 3 )); then
+            log "ESCALATE: Feature $ticket_id has $arch_count architect review rounds — max exceeded"
+            ESCALATION="Max architect review iterations exceeded for feature $ticket_id"
+            return
+          fi
+          log "Feature $ticket_id: architect requested changes — reopened tasks will appear in ready"
+          ;;
+        escalate)
+          log "ESCALATE: $ticket_id — ${SIGNAL_SUMMARY:-no summary}"
+          ESCALATION="Escalation from $ticket_id: ${SIGNAL_SUMMARY:-no details}"
+          ;;
+        *)
+          local now duration
+          now=$(date +%s)
+          duration=$((now - start_ts))
+          if [[ $duration -ge $((AGENT_TIMEOUT - 10)) ]]; then
+            log "TIMEOUT: $ticket_id timed out after ${duration}s"
+            local session_uuid
+            session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
+            tk add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
+            ESCALATION="Timeout on $ticket_id after ${duration}s"
+          else
+            log "ESCALATE: $ticket_id returned no valid signal"
+            if [[ -f "$outfile" ]]; then
+              log "Last 5 lines of output:"
+              tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
+            fi
+            ESCALATION="No valid signal from $ticket_id"
+          fi
+          ;;
+      esac
+      return
     fi
 
+    # Task-level signals
     case "${SIGNAL:-}" in
       requesting-review)
         log "Assigning $ticket_id to tk:code-reviewer"
@@ -869,34 +920,17 @@ start-work:
         launch "$ticket_id" "task" || log "Could not immediately launch reviewer for $ticket_id"
         ;;
       approved)
-        if [[ "$has_architect_tag" == "true" && "$finished_agent" == "tk:code-reviewer" ]]; then
-          # Code-reviewer approved an architect-review task — re-launch architect
-          log "Assigning $ticket_id to tk:architect-reviewer (architect-review task)"
-          tk assign "$ticket_id" "tk:architect-reviewer"
-          launch "$ticket_id" "task" || log "Could not immediately launch architect for $ticket_id"
-        else
-          log "Closing $ticket_id (approved)"
-          tk close "$ticket_id"
-        fi
+        log "Closing $ticket_id (approved)"
+        tk close "$ticket_id"
         ;;
       changes-requested)
-        # Check iteration cap based on who sent the signal
-        if [[ "$finished_agent" == "tk:architect-reviewer" ]]; then
-          local arch_count
-          arch_count=$(count_review_rounds "$ticket_id" "architect")
-          if (( arch_count >= 3 )); then
-            log "ESCALATE: $ticket_id has $arch_count architect review rounds — max exceeded"
-            ESCALATION="Max architect review iterations exceeded for $ticket_id"
-            return
-          fi
-        else
-          local cr_count
-          cr_count=$(count_review_rounds "$ticket_id" "code-reviewer")
-          if (( cr_count >= 3 )); then
-            log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
-            ESCALATION="Max review iterations exceeded for $ticket_id"
-            return
-          fi
+        # Check iteration cap for code-reviewer
+        local cr_count
+        cr_count=$(count_review_rounds "$ticket_id" "code-reviewer")
+        if (( cr_count >= 3 )); then
+          log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
+          ESCALATION="Max review iterations exceeded for $ticket_id"
+          return
         fi
         log "Assigning $ticket_id back to tk:coder"
         tk assign "$ticket_id" "tk:coder"
@@ -999,34 +1033,40 @@ start-work:
     discover
 
     if (( ${#PID_TO_TICKET[@]} == 0 )); then
-      # Check if there are ready tickets that are all features (human review gate)
-      ready_features_only=false
-      ready_count=0
+      # Check ready tickets for human review gate or launchable work
+      local ready_count=0 human_features=0 launchable=0
       ready_count=$(tk ready 2>/dev/null | grep -c '^[a-z]') || true
+
       if (( ready_count > 0 )); then
-        # Check if ALL ready tickets are features
-        ready_task_count=0
         while IFS= read -r line; do
           [[ -z "$line" ]] && continue
+          local rid rtype rassignee
           rid=$(echo "$line" | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
           [[ -z "$rid" ]] && continue
-          rtype=$(tk query "select(.id == \"$rid\")" | jq -r '.type' 2>/dev/null || true)
-          if [[ "$rtype" != "feature" ]]; then
-            ready_task_count=$((ready_task_count + 1))
+          local rjson
+          rjson=$(tk query "select(.id == \"$rid\")" 2>/dev/null || true)
+          rtype=$(echo "$rjson" | jq -r '.type' 2>/dev/null || true)
+          rassignee=$(echo "$rjson" | jq -r '.assignee // empty' 2>/dev/null || true)
+
+          if [[ "$rtype" == "feature" && "$rassignee" == "human" ]]; then
+            human_features=$((human_features + 1))
+          elif [[ "$rtype" == "task" || "$rassignee" == "tk:architect-reviewer" ]]; then
+            launchable=$((launchable + 1))
           fi
         done < <(tk ready 2>/dev/null || true)
 
-        if (( ready_task_count > 0 )); then
-          sleep 1
-          continue
-        else
-          # All ready tickets are features — human review gate
+        if (( human_features > 0 && launchable == 0 )); then
+          # Only human-assigned features remain — human review gate
           log "All automated work complete — features awaiting human review"
           just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — features awaiting review" || log "Warning: ticket commit failed (non-fatal)"
           exit 3
+        elif (( launchable > 0 )); then
+          sleep 1
+          continue
         fi
       fi
-      open_count=0
+
+      local open_count=0
       open_count=$(tk query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
       if (( open_count == 0 )); then
         log "All work complete"
@@ -1261,7 +1301,7 @@ locks:
     fi
   done
 
-# Verify ticket structure — checks for linear chains, architect-review tags, and cross-feature deps
+# Verify ticket structure — checks for linear chains and cross-feature deps
 [group('plan-features')]
 verify-tickets:
   #!/usr/bin/env bash
@@ -1372,21 +1412,6 @@ verify-tickets:
       ((errors++)) || true
     fi
 
-    # Check 3: Last task (no sibling depends on it) must have architect-review tag
-    for child_id in "${children[@]}"; do
-      if [[ "${HAS_SIBLING_DEPENDENT[$child_id]}" == "false" ]]; then
-        # This is the last task in the chain — check for architect-review tag
-        child_tags=$(tk query "select(.id == \"$child_id\")" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
-        if ! echo "$child_tags" | grep -qx "architect-review"; then
-          echo "ERROR: Last task in chain missing architect-review tag"
-          echo "  Feature: $feature_id"
-          echo "  Last task: $child_id"
-          echo
-          ((errors++)) || true
-        fi
-      fi
-    done
-
     unset SIBLING_DEP_COUNT
     unset HAS_SIBLING_DEPENDENT
   done
@@ -1398,7 +1423,7 @@ verify-tickets:
 
   echo "All tickets valid"
 
-# Reopen an architect-review task for rework after human review feedback
+# Request changes on a feature after human review — reassigns to architect for rework
 request-changes feature-id feedback:
   #!/usr/bin/env bash
   set -e
@@ -1406,32 +1431,25 @@ request-changes feature-id feedback:
   feature_id="{{ feature-id }}"
   feedback="{{ feedback }}"
 
-  # Find the architect-review task among feature's children
-  arch_task=""
-  while IFS= read -r task_json; do
-    [[ -z "$task_json" ]] && continue
-    task_id=$(echo "$task_json" | jq -r '.id')
-    task_parent=$(echo "$task_json" | jq -r '.parent // empty')
-    [[ "$task_parent" != "$feature_id" ]] && continue
-    task_tags=$(echo "$task_json" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
-    if echo "$task_tags" | grep -qx "architect-review"; then
-      arch_task="$task_id"
-      break
-    fi
-  done < <(tk query 'select(.type == "task")' 2>/dev/null)
-
-  if [[ -z "$arch_task" ]]; then
-    echo "ERROR: No architect-review task found for feature $feature_id" >&2
+  # Validate feature exists
+  feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
+  if [[ -z "$feature_json" ]]; then
+    echo "ERROR: Feature $feature_id not found" >&2
     exit 1
   fi
 
-  # Add human feedback note, reassign to coder, and reopen
-  tk add-note "$arch_task" "[human] $feedback"
-  tk assign "$arch_task" "tk:coder"
-  tk reopen "$arch_task"
+  feature_type=$(echo "$feature_json" | jq -r '.type')
+  if [[ "$feature_type" != "feature" ]]; then
+    echo "ERROR: $feature_id is not a feature (type: $feature_type)" >&2
+    exit 1
+  fi
 
-  echo "Reopened $arch_task for rework (assigned to tk:coder)"
-  echo "Run 'just start-work' to begin the rework cycle"
+  # Add human feedback note and reassign to architect
+  tk add-note "$feature_id" "[human] CHANGES REQUESTED: $feedback"
+  tk assign "$feature_id" "tk:architect-reviewer"
+
+  echo "Feature $feature_id reassigned to architect for rework"
+  echo "Run 'just start-work' — architect will determine which tasks to reopen"
 
 # Approve a feature — validates, closes, prints next steps
 approve feature-id:
@@ -1669,31 +1687,9 @@ rebase-feature feature-id rework-notes="":
     tk add-note "$feature_id" "$upstream_note"
     echo "Added upstream-change note to feature $feature_id"
 
-    # Find the architect-review task among feature's children
-    arch_task=""
-    while IFS= read -r task_json; do
-      [[ -z "$task_json" ]] && continue
-      task_id=$(echo "$task_json" | jq -r '.id')
-      task_parent=$(echo "$task_json" | jq -r '.parent // empty')
-      [[ "$task_parent" != "$feature_id" ]] && continue
-      task_tags=$(echo "$task_json" | jq -r '.tags // [] | .[]' 2>/dev/null || true)
-      if echo "$task_tags" | grep -qx "architect-review"; then
-        arch_task="$task_id"
-        break
-      fi
-    done < <(tk query 'select(.type == "task")' 2>/dev/null)
+    # Reassign feature to architect for rework
+    tk assign "$feature_id" "tk:architect-reviewer"
 
-    if [[ -z "$arch_task" ]]; then
-      echo "WARNING: No architect-review task found for feature $feature_id" >&2
-      echo "Add rework instructions manually to the appropriate task" >&2
-      exit 0
-    fi
-
-    # Trigger request-changes flow: add note, reassign to coder, reopen
-    tk add-note "$arch_task" "[human] $rework_notes"
-    tk assign "$arch_task" "tk:coder"
-    tk reopen "$arch_task"
-
-    echo "Reopened $arch_task for rework (assigned to tk:coder)"
-    echo "Run 'just start-work' to begin the rework cycle"
+    echo "Feature $feature_id reassigned to architect for rework"
+    echo "Run 'just start-work' — architect will determine which tasks to reopen"
   fi

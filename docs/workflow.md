@@ -18,9 +18,10 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
      ┌──────────────────┐                   ┌──────────────────┐
      │  FEATURE A       │                   │  FEATURE B       │
      │  type: feature   │                   │  type: feature   │
-     │  NO assignee     │                   │  NO assignee     │
-     │  (human gate)    │                   │  dep: Feature A  │
-     │                  │                   │                  │
+     │  assignee:       │                   │  dep: Feature A  │
+     │  tk:architect-   │                   │  assignee:       │
+     │  reviewer        │                   │  tk:architect-   │
+     │                  │                   │  reviewer        │
      │  1 worktree      │                   │  1 worktree      │
      │  1 branch        │                   │  1 branch        │
      │  1 PR            │                   │  (stacked on A)  │
@@ -28,17 +29,17 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
               │                                      │
      ┌────────┼────────┐                    ┌────────┼────────┐
      ▼        ▼        ▼                    ▼        ▼        ▼
-  ┌────────┐┌────────┐┌─────────┐       ┌────────┐┌────────┐┌─────────┐
-  │ Task 1 ││ Task 2 ││ Arch    │       │ Task 3 ││ Task 4 ││ Arch    │
-  │ coder  ││ coder  ││ Review  │       │ coder  ││ coder  ││ Review  │
-  │        ││ dep: 1 ││ dep: 2  │       │        ││ dep: 3 ││ dep: 4  │
-  └────────┘└────────┘└─────────┘       └────────┘└────────┘└─────────┘
-  ◄──── linear chain ────►              ◄──── linear chain ────►
+  ┌────────┐┌────────┐                   ┌────────┐┌────────┐
+  │ Task 1 ││ Task 2 │                   │ Task 3 ││ Task 4 │
+  │ coder  ││ coder  │                   │ coder  ││ coder  │
+  │        ││ dep: 1 │                   │        ││ dep: 3 │
+  └────────┘└────────┘                   └────────┘└────────┘
+  ◄── linear chain ──►                   ◄── linear chain ──►
 
   One feature = one worktree = one branch = one PR.
   Tasks are sequential commits within a feature's worktree.
-  Architect-review task is always last in the chain.
-  Features are human review gates — no agent assignee.
+  Features are assigned to tk:architect-reviewer at creation.
+  When all tasks close, architect reviews the full feature branch.
 ```
 
 ## Task Lifecycle (per task)
@@ -63,46 +64,54 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 │       │                       │ CLOSED │                         │
 │       │                       └────────┘                         │
 │                                                                  │
-│  For architect-review tasks, "approved" from code-reviewer       │
-│  re-launches the architect (not close). The architect then       │
-│  signals approved/changes-requested for the full feature.        │
-│                                                                  │
 │  Orchestrator adds HEAD SHA note before launching coder.         │
 │  Code-reviewer uses SHA to focus review on current task changes. │
 │                                                                  │
-│  Max 3 review iterations per reviewer type, then escalate.       │
+│  Max 3 review iterations per task, then escalate.                │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-## Feature Lifecycle (human review gate)
+## Feature Lifecycle (architect + human review)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                   FEATURE COMPLETION                                 │
 │                                                                     │
-│  All child tasks closed (including architect-review)                │
-│  → feature appears in tk ready                                     │
+│  All child tasks closed                                             │
+│  → feature appears in tk ready (architect already assigned)         │
 │       │                                                             │
 │       ▼                                                             │
 │  ┌──────────────────────────┐                                       │
-│  │ ORCHESTRATOR             │  Logs "ready for human review"        │
-│  │ Does NOT launch agent    │  Exits with code 3 if no other       │
-│  │ (features have no        │  automated work remains.             │
-│  │  assignee)               │                                       │
+│  │ ORCHESTRATOR             │  Launches architect-reviewer for      │
+│  │ Launches architect       │  feature-level review                 │
+│  └──────────────┬───────────┘                                       │
+│                 │                                                   │
+│                 ▼                                                   │
+│  ┌──────────────────────────┐                                       │
+│  │ ARCHITECT-REVIEWER       │                                       │
+│  │ Reviews full branch diff │                                       │
 │  └──────────────┬───────────┘                                       │
 │            ┌────┴──────┐                                            │
 │            ▼           ▼                                            │
 │   ┌────────────┐  ┌───────────────────────────┐                     │
-│   │ HUMAN      │  │ HUMAN REQUESTS CHANGES    │                     │
-│   │ CLOSES     │  │                           │                     │
-│   │ FEATURE    │  │ just request-changes      │  Reopens architect  │
-│   │            │  │   <feature-id> "<text>"   │  review task with   │
-│   │ Unblocks   │  │                           │  [human] note       │
-│   │ downstream │  │ → coder fixes             │                     │
-│   │ features   │  │ → code-reviewer reviews   │                     │
-│   └────────────┘  │ → architect re-reviews    │                     │
-│                   │ → feature back in ready   │                     │
-│                   └───────────────────────────┘                     │
+│   │ approved   │  │ changes-requested         │                     │
+│   │            │  │                           │                     │
+│   │ Assigns to │  │ Reopens tasks or creates  │                     │
+│   │ human      │  │ new tasks, chains deps    │                     │
+│   │            │  │ → tasks appear in ready   │                     │
+│   │ Orchestr.  │  │ → normal coder flow       │                     │
+│   │ exits 3    │  │ → all close → architect   │                     │
+│   │            │  │   re-reviews              │                     │
+│   └─────┬──────┘  └───────────────────────────┘                     │
+│         ▼                                                           │
+│  ┌──────────────────────────────────────────────┐                   │
+│  │ HUMAN REVIEW                                 │                   │
+│  │                                              │                   │
+│  │ • just approve <feature-id>  → closes feat  │                   │
+│  │ • just request-changes <id> "feedback"      │                   │
+│  │   → reassigns to architect, adds note       │                   │
+│  │   → architect reopens tasks for rework      │                   │
+│  └──────────────────────────────────────────────┘                   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,7 +120,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 ```text
 ┌───────────────────────────────────────────────────────────────────────┐
 │                                                                       │
-│  Architect-review task ready (all prior tasks closed)                 │
+│  Feature ready (all tasks closed, architect assigned)                 │
 │       │                                                               │
 │       ▼                                                               │
 │  Architect reviews full branch diff                                   │
@@ -122,16 +131,18 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 │  │          │                                                         │
 │  │          ├─ N ≥ 3 → ESCALATE                                       │
 │  │          └─ N < 3 →                                                │
-│  │               ├─ Orchestrator assigns to coder + HEAD SHA note     │
+│  │               ├─ Architect reopens specific tasks (adds notes)     │
+│  │               ├─ Architect may create new tasks                    │
+│  │               ├─ Architect chains deps to keep linear order        │
+│  │               ├─ Tasks appear in tk ready                          │
 │  │               ├─ Coder fixes, signals requesting-review            │
 │  │               ├─ Code-reviewer reviews fix                         │
 │  │               │  ├─ changes-requested → back to coder              │
-│  │               │  └─ approved → orchestrator sees architect-review  │
-│  │               │     tag → re-launches architect                    │
-│  │               └─ Architect reviews again (round N+1)               │
+│  │               │  └─ approved → close task                          │
+│  │               └─ All tasks close → architect re-reviews (N+1)      │
 │  │                                                                    │
 │  ▼                                                                    │
-│ Close task → feature in tk ready → HUMAN REVIEW                      │
+│ Assign to human → orchestrator exits 3 → HUMAN REVIEW                │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -146,8 +157,10 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
             │  tk ready → get unblocked items    │◄────────────────────┐
             │                                    │                     │
             │  For each result:                  │                     │
-            │  • feature → log "ready for        │                     │
-            │    human review", skip             │                     │
+            │  • feature with architect assignee │                     │
+            │    → launch architect-reviewer     │                     │
+            │  • feature with human assignee     │                     │
+            │    → log "ready for human review"  │                     │
             │  • task → derive worktree from     │                     │
             │    parent feature, create if       │                     │
             │    needed, add HEAD SHA note,      │                     │
@@ -168,20 +181,18 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
             │  → assign to code-reviewer, launch │                     │
             │                                    │                     │
             │  CODE-REVIEWER: "approved"         │                     │
-            │  → if architect-review tag:        │                     │
-            │    assign to architect, launch     │                     │
-            │  → else: close task                │                     │
+            │  → close task                      │                     │
             │                                    │                     │
             │  CODE-REVIEWER: "changes-requested"│                     │
             │  → assign to coder + SHA note,     │                     │
             │    launch (or escalate if ≥3)      │                     │
             │                                    │                     │
-            │  ARCHITECT: "approved"             │                     │
-            │  → close task                      │                     │
+            │  ARCHITECT (on feature): "approved"│                     │
+            │  → assign feature to human         │                     │
             │                                    │                     │
             │  ARCHITECT: "changes-requested"    │                     │
-            │  → assign to coder + SHA note,     │                     │
-            │    launch (or escalate if ≥3)      │                     │
+            │  → reopened tasks appear in ready  │                     │
+            │    (or escalate if ≥3)             │                     │
             │                                    │                     │
             │  ANY: "escalate" or no signal      │                     │
             │  → drain, exit 2                   │                     │

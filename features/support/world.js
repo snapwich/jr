@@ -126,12 +126,20 @@ class OrchestratorWorld extends World {
   }
 
   async setupSingleRepo() {
+    // Idempotency: skip if already set up
+    const defaultDir = join(this.projectDir, "default");
+    try {
+      await execFileAsync("git", ["-C", defaultDir, "rev-parse", "--git-dir"]);
+      return; // Already initialized
+    } catch {
+      // Not initialized yet, continue
+    }
+
     // Create a bare "remote" repo so origin/HEAD resolves
     const bareDir = join(this.projectDir, "bare-remote");
     await mkdir(bareDir, { recursive: true });
     await execFileAsync("git", ["init", "--bare"], { cwd: bareDir });
 
-    const defaultDir = join(this.projectDir, "default");
     await mkdir(defaultDir, { recursive: true });
     await execFileAsync("git", ["init"], { cwd: defaultDir });
     await execFileAsync("git", ["config", "user.email", "test@test.com"], { cwd: defaultDir });

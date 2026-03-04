@@ -7,10 +7,9 @@ Feature: Orchestrator signal dispatch
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And the mock subagent always returns "requesting-review" for "task-impl" as "tk:coder"
     And the mock subagent always returns "approved" for "task-impl" as "tk:code-reviewer"
-    And the mock subagent always returns "approved" for "arch-review" as "tk:architect-reviewer"
+    And the mock subagent always returns "approved" for "feat-1" as "tk:architect-reviewer"
     When I run the orchestrator
     Then ticket "task-impl" should be closed
-    And ticket "arch-review" should be closed
     And the orchestrator should exit with code 3
     And the output should contain "ready for human review"
 
@@ -18,10 +17,9 @@ Feature: Orchestrator signal dispatch
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And the mock subagent always returns "requesting-review" for "task-impl" as "tk:coder"
     And the mock subagent returns "changes-requested" then "approved" for "task-impl" as "tk:code-reviewer"
-    And the mock subagent always returns "approved" for "arch-review" as "tk:architect-reviewer"
+    And the mock subagent always returns "approved" for "feat-1" as "tk:architect-reviewer"
     When I run the orchestrator
     Then ticket "task-impl" should be closed
-    And ticket "arch-review" should be closed
 
   Scenario: Escalation after max code-review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"
@@ -32,27 +30,7 @@ Feature: Orchestrator signal dispatch
     Then the orchestrator should exit with code 2
     And the output should contain "ESCALATE"
 
-  Scenario: Code-reviewer approved on architect-review task re-launches architect
-    Given a feature "feat-1" with a linear task chain: "task-impl"
-    And all tasks except arch-review in "feat-1" are closed
-    And the mock subagent returns "changes-requested" then "approved" for "arch-review" as "tk:architect-reviewer"
-    And the mock subagent always returns "requesting-review" for "arch-review" as "tk:coder"
-    And the mock subagent always returns "approved" for "arch-review" as "tk:code-reviewer"
-    When I run the orchestrator
-    Then ticket "arch-review" should be closed
-
-  Scenario: Architect changes-requested triggers rework loop
-    Given a feature "feat-1" with a linear task chain: "task-impl"
-    And the mock subagent always returns "requesting-review" for "task-impl" as "tk:coder"
-    And the mock subagent always returns "approved" for "task-impl" as "tk:code-reviewer"
-    And the mock subagent always returns "requesting-review" for "arch-review" as "tk:coder"
-    And the mock subagent always returns "approved" for "arch-review" as "tk:code-reviewer"
-    And the mock subagent returns "changes-requested" then "approved" for "arch-review" as "tk:architect-reviewer"
-    When I run the orchestrator
-    Then ticket "arch-review" should be closed
-    And the orchestrator should exit with code 3
-
-  Scenario: Feature in tk ready logged as human review
+  Scenario: Feature in tk ready with human assignee logged as human review
     Given a feature "feat-1" with all tasks closed
     When I run the orchestrator
     Then the output should contain "ready for human review"
@@ -62,7 +40,7 @@ Feature: Orchestrator signal dispatch
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And the mock subagent always returns "requesting-review" for "task-impl" as "tk:coder"
     And the mock subagent always returns "approved" for "task-impl" as "tk:code-reviewer"
-    And the mock subagent always returns "approved" for "arch-review" as "tk:architect-reviewer"
+    And the mock subagent always returns "approved" for "feat-1" as "tk:architect-reviewer"
     When I run the orchestrator
     Then ticket "task-impl" should have a note containing "[orchestrator] Assigned to coder. HEAD:"
 
@@ -96,9 +74,9 @@ Feature: Orchestrator signal dispatch
 
   Scenario: Escalation after max architect review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"
-    And all tasks except arch-review in "feat-1" are closed
-    And ticket "arch-review" has 3 architect notes
-    And the mock subagent always returns "changes-requested" for "arch-review" as "tk:architect-reviewer"
+    And all tasks in "feat-1" are closed
+    And ticket "feat-1" has 3 architect notes
+    And the mock subagent always returns "changes-requested" for "feat-1" as "tk:architect-reviewer"
     When I run the orchestrator
     Then the orchestrator should exit with code 2
     And the output should contain "ESCALATE"

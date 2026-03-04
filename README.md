@@ -30,7 +30,7 @@ cd ../my-project
 /tk:plan-features path/to/plan.md
 
 # Review ticket structure before starting
-just verify-tickets          # checks linear chains, architect-review tags, deps
+just verify-tickets          # checks linear chains, cross-feature deps
 tk tree                      # visual overview of features → tasks
 tk plan                      # execution plan — shows what will run and in what order
 
@@ -45,8 +45,8 @@ until all work is complete or a blocker needs human attention.
 
 Before running `just start-work`, verify:
 
-1. **`just verify-tickets`** passes — catches structural issues (non-linear chains, missing architect-review tags,
-   cross-feature task deps) that would cause the orchestrator to misbehave
+1. **`just verify-tickets`** passes — catches structural issues (non-linear chains, cross-feature task deps) that would
+   cause the orchestrator to misbehave
 2. **`tk plan`** looks right — shows the execution order and parallelism; confirm features and task chains match your
    intent
 3. **`tk ready`** shows expected first tasks — these are what the orchestrator will pick up immediately
@@ -72,7 +72,7 @@ cd <repo>/<worktree>          # inspect the code
 # Approve a feature (validates all tasks closed, then closes feature)
 just approve <feature-id>
 
-# Or request changes (reopens architect-review task for rework)
+# Or request changes (reassigns to architect for rework)
 just request-changes <feature-id> "Fix error handling in auth module"
 ```
 
@@ -105,7 +105,7 @@ To trigger rework after an API change in upstream:
 just rebase-feature <feature-id> "API changed: method() now takes Options object"
 ```
 
-This rebases AND reopens the architect-review task for the coder to update call sites.
+This rebases AND reassigns to the architect to review/reopen tasks for call site updates.
 
 ## Useful Commands
 

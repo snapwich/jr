@@ -32,18 +32,18 @@ tk tree
 
 Then build structured data per feature using `tk query` with jq filters:
 
-- Feature ID, status, child tasks
+- Feature ID, status, assignee, child tasks
 - Chain order — walk from the task with no sibling deps (first) → follow dependents to the end
-- Architect-review task — identified by `architect-review` **tag** (never by assignee)
-- Last implementation task — the task that architect-review depends on
+- Last implementation task — the task that the feature depends on (after all task deps are closed, feature is ready)
 - Feature state classification:
 
-| State               | Detection                                            | Scenario |
-| ------------------- | ---------------------------------------------------- | -------- |
-| Active              | Feature open, at least 1 child task open/in_progress | 1        |
-| In human review     | Feature open, all children closed                    | 2        |
-| Closed              | Feature closed                                       | 3        |
-| New (doesn't exist) | Not found                                            | 4        |
+| State               | Detection                                                           | Scenario |
+| ------------------- | ------------------------------------------------------------------- | -------- |
+| Active              | Feature open, at least 1 child task open/in_progress                | 1        |
+| Awaiting architect  | Feature open, all children closed, assignee = tk:architect-reviewer | 2        |
+| Awaiting human      | Feature open, all children closed, assignee = human                 | 3        |
+| Closed              | Feature closed                                                      | 4        |
+| New (doesn't exist) | Not found                                                           | 5        |
 
 Also run:
 
@@ -65,7 +65,7 @@ Identify what changes are needed:
 - **Repos**: which repo(s) each task targets (relevant in multi-repo mode)
 - **Modifications to existing features**: new tasks to add, description changes
 
-For existing features, map current chain and identify insertion points (default: insert before architect-review).
+For existing features, map current chain and identify insertion points (default: append at end of chain).
 
 **Cross-feature test needs**: When the plan involves multiple interrelated features, identify interactions between
 features that need verification but can't be tested within any single feature's scope. Usually, a downstream feature
@@ -167,10 +167,12 @@ For each new feature identified:
 ```sh
 tk create "<feature title>" \
   -t feature \
+  -a tk:architect-reviewer \
   -d "<plan context embedded in the description>"
 ```
 
-Features have **NO assignee** — they are human review gates that appear in `tk ready` when all child tasks close.
+Features are assigned to `tk:architect-reviewer` at creation. When all child tasks close, the feature appears in
+`tk ready` and the orchestrator launches the architect for feature-level review.
 
 In multi-repo mode, add a `repo:<name>` tag to each feature matching the target repo directory name. If the user also
 specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to the **feature** ticket.
@@ -207,17 +209,6 @@ In multi-repo mode, every task MUST have a `repo:<name>` tag matching the target
 have a `repo:<name>` tag in multi-repo mode (used by `rebase-feature`, `approve`, and `worktree-deps`). In single-repo
 mode, omit the tag (the orchestrator defaults to `.`).
 
-**Always create an architect-review task** as the **last task** in each feature's chain:
-
-```sh
-tk create "Architect review" \
-  -t task \
-  -a tk:architect-reviewer \
-  --parent <feature-id> \
-  --tags "architect-review" \
-  -d "Final review of the completed feature."
-```
-
 The task description should include:
 
 - What to implement
@@ -238,10 +229,10 @@ Task descriptions should focus on **what** to accomplish, not **how** to run com
 The coder discovers correct commands via skills (if available), CLAUDE.md, or other discovery methods at implementation
 time.
 
-**Last implementation task owns feature-level test verification.** The last implementation task (immediately before the
-architect-review task) has access to all prior tasks' code in the worktree. If the feature's acceptance criteria require
-verification beyond what individual tasks test, add a "Feature verification" section to this task's description listing
-what needs to be verified and at what level. Use the cheapest test type that adequately covers each criterion:
+**Last task owns feature-level test verification.** The last task in the chain has access to all prior tasks' code in
+the worktree. If the feature's acceptance criteria require verification beyond what individual tasks test, add a
+"Feature verification" section to this task's description listing what needs to be verified and at what level. Use the
+cheapest test type that adequately covers each criterion:
 
 - **Unit tests** should cover the majority of requirements — they are fast, focused, and cheap to maintain
 - **Integration tests** only where unit tests genuinely can't verify the interaction (e.g., API contracts, middleware
@@ -274,48 +265,44 @@ Handle each scenario differently:
 
 - If any task is `in_progress`, **warn the user** and recommend waiting for it to complete before modifying the chain.
   Proceed only with explicit confirmation.
-- Break the link between architect-review and the last implementation task.
-- Create new tasks, wire the chain, add feature deps on new tasks.
+- Create new tasks, chain them after the current last task, add feature deps on new tasks.
 
-**Scenario 2 — Feature in human review** (open, all children closed):
+**Scenario 2 — Awaiting architect** (open, all children closed, assignee = tk:architect-reviewer):
 
-- Reopen the architect-review task: `tk reopen $ARCH_REVIEW`
-- Reassign it: `tk assign $ARCH_REVIEW tk:architect-reviewer`
-- Add a note explaining what changed:
-  `tk add-note $ARCH_REVIEW "[human] Reopened — new tasks added: <brief description>"`
-- Then same re-wiring as scenario 1.
+- Add a note explaining what changed: `tk add-note $FEATURE "[human] Adding new tasks: <brief description>"`
+- Create new tasks, chain after current last task, add feature deps.
+- The architect review will trigger again after the new tasks close.
 
-**Scenario 3 — Closed feature**:
+**Scenario 3 — Awaiting human** (open, all children closed, assignee = human):
+
+- Reassign feature back to architect: `tk assign $FEATURE tk:architect-reviewer`
+- Add a note: `tk add-note $FEATURE "[human] Adding new tasks — re-review required: <brief description>"`
+- Create new tasks, chain after current last task, add feature deps.
+
+**Scenario 4 — Closed feature**:
 
 - Reopen the feature: `tk reopen $FEATURE`
-- Reopen the architect-review task: `tk reopen $ARCH_REVIEW`
-- Reassign architect-review: `tk assign $ARCH_REVIEW tk:architect-reviewer`
-- Add notes on both: `tk add-note $FEATURE "[human] Reopened to add new tasks: <brief description>"`
-- Then same re-wiring as scenario 1.
+- Reassign to architect: `tk assign $FEATURE tk:architect-reviewer`
+- Add note: `tk add-note $FEATURE "[human] Reopened to add new tasks: <brief description>"`
+- Create new tasks, chain after current last task, add feature deps.
 - **Warning**: Reopening a closed feature re-blocks any downstream features that depend on it. Note this to the user.
 
-**Re-wiring pattern** for inserting tasks before architect-review:
+**Re-wiring pattern** for appending tasks at end:
 
 ```sh
-# Break old link
-tk undep $ARCH_REVIEW $LAST_IMPL
-
-# New task chains after last impl
-tk dep $NEW_TASK_1 $LAST_IMPL
+# New task chains after last existing task
+tk dep $NEW_TASK_1 $LAST_TASK
 
 # Chain new tasks together (if multiple)
 tk dep $NEW_TASK_2 $NEW_TASK_1
-
-# Architect-review depends on last new task
-tk dep $ARCH_REVIEW $NEW_TASK_LAST
 
 # Feature depends on each new task
 tk dep $FEATURE $NEW_TASK_1
 tk dep $FEATURE $NEW_TASK_2
 ```
 
-For **mid-chain insertion** (inserting between two existing implementation tasks): same pattern but target the specific
-insertion point — break the link between the two adjacent tasks, insert the new task(s), and re-wire both ends.
+For **mid-chain insertion** (inserting between two existing tasks): break the link between the two adjacent tasks,
+insert the new task(s), and re-wire both ends.
 
 ### 10. Set Up Dependencies
 
@@ -326,7 +313,7 @@ Every feature must depend on all its child tasks so it only appears in `tk ready
 ```sh
 tk dep <feature-id> <task-id-1>
 tk dep <feature-id> <task-id-2>
-# ... for each child task (including the architect-review task)
+# ... for each child task
 ```
 
 #### Linear task chain within each feature
@@ -338,8 +325,6 @@ tk dep <task-2> <task-1>
 tk dep <task-3> <task-2>
 # ... and so on
 ```
-
-The architect-review task is always last in the chain.
 
 #### Cross-feature dependencies
 
@@ -368,7 +353,7 @@ After all changes:
 1. Show the full hierarchy: `tk tree`
 2. Check for dependency cycles: `tk dep cycle`
 3. Show what's immediately ready to work on: `tk ready`
-4. Run `just verify-tickets` to check for linear chains, architect-review tags, and cross-feature task dependencies
+4. Run `just verify-tickets` to check for linear chains and cross-feature task dependencies
 5. Report a summary to the user: what was created, reopened, re-wired
 
 ## Output
@@ -396,10 +381,7 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
 
 - **Feature with in-progress task**: Warn the user and recommend waiting. Modifying the chain while a coder is active
   risks conflicts. Only proceed with explicit confirmation.
-- **Feature with only architect-review** (no impl tasks yet): New tasks become the first in the chain. Architect-review
-  depends on the last new task.
-- **Architect-review in rework cycle** (currently assigned to coder after changes-requested): Still identified by the
-  `architect-review` tag. When adding new tasks, reassign to `tk:architect-reviewer` after re-wiring.
+- **Feature with no tasks yet**: New tasks become the first in the chain.
 - **Closed feature with downstream deps**: Reopening re-blocks all downstream features that depend on it. Always note
   this to the user before proceeding.
 - **Mid-chain insertion**: Supported — identify the insertion point, break the link between the two adjacent tasks,
@@ -408,9 +390,8 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
 ## Rules
 
 - Embed plan context in feature descriptions — do not reference external plan files
-- Features have **NO assignee** — they are human review gates
-- Every implementation task gets initial assignee `tk:coder`
-- Every feature must have an architect-review task as the last task in its chain
+- Features are assigned to `tk:architect-reviewer` at creation — the architect reviews when all tasks close
+- Every task gets initial assignee `tk:coder`
 - Every feature must depend on all its child tasks
 - Tasks within a feature form a **linear chain** — no parallel tasks
 - One feature = one worktree = one branch = one PR
@@ -425,11 +406,9 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
   HOW (specific pnpm/npm/yarn/make commands). Coders discover the correct commands at implementation time via skills,
   CLAUDE.md, justfile, or project docs. This keeps tickets timeless — project tooling may change between ticket creation
   and implementation.
-- When adding tasks to completed/in-review features, ALWAYS reopen architect-review and reassign to
-  `tk:architect-reviewer`
-- When adding tasks to closed features, ALWAYS reopen the feature AND architect-review
-- Add `[human]` notes explaining what was changed and why on reopened tickets
-- Identify architect-review by `architect-review` **tag**, never by assignee
-- New tasks default to insertion before architect-review unless user specifies otherwise
+- When adding tasks to awaiting-human features, reassign feature to `tk:architect-reviewer`
+- When adding tasks to closed features, reopen the feature AND reassign to `tk:architect-reviewer`
+- Add `[human]` notes explaining what was changed and why on modified features
+- New tasks default to appending at end of chain unless user specifies otherwise
 - Use `tk` CLI for all ticket operations — NOT MCP task tools
 - STOP after verification — do not spawn agents or start implementation

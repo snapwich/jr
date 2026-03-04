@@ -18,8 +18,11 @@ Given("a project with tk initialized", async function () {
 // --- Feature with linear task chain ---
 
 Given("a feature {string} with a linear task chain: {string}", async function (featureName, taskNamesCsv) {
-  // Create the feature (no assignee — human review gate)
-  const featureId = await this.createTicket(featureName, { type: "feature" });
+  // Set up single-repo worktree structure (needed for orchestrator to create worktrees)
+  await this.setupSingleRepo();
+
+  // Create the feature with architect assignee (feature-level review)
+  const featureId = await this.createTicket(featureName, { type: "feature", assignee: "tk:architect-reviewer" });
   this.ticketIds[featureName] = featureId;
 
   // Parse task names
@@ -36,53 +39,31 @@ Given("a feature {string} with a linear task chain: {string}", async function (f
     }
     prevTaskId = taskId;
   }
-
-  // Always create architect-review task as last in chain
-  const archTaskId = await this.createTicket("Architect review", {
-    type: "task",
-    assignee: "tk:architect-reviewer",
-    parent: featureId,
-    tags: "architect-review",
-  });
-  this.ticketIds["arch-review"] = archTaskId;
-  await this.addDep(featureId, archTaskId);
-  if (prevTaskId) {
-    await this.addDep(archTaskId, prevTaskId);
-  }
 });
 
 Given("a feature {string} with all tasks closed", async function (featureName) {
-  // Create feature with a single task + arch review, all closed
-  const featureId = await this.createTicket(featureName, { type: "feature" });
+  // Set up single-repo worktree structure (needed for orchestrator to create worktrees)
+  await this.setupSingleRepo();
+
+  // Create feature with a single task, all closed — feature has human assignee (post-architect approval)
+  const featureId = await this.createTicket(featureName, { type: "feature", assignee: "human" });
   this.ticketIds[featureName] = featureId;
 
   const taskId = await this.createTicket("impl-task", { type: "task", assignee: "tk:coder", parent: featureId });
   this.ticketIds["impl-task"] = taskId;
   await this.addDep(featureId, taskId);
 
-  const archTaskId = await this.createTicket("Architect review", {
-    type: "task",
-    assignee: "tk:architect-reviewer",
-    parent: featureId,
-    tags: "architect-review",
-  });
-  this.ticketIds["arch-review"] = archTaskId;
-  await this.addDep(featureId, archTaskId);
-  await this.addDep(archTaskId, taskId);
-
-  // Close both tasks
+  // Close task
   await this.closeTicket(taskId);
-  await this.closeTicket(archTaskId);
 });
 
-Given("all tasks except arch-review in {string} are closed", async function (featureName) {
-  // Close all impl tasks, leave arch-review open and assign to architect
+Given("all tasks in {string} are closed", async function (featureName) {
+  // Close all impl tasks — feature becomes ready for architect review
   for (const [name, id] of Object.entries(this.ticketIds)) {
-    if (name !== featureName && name !== "arch-review") {
+    if (name !== featureName) {
       await this.closeTicket(id);
     }
   }
-  // Arch-review task should now be ready (its deps are closed)
 });
 
 // --- Ticket setup ---
@@ -106,6 +87,8 @@ Given("ticket {string} has {int} code-reviewer notes", async function (name, cou
 
 Given("ticket {string} has {int} architect notes", async function (name, count) {
   const id = this.ticketIds[name];
+  // Add "Run started" first so architect notes count from current run (simulates mid-run iterations)
+  await this.addNote(id, `[orchestrator] Run started`);
   for (let i = 0; i < count; i++) {
     await this.addNote(id, `[signal:architect] CHANGES REQUESTED. Review round ${i + 1}`);
   }

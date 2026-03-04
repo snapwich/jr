@@ -4,7 +4,7 @@ Feature: Verify tickets structure
     Given a project with tk initialized
 
   Scenario: Valid linear chain passes verification
-    Given a feature "feat-1" with linear chain tasks "task-a, task-b" and architect-review
+    Given a feature "feat-1" with linear chain tasks "task-a, task-b"
     When I run verify-tickets
     Then the verification should pass
     And the output should contain "All tickets valid"
@@ -40,9 +40,3 @@ Feature: Verify tickets structure
     When I run verify-tickets
     Then the verification should fail
     And the output should contain "Non-linear task chain"
-
-  Scenario: Missing architect-review tag on last task
-    Given a feature "feat-1" with linear chain tasks "task-a, task-b" without architect-review tag
-    When I run verify-tickets
-    Then the verification should fail
-    And the output should contain "missing architect-review tag"

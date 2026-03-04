@@ -12,8 +12,11 @@ Given("a multi-repo project with repo {string}", async function (repoName) {
 Given(
   "a feature {string} with a task {string} targeting repo {string}",
   async function (featureName, taskName, repoName) {
-    // Create feature
-    const featureId = await this.createTicket(featureName, { type: "feature" });
+    // Create feature with architect assignee (feature-level review)
+    const featureId = await this.createTicket(featureName, {
+      type: "feature",
+      assignee: "tk:architect-reviewer",
+    });
     this.ticketIds[featureName] = featureId;
 
     // Create implementation task with repo tag
@@ -25,17 +28,6 @@ Given(
     });
     this.ticketIds[taskName] = taskId;
     await this.addDep(featureId, taskId);
-
-    // Create architect-review task with repo tag
-    const archTaskId = await this.createTicket("Architect review", {
-      type: "task",
-      assignee: "tk:architect-reviewer",
-      parent: featureId,
-      tags: `architect-review,repo:${repoName}`,
-    });
-    this.ticketIds["arch-review"] = archTaskId;
-    await this.addDep(featureId, archTaskId);
-    await this.addDep(archTaskId, taskId);
   },
 );
 

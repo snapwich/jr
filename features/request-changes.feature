@@ -3,22 +3,19 @@ Feature: Request changes on a completed feature
   Background:
     Given a project with tk initialized
 
-  Scenario: Reopens architect-review task for rework
-    Given a feature "feat-1" with a linear task chain: "task-impl"
-    And all tasks in "feat-1" are closed
+  Scenario: Reassigns feature to architect for rework
+    Given a feature "feat-1" with all tasks closed
     When I run request-changes for "feat-1" with "Fix error handling"
-    Then ticket "arch-review" should have status "open"
-    And ticket "arch-review" should be assigned to "tk:coder"
-    And ticket "arch-review" should have a note containing "[human] Fix error handling"
+    Then feature "feat-1" should be assigned to "tk:architect-reviewer"
+    And feature "feat-1" should have a note containing "[human] CHANGES REQUESTED: Fix error handling"
 
-  Scenario: Fails when no architect-review task exists
-    Given a standalone feature "feat-orphan"
-    When I run request-changes for "feat-orphan" with "Some feedback"
+  Scenario: Fails when ticket is not a feature
+    Given a standalone task "task-orphan"
+    When I run request-changes for "task-orphan" with "Some feedback"
     Then the last command should exit with code 1
-    And the output should contain "No architect-review task found"
+    And the output should contain "not a feature"
 
-  Scenario: Reopened task appears in tk ready
-    Given a feature "feat-1" with a linear task chain: "task-impl"
-    And all tasks in "feat-1" are closed
+  Scenario: Reassigned feature appears in tk ready
+    Given a feature "feat-1" with all tasks closed
     When I run request-changes for "feat-1" with "Needs rework"
-    Then ticket "arch-review" should appear in tk ready
+    Then feature "feat-1" should appear in tk ready

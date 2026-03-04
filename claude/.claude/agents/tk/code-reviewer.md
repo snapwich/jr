@@ -169,11 +169,11 @@ Before writing your review, check how many prior `[code-reviewer]` notes exist o
 more prior code-reviewer notes, this task has gone through too many review iterations. Return an `escalate` signal
 instead of continuing the cycle.
 
-### Architect-Review Rework
+### Architect Rework
 
-When reviewing a task tagged `architect-review`, check for `[architect]` and `[human]` notes that contain the feedback
-triggering rework. Verify the specific issues raised were addressed. If the coder's changes don't resolve the original
-feedback, cite the original feedback in your changes-requested note.
+When reviewing a task that was reopened by the architect (look for `[architect] CHANGES REQUESTED` notes), verify the
+specific issues raised were addressed. If the coder's changes don't resolve the original feedback, cite the original
+feedback in your changes-requested note.
 
 ## Outcomes
 

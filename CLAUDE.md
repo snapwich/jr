@@ -140,11 +140,11 @@ worktrees. The orchestrator enforces one agent per worktree at a time.
 
 Three Claude subagents plus a bash orchestrator:
 
-- **Coder** (`tk:coder`, opus, full tools, orange) — implements tasks, runs tests, commits
+- **Coder** (`tk:coder`, sonnet, full tools, orange) — implements tasks, runs tests, commits
 - **Code-Reviewer** (`tk:code-reviewer`, opus, read-only, cyan) — reviews code + test quality, approves or requests
   changes
-- **Architect-Reviewer** (`tk:architect-reviewer`, opus, read-only, magenta) — reviews full feature branch for
-  cross-task coherence, integration quality
+- **Architect-Reviewer** (`tk:architect-reviewer`, opus, tk write access, magenta) — reviews full feature branch for
+  cross-task coherence, integration quality. Can reopen tasks or create new ones.
 - **Orchestrator** (`just start-work`, bash) — coordinates the workflow, launches subagents, reacts to their signals.
   Deterministic signal dispatch — no LLM. Exits 0 on completion, 2 on escalation/deadlock, 3 on features awaiting human
   review
@@ -153,12 +153,12 @@ Three Claude subagents plus a bash orchestrator:
 
 Two levels: **Feature** and **Task**.
 
-- **Feature** (`type: feature`, no assignee) — logical grouping of related work. One feature = one worktree = one branch
-  = one PR. Created by `/tk:plan-features` from a plan document. Depends on all its child tasks (appears in `tk ready`
-  when all children close). Features are **human review gates** — when they appear in `tk ready`, the orchestrator logs
-  it and exits with code 3. Humans close features directly or use `just request-changes` to trigger rework.
+- **Feature** (`type: feature`, `assignee: tk:architect-reviewer`) — logical grouping of related work. One feature = one
+  worktree = one branch = one PR. Created by `/tk:plan-features` from a plan document. Depends on all its child tasks
+  (appears in `tk ready` when all children close). When ready, orchestrator launches architect for feature review. After
+  architect approval, feature is assigned to `human` and orchestrator exits with code 3 for human review.
 - **Task** (`type: task`, parent: feature) — sequential unit of work within a feature. Tasks form a linear chain within
-  their feature. Last task always has `architect-review` tag and `tk:architect-reviewer` assignee.
+  their feature.
 
 ### Task lifecycle
 
@@ -166,27 +166,22 @@ Two levels: **Feature** and **Task**.
 2. **Coder** implements the task, runs tests, commits, signals `requesting-review`
 3. **Orchestrator** immediately assigns to code-reviewer and launches
 4. **Code-reviewer** reviews code + tests (focused on changes since HEAD SHA)
-   - If approved and task has `architect-review` tag → orchestrator assigns to architect-reviewer and launches
-   - If approved and no `architect-review` tag → orchestrator closes task
+   - If approved → orchestrator closes task
    - If changes requested → orchestrator relaunches coder (max 3 review iterations, then escalate)
 
 ### Feature lifecycle
 
-1. All child tasks closed (including architect-review) → feature appears in `tk ready`
-2. **Orchestrator** logs "Feature X ready for human review", skips (no agent launched)
-3. **Human** reviews the branch/worktree
+1. All child tasks closed → feature appears in `tk ready` (architect already assigned)
+2. **Orchestrator** launches architect-reviewer for feature
+3. **Architect** reviews full branch diff
+   - If issues → reopens specific tasks (or creates new ones), chains deps, signals `changes-requested`
+   - If approved → assigns feature to `human`, signals `approved`
+4. If `changes-requested` → reopened tasks appear in `tk ready` → normal coder→code-reviewer flow → when all close,
+   feature ready again → architect re-reviews (max 3 iterations, then escalate)
+5. If `approved` → feature assigned to `human` → orchestrator exits 3
+6. **Human** reviews the branch/worktree
    - Satisfied → `tk close <feature-id>` → downstream features unblocked
    - Issues found → `just request-changes <feature-id> "<feedback>"` → triggers rework loop
-
-### Architect-review task lifecycle
-
-The architect-review task is a special task that goes through an extended lifecycle:
-
-1. All prior tasks in the chain close → architect-review task appears in `tk ready`
-2. **Architect-reviewer** reviews full branch diff, signals `approved` or `changes-requested`
-3. If `changes-requested` → orchestrator assigns to coder for fixes → code-reviewer reviews → if approved, re-launches
-   architect (because of `architect-review` tag)
-4. If `approved` → orchestrator closes task → feature appears in `tk ready` for human review
 
 ### Review workflow
 
@@ -196,8 +191,7 @@ Review uses ticket notes as the handoff mechanism:
 2. **Coder works** — implements the task, logging decisions and steps as `tk` notes along the way
 3. **Coder finishes** — returns `requesting-review` signal to orchestrator
 4. **Code-reviewer picks up** — reads ticket notes, uses HEAD SHA for focused diff review
-5. **If approved** — code-reviewer returns `approved`, orchestrator closes task (or re-launches architect for
-   architect-review tasks)
+5. **If approved** — code-reviewer returns `approved`, orchestrator closes task
 6. **If changes requested** — code-reviewer leaves detailed feedback as a note, returns `changes-requested`.
    Orchestrator adds new HEAD SHA note and relaunches a fresh coder that reads the notes + code and makes targeted
    changes.
@@ -248,7 +242,7 @@ claude/.claude/
   agents/tk/
     coder.md                          # coder agent (opus, full tools, orange)
     code-reviewer.md                  # code reviewer agent (opus, read-only, cyan)
-    architect-reviewer.md             # architect reviewer agent (opus, read-only, magenta)
+    architect-reviewer.md             # architect reviewer agent (opus, tk write access, magenta)
   commands/tk/
     subagent-task.md                  # slash command: work on a ticket by ID
     plan-features.md                  # slash command: create/modify features and tasks

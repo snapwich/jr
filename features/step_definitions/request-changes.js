@@ -6,23 +6,14 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..");
 
 // --- Setup ---
 
-Given("all tasks in {string} are closed", async function (featureName) {
-  const featureId = this.ticketIds[featureName];
-  // Close all child tickets (tasks under this feature)
-  const result = await this.exec("tk", ["query", `select(.parent == "${featureId}")`]);
-  if (result.stdout) {
-    for (const line of result.stdout.split("\n")) {
-      if (!line.trim()) continue;
-      const task = JSON.parse(line);
-      await this.closeTicket(task.id);
-    }
-  }
-});
+// Note: "all tasks in {string} are closed" is defined in orchestrator.js
 
 Given("a standalone feature {string}", async function (featureName) {
   const featureId = await this.createTicket(featureName, { type: "feature" });
   this.ticketIds[featureName] = featureId;
 });
+
+// Note: "a standalone task {string}" is defined in verify-tickets.js
 
 // --- Actions ---
 
@@ -65,5 +56,34 @@ Then("ticket {string} should appear in tk ready", async function (name) {
   assert.ok(
     result.stdout.includes(id),
     `Expected ticket ${name} (${id}) to appear in tk ready.\nReady:\n${result.stdout}`,
+  );
+});
+
+Then("feature {string} should be assigned to {string}", async function (name, expectedAssignee) {
+  const id = this.ticketIds[name];
+  const result = await this.exec("tk", ["query", `select(.id == "${id}")`]);
+  const ticket = JSON.parse(result.stdout);
+  assert.strictEqual(
+    ticket.assignee,
+    expectedAssignee,
+    `Expected feature ${name} (${id}) to be assigned to "${expectedAssignee}", got "${ticket.assignee}"`,
+  );
+});
+
+Then("feature {string} should have a note containing {string}", async function (name, text) {
+  const id = this.ticketIds[name];
+  const result = await this.exec("tk", ["show", id]);
+  assert.ok(
+    result.stdout.includes(text),
+    `Expected feature ${name} (${id}) to have a note containing "${text}".\nTicket:\n${result.stdout}`,
+  );
+});
+
+Then("feature {string} should appear in tk ready", async function (name) {
+  const id = this.ticketIds[name];
+  const result = await this.exec("tk", ["ready"]);
+  assert.ok(
+    result.stdout.includes(id),
+    `Expected feature ${name} (${id}) to appear in tk ready.\nReady:\n${result.stdout}`,
   );
 });
