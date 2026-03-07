@@ -36,13 +36,13 @@ Feature: Orchestrator signal dispatch
     Then the output should contain "ready for human review"
     And the orchestrator should exit with code 3
 
-  Scenario: Orchestrator adds HEAD SHA note before launching coder
+  Scenario: Orchestrator adds assignment note before launching coder
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And the mock subagent always returns "requesting-review" for "task-impl" as "tk:coder"
     And the mock subagent always returns "approved" for "task-impl" as "tk:code-reviewer"
     And the mock subagent always returns "approved" for "feat-1" as "tk:architect-reviewer"
     When I run the orchestrator
-    Then ticket "task-impl" should have a note containing "[orchestrator] Assigned to coder. HEAD:"
+    Then ticket "task-impl" should have a note containing "[orchestrator] Assigned to coder."
 
   Scenario: Escalation signal drains and exits
     Given a feature "feat-1" with a linear task chain: "task-impl"

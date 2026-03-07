@@ -73,8 +73,8 @@ or other project docs for the correct command.
 
 ## Worktree Context
 
-You are working in a **feature worktree** shared with other tasks in the same feature. Prior commits (before the HEAD
-SHA in the `[orchestrator]` note) are from earlier tasks — do not modify or rebase them.
+You are working in a **feature worktree** shared with other tasks in the same feature. Prior commits are from earlier
+tasks — do not modify or rebase them.
 
 ## Integrity
 

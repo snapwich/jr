@@ -156,10 +156,10 @@ Two levels: **Feature** and **Task**.
 
 ### Task lifecycle
 
-1. **Orchestrator** adds `[orchestrator] Assigned to coder. HEAD: <sha>` note
-2. **Coder** implements the task, runs tests, commits, signals `requesting-review`
+1. **Orchestrator** adds `[orchestrator] Assigned to coder.` note
+2. **Coder** implements the task, runs tests, commits with `Tk-Task: <ticket-id>` trailers, signals `requesting-review`
 3. **Orchestrator** immediately assigns to code-reviewer and launches
-4. **Code-reviewer** reviews code + tests (focused on changes since HEAD SHA)
+4. **Code-reviewer** reviews code + tests (finds task commits via `just task-diff`/`just task-commits`)
    - If approved → orchestrator closes task
    - If changes requested → orchestrator relaunches coder (max 3 review iterations, then escalate)
 
@@ -181,14 +181,14 @@ Two levels: **Feature** and **Task**.
 
 Review uses ticket notes as the handoff mechanism:
 
-1. **Orchestrator** adds HEAD SHA note before launching coder
-2. **Coder works** — implements the task, logging decisions and steps as `tk` notes along the way
+1. **Orchestrator** adds assignment note before launching coder
+2. **Coder works** — implements the task, commits with `Tk-Task: <ticket-id>` trailers, logs decisions as `tk` notes
 3. **Coder finishes** — returns `requesting-review` signal to orchestrator
-4. **Code-reviewer picks up** — reads ticket notes, uses HEAD SHA for focused diff review
+4. **Code-reviewer picks up** — reads ticket notes, uses `just task-diff`/`just task-commits` for focused diff review
+   (trailers survive rebases, unlike SHA-based tracking)
 5. **If approved** — code-reviewer returns `approved`, orchestrator closes task
 6. **If changes requested** — code-reviewer leaves detailed feedback as a note, returns `changes-requested`.
-   Orchestrator adds new HEAD SHA note and relaunches a fresh coder that reads the notes + code and makes targeted
-   changes.
+   Orchestrator relaunches a fresh coder that reads the notes + code and makes targeted changes.
 
 This intentionally discards implementation context on revision — the coder reads the review feedback alongside the
 actual code and makes targeted changes, rather than defending the original approach.

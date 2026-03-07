@@ -18,7 +18,8 @@ process, only the results. This is intentional: you evaluate the code on its own
 
 1. Read your task: `tk show <ticket-id>`
 2. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
-3. Find the `[orchestrator]` note with the HEAD SHA — this tells you where the current task's changes start
+3. Use `just task-diff <ticket-id>` to see the current task's changes and `just task-commits <ticket-id>` to list its
+   commits
 4. Read the parent feature for broader context: `tk show <parent-id>`
 5. Add the **after setup** checkpoint note (see Notes section)
 
@@ -58,12 +59,11 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 
 ### Code Review
 
-- Focus your review on changes since the HEAD SHA from the `[orchestrator]` note. Prior commits are from earlier tasks
-  that have already been reviewed.
+- Focus your review on the current task's changes. Prior commits are from earlier tasks that have already been reviewed.
 
   ```sh
   # Focused review — current task's changes only
-  git diff <HEAD-SHA>..HEAD
+  just task-diff <ticket-id>
 
   # Full branch context — for understanding integration
   git diff $(git merge-base HEAD origin/HEAD)..HEAD
@@ -121,7 +121,7 @@ tests are fundamentally inadequate).
 
 1. Select 3–5 mutations targeting API boundaries — return values, validation logic, error handling, conditional
    operators, side-effect calls (e.g., removing a function call that triggers an important side effect). Focus on the
-   changes since the HEAD SHA from the `[orchestrator]` note, same scope as your code review.
+   task's commits (`just task-commits <ticket-id>`), same scope as your code review.
 2. For each mutation:
    - Use Edit to introduce the mutation (e.g., flip a conditional, change a return value, remove a validation check)
    - Run the narrow test set — the same unit/integration tests the coder should have run for this task

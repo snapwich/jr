@@ -778,11 +778,9 @@ start-work:
       fi
     fi
 
-    # Add HEAD SHA note before launching coder
+    # Add assignment note before launching coder
     if [[ "$agent" == "tk:coder" ]]; then
-      local head_sha
-      head_sha=$(git -C "$launch_dir" rev-parse HEAD 2>/dev/null || echo "unknown")
-      tk add-note "$ticket_id" "[orchestrator] Assigned to coder. HEAD: $head_sha"
+      tk add-note "$ticket_id" "[orchestrator] Assigned to coder."
     fi
 
     local prompt outfile session_uuid
@@ -934,14 +932,7 @@ start-work:
         fi
         log "Assigning $ticket_id back to tk:coder"
         tk assign "$ticket_id" "tk:coder"
-        # Add HEAD SHA note before relaunching coder
-        local launch_dir wt_name repo_tag
-        wt_name=$(worktree_name "$ticket_id")
-        repo_tag=$(tk query "select(.id == \"$ticket_id\")" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
-        launch_dir="$PROJECT_DIR/$repo_tag/$wt_name"
-        local head_sha
-        head_sha=$(git -C "$launch_dir" rev-parse HEAD 2>/dev/null || echo "unknown")
-        tk add-note "$ticket_id" "[orchestrator] Assigned to coder. HEAD: $head_sha"
+        tk add-note "$ticket_id" "[orchestrator] Assigned to coder."
         launch "$ticket_id" "task" || log "Could not immediately relaunch coder for $ticket_id"
         ;;
       escalate)
@@ -1205,6 +1196,30 @@ watch:
   echo "File: $session_file"
   echo "---"
   tail -n +1 -f "$session_file" | stdbuf -oL jq -r --unbuffered "$WATCH_JQ_FILTER" 2>/dev/null
+
+# List commit SHAs for a task (found by Tk-Task trailer)
+[group('subagent')]
+task-commits ticket-id repo='.':
+  #!/usr/bin/env bash
+  set -euo pipefail
+  JUSTFILE="{{ justfile() }}"
+  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  wt=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "{{ ticket-id }}")
+  git -C "$WORKING_DIR/{{ repo }}/$wt" log --reverse --format='%H' --grep="Tk-Task: {{ ticket-id }}" HEAD
+
+# Show per-commit diffs for a task in chronological order
+[group('subagent')]
+task-diff ticket-id repo='.':
+  #!/usr/bin/env bash
+  set -euo pipefail
+  JUSTFILE="{{ justfile() }}"
+  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  wt=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "{{ ticket-id }}")
+  commits=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" task-commits "{{ ticket-id }}" "{{ repo }}")
+  echo "$commits" | while read -r sha; do
+    [[ -z "$sha" ]] && continue
+    git -C "$WORKING_DIR/{{ repo }}/$wt" show --stat -p "$sha"
+  done
 
 # Output signal block and add completion note — use this instead of manual signal output
 [group('subagent')]
