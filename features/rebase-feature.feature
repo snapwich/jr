@@ -61,24 +61,6 @@ Feature: Rebase feature worktree
     Then the last command should exit with code 1
     And the output should contain "does not exist"
 
-  Scenario: No-op when no recorded base SHA (non-stacked)
-    Given a feature "feat-no-base" titled "No Base"
-    And a worktree for "feat-no-base" without base recording
-    When I run rebase-feature for "feat-no-base"
-    Then the output should contain "Already up to date"
-
-  Scenario: Updates base note after successful rebase
-    Given a feature "feat-upstream" titled "Upstream Work"
-    And a feature "feat-downstream" titled "Downstream Work"
-    And feature "feat-downstream" depends on "feat-upstream"
-    And a worktree for "feat-upstream" with a commit "upstream change"
-    And a worktree for "feat-downstream" branched from "feat-upstream" with a commit "downstream change"
-    And the branch for "feat-upstream" is squash-merged into default
-    And the worktree and branch for "feat-upstream" is removed
-    And feature "feat-upstream" is closed
-    When I run rebase-feature for "feat-downstream"
-    Then feature "feat-downstream" should have an updated base note
-
   Scenario: Rebaser resolves simple conflict
     Given a feature "feat-upstream" titled "Upstream Work"
     And a feature "feat-downstream" titled "Downstream Work"

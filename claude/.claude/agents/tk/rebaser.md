@@ -78,14 +78,12 @@ If the rebase surfaces more conflicts (multi-commit rebase), repeat the process.
 
 When the rebase completes successfully:
 
-1. Add a note to the feature (using `[orchestrator]` prefix for grep compatibility):
+1. Add a conflict-info note to the feature:
 
    ```sh
-   tk add-note <feature-id> '[orchestrator] Worktree rebased by rebaser. Worktree: <path> Base: <new-sha>. Conflicts: <files>. Resolution: <brief>'
+   tk add-note <feature-id> '[rebaser] Conflicts: <files>. Resolution: <brief>'
    ```
 
-   - `<path>` should match the worktree path format used by the orchestrator (e.g., `./<wt-name>`)
-   - `<new-sha>` is the rebase-onto SHA
    - `<files>` is a comma-separated list of files that had conflicts
    - `<brief>` is a one-line summary of the resolution approach
 
@@ -115,4 +113,3 @@ just signal escalate <feature-id> "<explanation of why conflicts cannot be auto-
 - Focus on producing correct, functional code — not just removing markers
 - Use the ticket context to understand what each side intended
 - When in doubt, escalate rather than making a bad resolution
-- The `[orchestrator]` prefix in notes is required for compatibility with existing grep patterns

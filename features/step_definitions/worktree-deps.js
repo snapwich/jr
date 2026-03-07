@@ -111,31 +111,34 @@ Given("the worktree for {string} is rebased onto origin\\/HEAD", async function 
   // Fetch so origin/HEAD is up to date
   await execFileAsync("git", ["fetch", "origin"], { cwd: defaultDir });
 
-  // Find the recorded base SHA from the feature notes
-  const showResult = await this.exec("tk", ["show", featureId]);
-  const baseMatch = showResult.stdout.match(/\[orchestrator\].*Base: (\S+)/);
-  const recordedBase = baseMatch ? baseMatch[1] : null;
-
-  // Find fork point: commit whose tree matches origin/HEAD's tree
   const originSha = (await execFileAsync("git", ["rev-parse", "origin/HEAD"], { cwd: wtDir })).stdout.trim();
-  const newTree = (await execFileAsync("git", ["rev-parse", `${originSha}^{tree}`], { cwd: wtDir })).stdout.trim();
 
-  let forkPoint = recordedBase;
-  if (recordedBase) {
-    const commits = (
-      await execFileAsync("git", ["rev-list", "--reverse", `${recordedBase}..HEAD`], { cwd: wtDir })
-    ).stdout
-      .trim()
-      .split("\n")
-      .filter(Boolean);
-    for (const commit of commits) {
-      const commitTree = (await execFileAsync("git", ["rev-parse", `${commit}^{tree}`], { cwd: wtDir })).stdout.trim();
-      if (commitTree === newTree) {
-        forkPoint = commit;
-        break;
+  // Find fork point via Tk-Task trailers
+  const mergeBase = (await execFileAsync("git", ["merge-base", originSha, "HEAD"], { cwd: wtDir })).stdout.trim();
+  const taskResult = await this.exec("tk", ["query", `select(.parent == "${featureId}")`]);
+  const taskIds = taskResult.stdout
+    .split("\n")
+    .map((l) => {
+      try {
+        return JSON.parse(l).id;
+      } catch {
+        return null;
       }
-    }
-  }
+    })
+    .filter(Boolean);
+  const grepPattern = `Tk-Task: (${taskIds.join("|")})`;
+  const firstOwn = (
+    await execFileAsync(
+      "git",
+      ["log", "--reverse", "--format=%H", "-E", `--grep=${grepPattern}`, `${mergeBase}..HEAD`],
+      {
+        cwd: wtDir,
+      },
+    )
+  ).stdout
+    .trim()
+    .split("\n")[0];
+  const forkPoint = (await execFileAsync("git", ["rev-parse", `${firstOwn}^`], { cwd: wtDir })).stdout.trim();
 
   // Rebase onto origin/HEAD
   await execFileAsync("git", ["rebase", "--onto", originSha, forkPoint, "HEAD"], { cwd: wtDir });

@@ -8,6 +8,20 @@ import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
 
+// Helper: ensure a child task exists for a feature, return its ID
+async function ensureChildTask(world, featureName) {
+  const featureId = world.ticketIds[featureName];
+  const taskKey = `${featureName}:task`;
+  if (!world.ticketIds[taskKey]) {
+    const taskId = await world.createTicket(`Task for ${featureName}`, {
+      type: "task",
+      parent: featureId,
+    });
+    world.ticketIds[taskKey] = taskId;
+  }
+  return world.ticketIds[taskKey];
+}
+
 // --- Setup ---
 
 Given("a single-repo project layout", async function () {
@@ -38,19 +52,12 @@ Given("a worktree for {string} with a commit {string}", async function (featureN
   await execFileAsync("git", ["fetch", "origin"], { cwd: defaultDir }).catch(() => {});
   await execFileAsync("git", ["worktree", "add", "-b", wtName, `../${wtName}`, baseBranch], { cwd: defaultDir });
 
-  // Record base SHA on feature (mimicking what orchestrator does)
-  const baseSha = await execFileAsync("git", ["rev-parse", baseBranch], { cwd: defaultDir });
-  await this.exec("tk", [
-    "add-note",
-    featureId,
-    `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${baseSha.stdout.trim()}`,
-  ]);
-
-  // Make a commit in the worktree
+  // Commit with Tk-Task trailer
+  const taskId = await ensureChildTask(this, featureName);
   const wtDir = join(this.projectDir, wtName);
   await writeFile(join(wtDir, `${wtName}.txt`), commitMsg);
   await execFileAsync("git", ["add", "."], { cwd: wtDir });
-  await execFileAsync("git", ["commit", "-m", commitMsg], { cwd: wtDir });
+  await execFileAsync("git", ["commit", "-m", `${commitMsg}\n\nTk-Task: ${taskId}`], { cwd: wtDir });
 });
 
 Given(
@@ -80,46 +87,14 @@ Given(
     const defaultDir = join(this.projectDir, "default");
     await execFileAsync("git", ["worktree", "add", "-b", wtName, `../${wtName}`, baseBranch], { cwd: defaultDir });
 
-    // Record base SHA on feature
-    const baseSha = await execFileAsync("git", ["rev-parse", baseBranch], { cwd: defaultDir });
-    await this.exec("tk", [
-      "add-note",
-      featureId,
-      `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${baseSha.stdout.trim()}`,
-    ]);
-
-    // Make a commit in the worktree
+    // Commit with Tk-Task trailer
+    const taskId = await ensureChildTask(this, featureName);
     const wtDir = join(this.projectDir, wtName);
     await writeFile(join(wtDir, `${wtName}.txt`), commitMsg);
     await execFileAsync("git", ["add", "."], { cwd: wtDir });
-    await execFileAsync("git", ["commit", "-m", commitMsg], { cwd: wtDir });
+    await execFileAsync("git", ["commit", "-m", `${commitMsg}\n\nTk-Task: ${taskId}`], { cwd: wtDir });
   },
 );
-
-Given("a worktree for {string} without base recording", async function (featureName) {
-  const featureId = this.ticketIds[featureName];
-  const justfile = join(REPO_ROOT, "scripts", "justfile");
-
-  // Derive worktree name
-  const nameResult = await this.exec(
-    "just",
-    ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
-  );
-  const wtName = nameResult.stdout.trim();
-  this.ticketIds[`${featureName}:wt`] = wtName;
-
-  // Create worktree without adding a base note
-  const defaultDir = join(this.projectDir, "default");
-  await execFileAsync("git", ["fetch", "origin"], { cwd: defaultDir }).catch(() => {});
-  await execFileAsync("git", ["worktree", "add", "-b", wtName, `../${wtName}`, "origin/HEAD"], { cwd: defaultDir });
-
-  // Make a commit so the worktree has content
-  const wtDir = join(this.projectDir, wtName);
-  await writeFile(join(wtDir, `${wtName}.txt`), "content");
-  await execFileAsync("git", ["add", "."], { cwd: wtDir });
-  await execFileAsync("git", ["commit", "-m", "wt commit"], { cwd: wtDir });
-});
 
 Given("the branch for {string} is squash-merged into default", async function (featureName) {
   const wtName = this.ticketIds[`${featureName}:wt`];
@@ -157,9 +132,6 @@ Given(
 
     const defaultDir = join(this.projectDir, "default");
 
-    // Record stale base: origin/HEAD SHA (BEFORE creating from upstream)
-    const staleBase = await execFileAsync("git", ["rev-parse", "origin/HEAD"], { cwd: defaultDir });
-
     // Create worktree from origin/HEAD (mimics orchestrator when upstream was already closed)
     await execFileAsync("git", ["worktree", "add", "-b", wtName, `../${wtName}`, "origin/HEAD"], { cwd: defaultDir });
 
@@ -168,17 +140,11 @@ Given(
     // Rebase onto upstream branch (mimics coder rebasing to get upstream's code)
     await execFileAsync("git", ["rebase", upstreamWt], { cwd: wtDir });
 
-    // Record the stale base (origin/HEAD, not the upstream tip) — this is the bug condition
-    await this.exec("tk", [
-      "add-note",
-      featureId,
-      `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${staleBase.stdout.trim()}`,
-    ]);
-
-    // Make a downstream commit
+    // Make a downstream commit with Tk-Task trailer
+    const taskId = await ensureChildTask(this, featureName);
     await writeFile(join(wtDir, `${wtName}.txt`), commitMsg);
     await execFileAsync("git", ["add", "."], { cwd: wtDir });
-    await execFileAsync("git", ["commit", "-m", commitMsg], { cwd: wtDir });
+    await execFileAsync("git", ["commit", "-m", `${commitMsg}\n\nTk-Task: ${taskId}`], { cwd: wtDir });
   },
 );
 
@@ -240,17 +206,6 @@ Then("the worktree for {string} should not have commit {string}", async function
   );
 });
 
-Then("feature {string} should have an updated base note", async function (featureName) {
-  const featureId = this.ticketIds[featureName];
-  const result = await this.exec("tk", ["show", featureId]);
-  // Should have at least 2 "Worktree:.*Base:" notes (original + rebased)
-  const baseNotes = result.stdout.match(/\[orchestrator\].*Worktree:.*Base: \S+/g) || [];
-  assert.ok(
-    baseNotes.length >= 2,
-    `Expected at least 2 base notes on ${featureName}, found ${baseNotes.length}.\nTicket:\n${result.stdout}`,
-  );
-});
-
 // --- Conflict scenarios ---
 
 // Creates a worktree and modifies a shared file. The file must exist in default first.
@@ -285,19 +240,14 @@ Given("a worktree for {string} with a conflicting commit on {string}", async fun
   await execFileAsync("git", ["fetch", "origin"], { cwd: defaultDir }).catch(() => {});
   await execFileAsync("git", ["worktree", "add", "-b", wtName, `../${wtName}`, "origin/HEAD"], { cwd: defaultDir });
 
-  // Record base SHA on feature
-  const baseSha = await execFileAsync("git", ["rev-parse", "origin/HEAD"], { cwd: defaultDir });
-  await this.exec("tk", [
-    "add-note",
-    featureId,
-    `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${baseSha.stdout.trim()}`,
-  ]);
-
-  // Modify the shared file in this worktree (different content per feature)
+  // Modify the shared file with Tk-Task trailer
+  const taskId = await ensureChildTask(this, featureName);
   const wtDir = join(this.projectDir, wtName);
   await writeFile(join(wtDir, fileName), `Line 1: Modified by ${featureName}\nLine 2: Original\nLine 3: Original\n`);
   await execFileAsync("git", ["add", fileName], { cwd: wtDir });
-  await execFileAsync("git", ["commit", "-m", `${featureName} modifies ${fileName}`], { cwd: wtDir });
+  await execFileAsync("git", ["commit", "-m", `${featureName} modifies ${fileName}\n\nTk-Task: ${taskId}`], {
+    cwd: wtDir,
+  });
 });
 
 // Creates a downstream worktree that also modifies the shared file from origin/HEAD
@@ -323,22 +273,17 @@ Given(
     await execFileAsync("git", ["fetch", "origin"], { cwd: defaultDir }).catch(() => {});
     await execFileAsync("git", ["worktree", "add", "-b", wtName, `../${wtName}`, "origin/HEAD"], { cwd: defaultDir });
 
-    // Record base SHA on feature (use origin/HEAD since that's our actual base)
-    const baseSha = await execFileAsync("git", ["rev-parse", "origin/HEAD"], { cwd: defaultDir });
-    await this.exec("tk", [
-      "add-note",
-      featureId,
-      `[orchestrator] Worktree created. Worktree: ./${wtName} Base: ${baseSha.stdout.trim()}`,
-    ]);
-
-    // Modify the SAME line as upstream but differently - this guarantees a conflict
+    // Modify the SAME line as upstream but differently with Tk-Task trailer
+    const taskId = await ensureChildTask(this, featureName);
     const wtDir = join(this.projectDir, wtName);
     await writeFile(
       join(wtDir, fileName),
       `Line 1: Modified by ${featureName} (conflicts with upstream)\nLine 2: Original\nLine 3: Original\n`,
     );
     await execFileAsync("git", ["add", fileName], { cwd: wtDir });
-    await execFileAsync("git", ["commit", "-m", `${featureName} modifies ${fileName}`], { cwd: wtDir });
+    await execFileAsync("git", ["commit", "-m", `${featureName} modifies ${fileName}\n\nTk-Task: ${taskId}`], {
+      cwd: wtDir,
+    });
   },
 );
 

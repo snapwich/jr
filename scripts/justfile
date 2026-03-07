@@ -767,17 +767,6 @@ start-work:
     local launch_dir="$PROJECT_DIR/$repo/$wt"
     [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
 
-    # Record base SHA on feature (once per feature, for rebase-feature)
-    if ! tk show "$feature_id" 2>/dev/null | grep -q '\[orchestrator\].*Worktree:.*Base:'; then
-      local base_sha
-      base_sha=$(git -C "$PROJECT_DIR/$repo/default" rev-parse "$base_branch" 2>/dev/null || echo "unknown")
-      if [[ "$wt_created" == true ]]; then
-        tk add-note "$feature_id" "[orchestrator] Worktree created. Worktree: $repo/$wt Base: $base_sha"
-      else
-        tk add-note "$feature_id" "[orchestrator] Using existing worktree. Worktree: $repo/$wt Base: $base_sha"
-      fi
-    fi
-
     # Add assignment note before launching coder
     if [[ "$agent" == "tk:coder" ]]; then
       tk add-note "$ticket_id" "[orchestrator] Assigned to coder."
@@ -1567,27 +1556,26 @@ rebase-feature feature-id rework-notes="":
   fi
 
   if [[ "$already_up_to_date" != "true" ]]; then
-    # Find the fork point. For stacked branches after a squash merge, the recorded base may be
-    # stale (recorded before the upstream had commits). Detect the actual fork point by finding
-    # the commit in the branch whose tree matches the new base's tree — that's where upstream
-    # work ends and downstream work begins.
-    recorded_base=$(tk show "$feature_id" | tr '\n' ' ' | grep -oP '\[orchestrator\].*?Worktree:.*?Base:\s*\K[0-9a-f]+' | grep -oP '[0-9a-f]+$' | tail -1)
-    if [[ -z "$recorded_base" ]]; then
-      echo "ERROR: No recorded base SHA found in feature notes" >&2
+    # Find fork point via Tk-Task trailers — identifies first commit belonging to this feature
+    merge_base=$(git -C "$repo/$wt" merge-base "$correct_base_sha" HEAD 2>/dev/null || echo "")
+    if [[ -z "$merge_base" ]]; then
+      echo "ERROR: Cannot find common ancestor between $correct_base and HEAD" >&2
       exit 1
     fi
 
-    new_tree=$(git -C "$repo/$wt" rev-parse "$correct_base_sha^{tree}")
-    fork_point=""
-    while IFS= read -r commit; do
-      commit_tree=$(git -C "$repo/$wt" rev-parse "$commit^{tree}")
-      if [[ "$commit_tree" == "$new_tree" ]]; then
-        fork_point="$commit"
-        break
-      fi
-    done < <(git -C "$repo/$wt" rev-list --reverse "$recorded_base"..HEAD)
-
-    old_base="${fork_point:-$recorded_base}"
+    task_ids=$(tk query "select(.parent == \"$feature_id\")" 2>/dev/null | jq -r '.id' || true)
+    if [[ -z "$task_ids" ]]; then
+      echo "ERROR: No tasks found for feature $feature_id" >&2
+      exit 1
+    fi
+    grep_pattern="Tk-Task: ($(echo "$task_ids" | tr '\n' '|' | sed 's/|$//'))"
+    first_own=$(git -C "$repo/$wt" log --reverse --format='%H' -E --grep="$grep_pattern" "$merge_base"..HEAD | head -1)
+    if [[ -z "$first_own" ]]; then
+      echo "ERROR: No commits with Tk-Task trailers found for feature $feature_id" >&2
+      echo "Expected trailers matching: $grep_pattern" >&2
+      exit 1
+    fi
+    old_base=$(git -C "$repo/$wt" rev-parse "$first_own^")
 
     # Rebase: replay commits after old_base onto the correct base
     echo "Rebasing $wt onto $correct_base (from $old_base)..."
@@ -1659,10 +1647,8 @@ rebase-feature feature-id rework-notes="":
     echo "Rebaser resolved conflicts successfully"
   fi
 
-  # Record updated base SHA (only if we actually rebased)
   if [[ "$already_up_to_date" != "true" ]]; then
-    tk add-note "$feature_id" "[orchestrator] Worktree rebased. Worktree: $repo/$wt Base: $correct_base_sha"
-    echo "Rebase complete — updated base to $correct_base_sha"
+    echo "Rebase complete"
   fi
 
   # If rework notes provided, trigger rework cycle for API changes
