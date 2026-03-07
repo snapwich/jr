@@ -36,14 +36,13 @@ letting subagents grind on a bad path.
 ### Stow deployment model
 
 `claude/` and `scripts/` are symlinked into a target project via GNU stow. The target project gets Claude agent
-definitions, commands, rules, and a `scripts/justfile` for worktree/subagent management.
+definitions, commands, and a `scripts/justfile` for worktree/subagent management.
 
 ```text
 .agents repo                          target project
 ─────────────                         ──────────────
 claude/.claude/agents/tk/*    ──→     .claude/agents/tk/*
 claude/.claude/commands/tk/*  ──→     .claude/commands/tk/*
-claude/.claude/rules/tk-*     ──→     .claude/rules/tk-*
 scripts/justfile              ──→     justfile (worktree mgmt)
 .prettierrc.yml               ──(cp)  .agents/.prettierrc.yml
 .markdownlint.yaml            ──(cp)  .agents/.markdownlint.yaml
@@ -95,11 +94,6 @@ Claude Code doesn't recursively search parent directories for `.claude/`, so eac
 `just create-worktree <name> [repo] [base]` handles this — it copies the project-level `.claude/` into the worktree
 using rsync with `--ignore-existing`, which merges without overwriting existing files. This means worktrees get both the
 stowed tk configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
-
-### No project CLAUDE.md
-
-All universal subagent context goes in `claude/.claude/rules/*` prefixed with `tk-` to avoid clobbering project rules.
-Projects provide their own context via their own CLAUDE.md, rules, commands, and skills.
 
 ### Ticket system
 
@@ -246,8 +240,6 @@ claude/.claude/
   commands/tk/
     subagent-task.md                  # slash command: work on a ticket by ID
     plan-features.md                  # slash command: create/modify features and tasks
-  rules/
-    tk-agents.md                      # behavioral rules for subagents
 scripts/
   justfile                            # worktree/subagent/orchestrator recipes
 .husky/pre-commit                     # runs lint-staged on commit (this repo only)
@@ -307,10 +299,9 @@ resort.
 ## Development Guidelines
 
 - `tk` is always in PATH — use it as a CLI tool, never reference its source
-- All subagent context goes in `claude/.claude/rules/*` prefixed with `tk-` (not in a CLAUDE.md)
 - Formatting enforced by prettier on commit: 120 char width, `proseWrap: always` for markdown
 - Markdown linting via markdownlint (MD013 disabled, MD041 disabled)
-- Agent definitions, commands, and rules are the main development surface
+- Agent definitions and commands are the main development surface
 - The `init` recipe should be idempotent: safe to run on a fresh project or to deploy new files added since last init
 - **Justfile group convention**: Recipes in `scripts/justfile` that are internal to a process use `[group('name')]`
   (e.g. `orchestrator`, `subagent`, `plan-features`). Human-facing recipes have **no group** — they appear at the top

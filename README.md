@@ -17,7 +17,7 @@ subagents that implement, review, and close tickets in parallel git worktrees.
 just init ../my-project
 ```
 
-This stows agent configs, commands, and rules into the target directory, sets up the ticket system, and installs
+This stows agent configs and commands into the target directory, sets up the ticket system, and installs
 linting/formatting tooling.
 
 ## Usage
