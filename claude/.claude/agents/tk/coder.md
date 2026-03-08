@@ -206,6 +206,16 @@ tk add-note <ticket-id> '[coder] Starting. Approach: <your plan in 1-2 sentences
 tk add-note <ticket-id> '[coder] Done. Files: <list>. Tests: <X pass>. Commits: <count>.'
 ```
 
+### Spec deviations (mandatory when applicable)
+
+If your implementation deviates from the approach described in the task or parent feature — different file structure,
+different import order, different API shape, etc. — add a note explaining what you changed and a justification of why.
+Sound deviations are fine; but reviewers must be able to review justification and confirm appropriateness.
+
+```sh
+tk add-note <ticket-id> '[coder] Deviation: <what differs from spec>. Reason: <why>.'
+```
+
 ### Feature notes (optional)
 
 If you discover something affecting sibling tasks, note on the **parent feature**:
