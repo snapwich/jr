@@ -92,6 +92,9 @@ avoids duplicating values like enums or constants that should come from the sour
 
 ### Run Tests
 
+- **Always prefix test commands with `CI=true`** (e.g., `CI=true pnpm test`, `CI=true python -m pytest`). Many test
+  runners and dev tools default to watch mode, interactive prompts, or browser launching without it, which hangs the
+  agent.
 - If test runner skills are available (unit, integration, e2e), use them — they encode the correct commands and paths
   for the project.
 - **Test scope is narrow** — run only what you need for your task:
