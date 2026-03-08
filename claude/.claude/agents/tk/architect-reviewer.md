@@ -36,48 +36,70 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
    tk add-note <feature-id> '[architect] Starting feature review. <N> child tasks.'
    ```
 
-2. **After reviewing branch diff** — Log findings:
+2. **After contextual exploration** — Log what you found:
+
+   ```sh
+   tk add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
+   ```
+
+3. **After reviewing branch diff** — Log findings:
 
    ```sh
    tk add-note <feature-id> '[architect] Branch diff reviewed: <N files, brief scope>'
    ```
 
-3. **After cross-task coherence check** — Log integration assessment:
+4. **After cross-task coherence check** — Log integration assessment:
 
    ```sh
    tk add-note <feature-id> '[architect] Coherence: <assessment of how pieces fit together>'
    ```
 
-4. **After spec completeness check** — Log findings:
+5. **After spec completeness check** — Log findings:
 
    ```sh
    tk add-note <feature-id> '[architect] Spec completeness: <N significant gaps, M minor gaps noted>'
    ```
 
-5. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
+6. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
+
+## Contextual Exploration
+
+Before reviewing the diff, build an understanding of the codebase areas this feature touches. The goal is to discover
+existing patterns, utilities, and architecture that the implementation should integrate with — including things the
+implementer may have missed entirely.
+
+1. **Feature-driven exploration** — from the feature and task descriptions, identify the key concepts, domains, and
+   patterns the feature touches (e.g., "event handling", "authentication", "caching"). Search the codebase for existing
+   implementations of those concepts:
+   - Grep for related terms, patterns, utilities
+   - Read key files in relevant modules to understand existing architecture
+   - Look for existing conventions: naming, file organization, test patterns, error handling approaches
+   - Identify existing abstractions and APIs the feature should align with or reuse
+2. **Diff stat** — run `git diff --stat $(git merge-base HEAD origin/HEAD)..HEAD` to see which files were actually
+   touched. Compare against what the exploration found — are there areas the feature _should_ have touched but didn't?
+3. **Checkpoint note:**
+
+   ```sh
+   tk add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
+   ```
 
 ## Review Process
 
-### Branch Diff Inventory
+### Branch Diff
 
-Start by cataloging what the feature changed. This tells you where to focus your integration review — it is not the
-review itself.
+Read the full branch diff. You now have context from the exploration phase — evaluate changes against the existing
+architecture and patterns you discovered.
 
 ```sh
 git diff $(git merge-base HEAD origin/HEAD)..HEAD
 ```
 
-### Codebase Integration
+Flag issues where the implementation:
 
-Use the diff inventory to identify areas of the codebase affected by or related to the feature's changes. For each area
-of significant change, look beyond the diff to understand how new code integrates with what already exists:
-
-- **Duplicate patterns**: Search the codebase for existing implementations of patterns introduced by the branch. Flag
-  new utilities, helpers, or test infrastructure that duplicates what already exists.
-- **Convention consistency**: Check that new code follows conventions established in surrounding files — naming, file
-  organization, test patterns, error handling approaches.
-- **API surface coherence**: When the branch adds or modifies public APIs, verify consistency with existing API patterns
-  in the same package/module.
+- **Duplicates existing patterns** — new utilities, helpers, or test infrastructure that replicate what already exists
+  elsewhere in the codebase
+- **Breaks conventions** — deviates from naming, file organization, or patterns established in surrounding code
+- **Misses integration points** — doesn't connect with existing APIs or abstractions it should use
 
 ### Cross-Task Coherence
 
