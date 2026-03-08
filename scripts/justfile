@@ -1015,6 +1015,7 @@ start-work:
     if (( ${#PID_TO_TICKET[@]} == 0 )); then
       # Check ready tickets for human review gate or launchable work
       local ready_count=0 human_features=0 launchable=0
+      local -a human_feature_names=()
       ready_count=$(tk ready 2>/dev/null | grep -c '^[a-z]') || true
 
       if (( ready_count > 0 )); then
@@ -1030,6 +1031,9 @@ start-work:
 
           if [[ "$rtype" == "feature" && "$rassignee" == "human" ]]; then
             human_features=$((human_features + 1))
+            local rtitle
+            rtitle=$(echo "$rjson" | jq -r '.title // .id' 2>/dev/null || echo "$rid")
+            human_feature_names+=("$rid: $rtitle")
           elif [[ "$rtype" == "task" || "$rassignee" == "tk:architect-reviewer" ]]; then
             launchable=$((launchable + 1))
           fi
@@ -1038,7 +1042,11 @@ start-work:
         if (( human_features > 0 && launchable == 0 )); then
           # Only human-assigned features remain — human review gate
           log "All automated work complete — features awaiting human review"
-          just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — features awaiting review" || log "Warning: ticket commit failed (non-fatal)"
+          local commit_body=""
+          for fname in "${human_feature_names[@]}"; do
+            commit_body+=$'\n'"- $fname"
+          done
+          just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — features awaiting review${commit_body}" || log "Warning: ticket commit failed (non-fatal)"
           exit 3
         elif (( launchable > 0 )); then
           sleep 1
