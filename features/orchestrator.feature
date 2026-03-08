@@ -24,7 +24,7 @@ Feature: Orchestrator signal dispatch
   Scenario: Escalation after max code-review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And ticket "task-impl" is assigned to "tk:code-reviewer"
-    And ticket "task-impl" has 3 code-reviewer notes
+    And ticket "task-impl" has 5 code-reviewer notes
     And the mock subagent always returns "changes-requested" for "task-impl" as "tk:code-reviewer"
     When I run the orchestrator
     Then the orchestrator should exit with code 2
@@ -93,7 +93,7 @@ Feature: Orchestrator signal dispatch
   Scenario: Escalation after max architect review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And all tasks in "feat-1" are closed
-    And ticket "feat-1" has 3 architect notes
+    And ticket "feat-1" has 5 architect notes
     And the mock subagent always returns "changes-requested" for "feat-1" as "tk:architect-reviewer"
     When I run the orchestrator
     Then the orchestrator should exit with code 2

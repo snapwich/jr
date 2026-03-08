@@ -161,7 +161,7 @@ Two levels: **Feature** and **Task**.
 3. **Orchestrator** immediately assigns to code-reviewer and launches
 4. **Code-reviewer** reviews code + tests (finds task commits via `just task-diff`/`just task-commits`)
    - If approved → orchestrator closes task
-   - If changes requested → orchestrator relaunches coder (max 3 review iterations, then escalate)
+   - If changes requested → orchestrator relaunches coder (`TK_REVIEW_ROUNDS` (default 5) iterations, then escalate)
 
 ### Feature lifecycle
 
@@ -171,7 +171,7 @@ Two levels: **Feature** and **Task**.
    - If issues → reopens specific tasks (or creates new ones), chains deps, signals `changes-requested`
    - If approved → assigns feature to `human`, signals `approved`
 4. If `changes-requested` → reopened tasks appear in `tk ready` → normal coder→code-reviewer flow → when all close,
-   feature ready again → architect re-reviews (max 3 iterations, then escalate)
+   feature ready again → architect re-reviews (`TK_REVIEW_ROUNDS` (default 5) iterations, then escalate)
 5. If `approved` → feature assigned to `human` → orchestrator exits 3
 6. **Human** reviews the branch/worktree
    - Satisfied → `tk close <feature-id>` → downstream features unblocked
@@ -241,8 +241,9 @@ rebased branches). Cleans up worktrees and branches on success. Multi-repo aware
 ### Concurrency
 
 The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`).
-`$TK_BASE_BRANCH` overrides the default base branch for feature worktrees (default: `origin/HEAD`). One agent per
-worktree at a time. See [docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
+`$TK_BASE_BRANCH` overrides the default base branch for feature worktrees (default: `origin/HEAD`). `$TK_REVIEW_ROUNDS`
+sets the max review iterations before escalation (default: 5). One agent per worktree at a time. See
+[docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
 
 ## Directory Structure
 

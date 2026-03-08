@@ -472,6 +472,7 @@ start-work *args:
 
   # --- Configuration ---
   MAX_CONCURRENT="${TK_MAX_CONCURRENT:-3}"
+  REVIEW_ROUNDS="${TK_REVIEW_ROUNDS:-5}"
   NO_HUMAN_REVIEW="${TK_NO_HUMAN_REVIEW:-0}"
   for arg in {{ args }}; do
     case "$arg" in
@@ -886,7 +887,7 @@ start-work *args:
           # Architect reopened tasks — check iteration cap then let discover() find them
           local arch_count
           arch_count=$(count_review_rounds "$ticket_id" "architect")
-          if (( arch_count >= 3 )); then
+          if (( arch_count >= REVIEW_ROUNDS )); then
             log "ESCALATE: Feature $ticket_id has $arch_count architect review rounds — max exceeded"
             ESCALATION="Max architect review iterations exceeded for feature $ticket_id"
             return
@@ -935,7 +936,7 @@ start-work *args:
         # Check iteration cap for code-reviewer
         local cr_count
         cr_count=$(count_review_rounds "$ticket_id" "code-reviewer")
-        if (( cr_count >= 3 )); then
+        if (( cr_count >= REVIEW_ROUNDS )); then
           log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
           ESCALATION="Max review iterations exceeded for $ticket_id"
           return
