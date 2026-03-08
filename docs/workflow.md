@@ -108,7 +108,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 │  │ HUMAN REVIEW                                 │                   │
 │  │                                              │                   │
 │  │ • just approve <feature-id>  → closes feat  │                   │
-│  │ • just request-changes <id> "feedback"      │                   │
+│  │ • just request-changes <id> ["feedback"]     │                   │
 │  │   → reassigns to architect, adds note       │                   │
 │  │   → architect reopens tasks for rework      │                   │
 │  └──────────────────────────────────────────────┘                   │

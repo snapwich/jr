@@ -1461,7 +1461,8 @@ verify-tickets:
   echo "All tickets valid"
 
 # Request changes on a feature after human review — reassigns to architect for rework
-request-changes feature-id feedback:
+# If feedback is omitted, opens $EDITOR for multi-line input.
+request-changes feature-id feedback="":
   #!/usr/bin/env bash
   set -e
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
@@ -1478,6 +1479,25 @@ request-changes feature-id feedback:
   feature_type=$(echo "$feature_json" | jq -r '.type')
   if [[ "$feature_type" != "feature" ]]; then
     echo "ERROR: $feature_id is not a feature (type: $feature_type)" >&2
+    exit 1
+  fi
+
+  # If no feedback provided, open editor
+  if [[ -z "$feedback" ]]; then
+    tmpfile=$(mktemp)
+    trap 'rm -f "$tmpfile"' EXIT
+    hash_char='{{ "#" }}'
+    printf '\n%s %s\n%s %s\n' \
+      "$hash_char" "Enter change request feedback for feature $feature_id." \
+      "$hash_char" "Lines starting with $hash_char are ignored. Empty message aborts." \
+      > "$tmpfile"
+    editor="${EDITOR:-vi}"
+    "$editor" "$tmpfile"
+    feedback=$(grep -v "^$hash_char" "$tmpfile" | sed '/./,$!d' | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')
+  fi
+
+  if [[ -z "$feedback" ]]; then
+    echo "Aborting: empty feedback" >&2
     exit 1
   fi
 

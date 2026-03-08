@@ -74,6 +74,8 @@ just approve <feature-id>
 
 # Or request changes (reassigns to architect for rework)
 just request-changes <feature-id> "Fix error handling in auth module"
+# Omit feedback to open $EDITOR for multi-line input
+just request-changes <feature-id>
 ```
 
 After `request-changes`, run `just start-work` again to begin the rework cycle.
@@ -154,7 +156,7 @@ just ls                      # Show repos and their worktrees (alias: just workt
 
 # After orchestration
 just approve <feature-id>    # Validate and close a feature
-just request-changes <id> "feedback"  # Reopen for rework
+just request-changes <id> ["feedback"]  # Reopen for rework (opens $EDITOR if omitted)
 just merge-all [--squash]    # Merge closed feature branches into base
 just deps                    # Show merge order for stacked features (alias: worktree-deps)
 just rebase-feature <id>     # Rebase a stacked feature after upstream merges

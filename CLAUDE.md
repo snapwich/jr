@@ -175,7 +175,8 @@ Two levels: **Feature** and **Task**.
 5. If `approved` → feature assigned to `human` → orchestrator exits 3
 6. **Human** reviews the branch/worktree
    - Satisfied → `tk close <feature-id>` → downstream features unblocked
-   - Issues found → `just request-changes <feature-id> "<feedback>"` → triggers rework loop
+   - Issues found → `just request-changes <feature-id> "<feedback>"` (or omit feedback to open `$EDITOR`) → triggers
+     rework loop
 
 ### Review workflow
 
