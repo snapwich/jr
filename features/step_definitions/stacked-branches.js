@@ -42,6 +42,17 @@ When("I resolve the base branch for {string}", async function (featureName) {
   this.lastBaseBranch = result.stdout.trim();
 });
 
+When("I resolve the base branch for {string} with TK_BASE_BRANCH {string}", async function (featureName, baseBranch) {
+  const featureId = this.ticketIds[featureName];
+  const justfile = join(REPO_ROOT, "scripts", "justfile");
+  const result = await this.exec("just", ["--justfile", justfile, "resolve-base-branch", featureId], {
+    env: { ...process.env, TK_PROJECT_DIR: this.projectDir, TK_BASE_BRANCH: baseBranch },
+  });
+  this.lastExitCode = result.exitCode;
+  this.lastOutput = result.stdout + "\n" + result.stderr;
+  this.lastBaseBranch = result.stdout.trim();
+});
+
 // --- Assertions ---
 
 Then("the base branch should be {string}", async function (expected) {

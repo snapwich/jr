@@ -131,10 +131,11 @@ just rebase-feature <id>     # Rebase a stacked feature after upstream merges
 
 Environment variables for tuning the orchestrator:
 
-| Variable            | Default | Description                       |
-| ------------------- | ------- | --------------------------------- |
-| `TK_MAX_CONCURRENT` | 3       | Max concurrent subagents          |
-| `TK_AGENT_TIMEOUT`  | 1800    | Agent timeout in seconds (30 min) |
+| Variable            | Default       | Description                               |
+| ------------------- | ------------- | ----------------------------------------- |
+| `TK_MAX_CONCURRENT` | 3             | Max concurrent subagents                  |
+| `TK_AGENT_TIMEOUT`  | 1800          | Agent timeout in seconds (30 min)         |
+| `TK_BASE_BRANCH`    | `origin/HEAD` | Default base branch for feature worktrees |
 
 ## Details
 

@@ -225,8 +225,9 @@ Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`
 
 ### Concurrency
 
-The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`). One
-agent per worktree at a time. See [docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
+The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`).
+`$TK_BASE_BRANCH` overrides the default base branch for feature worktrees (default: `origin/HEAD`). One agent per
+worktree at a time. See [docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
 
 ## Directory Structure
 

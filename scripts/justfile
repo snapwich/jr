@@ -395,7 +395,7 @@ resolve-base-branch feature-id:
         if [[ -n "$upstream_wt" ]] && git -C "$repo/default" rev-parse --verify "$upstream_wt" &>/dev/null; then
           echo "$upstream_wt"
         else
-          echo "origin/HEAD"
+          echo "${TK_BASE_BRANCH:-origin/HEAD}"
         fi
         exit 0
       fi
@@ -405,10 +405,10 @@ resolve-base-branch feature-id:
       fi
     fi
   done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
-  echo "origin/HEAD"
+  echo "${TK_BASE_BRANCH:-origin/HEAD}"
 
 [group('orchestrator')]
-create-worktree name repo="." base="origin/HEAD":
+create-worktree name repo="." base="${TK_BASE_BRANCH:-origin/HEAD}":
   #!/usr/bin/env bash
   set -euo pipefail
   PROJECT_DIR="{{ justfile_directory() }}"
@@ -616,7 +616,7 @@ start-work:
   }
 
   create_worktree() {
-    local name="$1" repo="${2:-.}" base="${3:-origin/HEAD}"
+    local name="$1" repo="${2:-.}" base="${3:-${TK_BASE_BRANCH:-origin/HEAD}}"
     local git_dir="$PROJECT_DIR/$repo/default/.git"
     local worktree_dir="$PROJECT_DIR/$repo/$name"
     git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
