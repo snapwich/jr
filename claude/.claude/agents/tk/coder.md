@@ -147,6 +147,26 @@ Before escalating, add a note documenting what you discovered:
 tk add-note <ticket-id> '[coder] SCOPE DISCOVERY: <detailed explanation of what the plan missed>'
 ```
 
+### Environment blockers (escalate)
+
+When tests cannot run due to missing system dependencies, tools, or runtime requirements you cannot install:
+
+- Do NOT work around the issue (e.g., curl instead of running the actual test)
+- Do NOT mark work as done with "correct for real environments" or similar rationalization
+- If acceptance criteria cannot be verified, the task is not done — escalate
+
+Signal escalation with environment details:
+
+```sh
+just signal escalate <ticket-id> "ENV: <what's missing and what can't be verified>. See task notes."
+```
+
+Before escalating, add a note documenting what you tried:
+
+```sh
+tk add-note <ticket-id> '[coder] ENV BLOCKER: <what dependency is missing, what you tried, what acceptance criteria cannot be verified>'
+```
+
 ## Git Workflow
 
 - Make logical commits as you work — meaningful units of change, not one giant commit

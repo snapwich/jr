@@ -223,6 +223,11 @@ Valid signal types for this agent: `approved`, `changes-requested`, `escalate`
   unstaged changes. After mutation testing, run `git diff --stat` to verify clean state; if dirty, `git checkout -- .`
   to reset. Do NOT use the Write tool — only Edit for mutations, Read/Grep/Glob for review.
 - Do NOT approve code with failing tests
+- Do NOT approve code when tests could not run due to missing system dependencies — treat unrunnable tests the same as
+  failing tests. If the coder noted missing deps but still requested review, escalate (requesting changes is pointless
+  since the coder cannot fix system-level issues).
+- Do NOT approve when the broader test suite has failures from prior tasks. A broken test suite means the worktree is in
+  a known bad state — approving more work on top compounds the problem. Escalate with details of what's failing.
 - Be specific in feedback — file paths, line numbers, concrete suggestions
 - Review against the task's acceptance criteria, not your own preferences
 - If you see issues that affect sibling tasks, add a note to the parent **feature** (not the task)
