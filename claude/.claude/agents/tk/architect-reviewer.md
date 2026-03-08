@@ -119,6 +119,12 @@ Flag issues where the implementation:
 - Evaluate whether the implementation supports those needs: are the APIs flexible enough, are the interfaces
   well-defined for consumers, are there extension points where downstream work will need them
 - Flag any gaps, constraints, or architectural decisions that would block or unnecessarily complicate downstream work
+- **Add notes to downstream feature tickets** when you identify something they should address or be aware of. Reference
+  the current feature for context:
+
+  ```sh
+  tk add-note <downstream-feature-id> '[architect] Note from <current-feature-id> review: <what they should address or be aware of>'
+  ```
 
 ### Feature Acceptance Criteria Coverage
 
@@ -154,6 +160,13 @@ test.
 
   ```sh
   tk add-note <feature-id> '[architect] Spec gap (minor): <description of untested behavior>'
+  ```
+
+  If a minor gap is relevant to a known downstream feature, also note it there so it gets addressed rather than
+  forgotten:
+
+  ```sh
+  tk add-note <downstream-feature-id> '[architect] Spec gap from <current-feature-id>: <what needs coverage>'
   ```
 
 ### Test Appropriateness
@@ -199,7 +212,8 @@ to run broader test suites that could catch regressions from the feature's chang
    - If gaps exist for cross-task interactions, request changes with specific scenarios
 
 6. **Scope boundaries**: If the feature needs integration/e2e tests spanning beyond its scope (involving other
-   features), note this on the feature — do not request them as changes to tasks
+   features), note this on the relevant downstream feature so it gets picked up there — do not request them as changes
+   to tasks in the current feature
 
 7. **Missing coverage**: If no integration tests exist but this is a shared component feature, note on the feature as a
    risk
