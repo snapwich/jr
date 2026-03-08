@@ -1155,9 +1155,9 @@ _watch-list:
 
     seq=$((seq + 1))
     printf '%d\t%06d\t%-9s %-12s %-18s %-30s %s\t%s\t%s\n' "$( [[ "$status" == "running" ]] && echo 0 || echo 1 )" "$seq" "[$status]" "$s_ticket" "$s_agent" "$s_title" "$s_worktree" "$s_session" "$s_worktree"
-  done < "$sessions_file" | sort -t$'\t' -k1,1n -k2,2n | cut -f3-
+  done < "$sessions_file" | sort -t$'\t' -k1,1n -k2,2rn | cut -f3-
 
-# Watch a running or completed subagent session
+# Watch a running or completed subagent session (auto-refreshing)
 watch:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -1188,12 +1188,41 @@ watch:
     else empty end
   '
 
-  selected=$(echo "$initial" | fzf --no-sort \
+  # Auto-refresh: background poller watches sessions.jsonl, sends reload to fzf via HTTP
+  port=$((RANDOM % 10000 + 20000))
+  sessions_file="$TK_OUTPUT_DIR/sessions.jsonl"
+  follow_file=$(mktemp)
+  echo "on" > "$follow_file"
+
+  (
+    prev_mtime=""; prev_lines=0
+    while true; do
+      sleep 3
+      [[ -f "$sessions_file" ]] || continue
+      curr_mtime=$(stat -c %Y "$sessions_file" 2>/dev/null)
+      [[ "$curr_mtime" == "$prev_mtime" ]] && continue
+      curr_lines=$(wc -l < "$sessions_file")
+      if (( curr_lines > prev_lines )) && grep -q on "$follow_file" 2>/dev/null; then
+        curl -s -XPOST "localhost:$port" -d "reload($reload_cmd)+first" 2>/dev/null
+      else
+        curl -s -XPOST "localhost:$port" -d "reload($reload_cmd)" 2>/dev/null
+      fi
+      prev_mtime="$curr_mtime"; prev_lines="$curr_lines"
+    done
+  ) &
+  watcher_pid=$!
+  trap "kill $watcher_pid 2>/dev/null; rm -f $follow_file" EXIT
+
+  header_base="STATUS    TICKET       AGENT              TASK                           WORKTREE"
+
+  selected=$(echo "$initial" | fzf --no-sort --track \
+    --listen-unsafe "$port" \
     --delimiter=$'\t' --with-nth=1 \
     --prompt="Select session: " \
-    --header="STATUS    TICKET       AGENT              TASK                           WORKTREE  (ctrl-r: refresh)" \
-    --bind "ctrl-r:reload:$reload_cmd" \
+    --header="$header_base  (auto-follow ON | ctrl-f: toggle)" \
+    --bind "ctrl-f:execute-silent(if grep -q on $follow_file; then echo off > $follow_file; else echo on > $follow_file; fi)+transform-header(if grep -q on $follow_file; then echo '$header_base  (auto-follow ON | ctrl-f: toggle)'; else echo '$header_base  (auto-follow OFF | ctrl-f: toggle)'; fi)" \
     --preview='
+      printf "\033[2J"
       session={2}; wt={3}
       worktree_path=$(echo "$WATCH_PROJECT_DIR/$wt" | sed "s|/\./|/|g")
       escaped_path=$(echo "$worktree_path" | sed "s|[/.]|-|g")
