@@ -1137,6 +1137,7 @@ _watch-list:
     exit 0
   fi
 
+  seq=0
   while IFS= read -r line; do
     s_ticket=$(echo "$line" | jq -r .ticket)
     s_agent=$(echo "$line" | jq -r '.agent | ltrimstr("tk:")')
@@ -1151,8 +1152,9 @@ _watch-list:
       status="done"
     fi
 
-    printf '%d\t%-9s %-12s %-18s %-30s %s\t%s\t%s\n' "$( [[ "$status" == "running" ]] && echo 0 || echo 1 )" "[$status]" "$s_ticket" "$s_agent" "$s_title" "$s_worktree" "$s_session" "$s_worktree"
-  done < "$sessions_file" | sort -t$'\t' -k1,1n | cut -f2-
+    seq=$((seq + 1))
+    printf '%d\t%06d\t%-9s %-12s %-18s %-30s %s\t%s\t%s\n' "$( [[ "$status" == "running" ]] && echo 0 || echo 1 )" "$seq" "[$status]" "$s_ticket" "$s_agent" "$s_title" "$s_worktree" "$s_session" "$s_worktree"
+  done < "$sessions_file" | sort -t$'\t' -k1,1n -k2,2n | cut -f3-
 
 # Watch a running or completed subagent session
 watch:
