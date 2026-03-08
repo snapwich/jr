@@ -257,6 +257,7 @@ claude/.claude/
   commands/tk/
     subagent-task.md                  # slash command: work on a ticket by ID
     plan-features.md                  # slash command: create/modify features and tasks
+    retro.md                          # slash command: post-mortem analysis of a feature
 scripts/
   justfile                            # worktree/subagent/orchestrator recipes
 .husky/pre-commit                     # runs lint-staged on commit (this repo only)
@@ -275,6 +276,7 @@ package.json                          # prettier + lint-staged dev deps
 6. Orchestrator: `tk ready` → create/reuse feature worktrees → start subagents → react to signals → close tasks
 7. All automated work done → orchestrator exits 3 → human reviews feature branches
 8. Human closes features (`tk close`) or requests changes (`just request-changes`)
+9. Optionally, run `/tk:retro <feature-id>` to analyze friction in the completed workflow and extract improvements
 
 ## Work Breakdown Model
 
