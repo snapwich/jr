@@ -221,8 +221,11 @@ tk add-note <parent-id> '[coder] <discovery relevant to sibling tasks>'
 When implementation is done and tests pass:
 
 1. Commit all remaining changes (do NOT push)
-2. Add Note 2 (see Notes section above) — this is MANDATORY
-3. Run `just signal` and output its result verbatim as your final message:
+2. Verify clean worktree: run `git status --porcelain`. If untracked/unstaged files remain (test output, build
+   artifacts, generated files), add them to `.gitignore` and commit. The worktree MUST have no untracked or unstaged
+   changes before signaling.
+3. Add Note 2 (see Notes section above) — this is MANDATORY
+4. Run `just signal` and output its result verbatim as your final message:
 
 ```sh
 just signal requesting-review <ticket-id> "<brief summary>"

@@ -79,6 +79,8 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 - **Documentation-code consistency**: When documentation files (MDX, README) are part of the diff, verify type names,
   function signatures, and interfaces in documentation exactly match the actual code exports. Cross-reference
   `interface Foo` in docs against the exported type name in the source file.
+- **Worktree cleanliness**: Run `git status --porcelain`. If untracked/unstaged files exist, request changes — the coder
+  must either gitignore or commit them.
 
 ### Test Review
 
