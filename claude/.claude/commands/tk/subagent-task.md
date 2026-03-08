@@ -61,6 +61,12 @@ Prefix every note with your agent role in brackets:
 Rule of thumb: if only the next agent on this task needs it, note on the task. If sibling tasks or the architect needs
 it, note on the feature.
 
+## Running Tests
+
+**Always prefix test commands with `CI=true`** (e.g., `CI=true pnpm test`, `CI=true python -m pytest`). Many test
+runners and dev tools default to watch mode, interactive prompts, or browser launching without it, which hangs the
+agent.
+
 ## Skills
 
 Some projects provide skills — project-specific commands for running tests, linting, formatting, type-checking, and

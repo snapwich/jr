@@ -120,8 +120,6 @@ defect.
   cases.
 - **New/changed code coverage**: Code paths introduced or modified by this task should have tests. If the coder touched
   existing untested code, the surrounding coverage gap should be partially filled.
-- **Always prefix test commands with `CI=true`** (e.g., `CI=true pnpm test`, `CI=true python -m pytest`). Many test
-  runners default to watch mode or interactive prompts without it, which hangs the agent.
 - **Run the tests** to confirm they pass. If test runner skills are available, use them; otherwise check CLAUDE.md,
   justfile, or package.json for the correct command.
 - **Test scope is narrow** — run only the tests the coder should have run:
@@ -200,9 +198,6 @@ specific issues raised were addressed. If the coder's changes don't resolve the 
 feedback in your changes-requested note.
 
 ## Outcomes
-
-**IMPORTANT**: `just signal` must be your final tool call. After it runs, output the signal block it printed **exactly
-as returned** as your final text. Do not add commentary, summaries, or any other text after the signal block.
 
 ### Approved
 

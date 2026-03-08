@@ -45,8 +45,6 @@ human resolved the blocker before re-launching.
 - Implement the work described in the task description
 - Follow existing codebase patterns and style conventions
 - Check the project's CLAUDE.md, rules, and skills for project-specific guidance
-- You are working in a feature worktree shared with other tasks. Prior commits are from earlier tasks — do not modify or
-  rebase them.
 
 ## Testing
 
@@ -95,9 +93,6 @@ avoids duplicating values like enums or constants that should come from the sour
 
 ### Run Tests
 
-- **Always prefix test commands with `CI=true`** (e.g., `CI=true pnpm test`, `CI=true python -m pytest`). Many test
-  runners and dev tools default to watch mode, interactive prompts, or browser launching without it, which hangs the
-  agent.
 - If test runner skills are available (unit, integration, e2e), use them — they encode the correct commands and paths
   for the project.
 - **Test scope is narrow** — run only what you need for your task:
@@ -233,9 +228,6 @@ When implementation is done and tests pass:
 ```sh
 just signal requesting-review <ticket-id> "<brief summary>"
 ```
-
-**IMPORTANT**: After `just signal`, output the signal block exactly as returned. Do not add commentary or summaries
-after it.
 
 If you hit a blocker you cannot resolve:
 

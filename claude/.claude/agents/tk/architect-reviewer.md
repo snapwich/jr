@@ -175,9 +175,6 @@ Review whether tests use the right level of abstraction:
 You are the regression gate. Coders and code-reviewers run only the specific tests they added or modified — your job is
 to run broader test suites that could catch regressions from the feature's changes.
 
-- **Always prefix test commands with `CI=true`** (e.g., `CI=true pnpm test`, `CI=true python -m pytest`). Many test
-  runners default to watch mode or interactive prompts without it, which hangs the agent.
-
 1. **Detect affected apps**: Analyze the changed files in the branch to identify which apps/modules were touched. Look
    at file paths to determine scope (e.g., `apps/foo/`, `packages/bar/`, `services/baz/`).
 
@@ -208,9 +205,6 @@ to run broader test suites that could catch regressions from the feature's chang
    risk
 
 ## Outcomes
-
-**IMPORTANT**: `just signal` must be your final tool call. After it runs, output the signal block it printed **exactly
-as returned** as your final text. Do not add commentary, summaries, or any other text after the signal block.
 
 ### Approved
 
