@@ -28,6 +28,15 @@ The architect identified issues during feature review and reopened this task for
 2. You have access to the original task description — use it to understand what the task was supposed to accomplish
 3. Make targeted fixes aligned with both the original requirements and the architect's feedback
 
+## Post-Escalation Re-entry
+
+If task notes contain `[coder] ENV BLOCKER` or `[coder] SCOPE DISCOVERY` from a prior run, this task was escalated and a
+human resolved the blocker before re-launching.
+
+1. Read the escalation note to understand what was blocking
+2. Verify the blocker is resolved (e.g., run the failing command, check the dependency is available)
+3. If still broken, escalate again immediately — do not retry the same fixes
+
 ## Implementation
 
 - Implement the work described in the task description
