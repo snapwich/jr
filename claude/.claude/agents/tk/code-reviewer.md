@@ -85,6 +85,14 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 - Evaluate code quality: correctness, clarity, maintainability, style consistency with the existing codebase
 - Check for security issues, edge cases, error handling
 - Verify the implementation matches the task description and acceptance criteria
+- **Semantic equivalence**: When reviewing migrations, refactors, or language/framework conversions, verify that changed
+  code is **semantically equivalent**, not just syntactically correct. Build passing is necessary but not sufficient —
+  check that behavior is preserved. Look for similar patterns in the same file as controls (e.g., one pattern works
+  without a wrapper, another uses a wrapper — ask why the inconsistency).
+- **Feature acceptance criteria**: After reviewing the task diff, read the parent feature's acceptance criteria.
+  Identify which criteria the current task's changes should satisfy (not all — future tasks may cover others). If the
+  task's changes claim to address a criterion but don't fully meet it, flag it. This catches gaps where task-level
+  correctness passes but feature-level requirements are violated.
 - **Deprecation completeness**: When deprecation notices are added to a file, verify ALL public exports (components,
   types, utilities) from that file have the `@deprecated` JSDoc tag, not just the ones shown in examples. Check the
   file's export statements against the deprecation notices.

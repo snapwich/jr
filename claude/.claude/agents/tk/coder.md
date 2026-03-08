@@ -27,6 +27,9 @@ The architect identified issues during feature review and reopened this task for
 1. Read the architect's feedback in the task notes
 2. You have access to the original task description — use it to understand what the task was supposed to accomplish
 3. Make targeted fixes aligned with both the original requirements and the architect's feedback
+4. If the rework was triggered by a regression (human-reported or architect-reported), write a test that would have
+   caught the regression. Follow the cost pyramid — unit test preferred, integration/e2e only if the regression can't be
+   caught at a lower level. Skip only if the regression is purely visual with no programmatic assertion possible.
 
 ## Post-Escalation Re-entry
 
