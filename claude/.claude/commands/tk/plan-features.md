@@ -74,6 +74,12 @@ Launch Explore agents asking each to summarize the behavior surface of the code 
 options, state transitions, error paths, and external integrations. This keeps the planning context clean while getting
 accurate complexity assessments.
 
+**Explore agent scoping**: Direct Explore agents to the project's source code — typically the `default/` worktree (or a
+specific repo subdirectory in multi-repo mode). Explicitly tell them to **ignore `.agents/`, `.tickets/`, `.claude/`,
+and `justfile`** — these are orchestration infrastructure, not project source. If an Explore agent needs ticket
+information (e.g., existing requirements, task descriptions), provide that context in the prompt yourself using `tk`
+output — do not let the agent discover it by browsing files.
+
 Compare each Explore summary against the plan's test description for that area. Flag any case where the plan's test
 depth is shallow relative to the code's actual behavior surface — these become open questions for §3.
 
