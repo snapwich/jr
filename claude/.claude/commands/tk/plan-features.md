@@ -67,6 +67,16 @@ Identify what changes are needed:
 
 For existing features, map current chain and identify insertion points (default: append at end of chain).
 
+**Specification depth check**: When the plan references testing specific code (components, endpoints, services, CLI
+commands, libraries, pipelines, etc.), explore the actual source to understand its complexity before finalizing ticket
+descriptions. **Use Task tool with Explore subagents** for this — do not read source files directly into this context.
+Launch Explore agents asking each to summarize the behavior surface of the code under test: inputs, outputs, modes/
+options, state transitions, error paths, and external integrations. This keeps the planning context clean while getting
+accurate complexity assessments.
+
+Compare each Explore summary against the plan's test description for that area. Flag any case where the plan's test
+depth is shallow relative to the code's actual behavior surface — these become open questions for §3.
+
 **Cross-feature test needs**: When the plan involves multiple interrelated features, identify interactions between
 features that need verification but can't be tested within any single feature's scope. Usually, a downstream feature
 that already depends on an upstream feature is the right place for these tests — a task in the downstream feature can
@@ -87,6 +97,14 @@ Before creating or modifying any tickets, scan the input for unresolved decision
 - Uncertainty language: "maybe", "possibly", "might", "not sure if", "need to decide"
 - Incomplete specifications: missing error handling strategy, unspecified edge cases, vague acceptance criteria
 - Placeholders: "...", "etc.", "and so on" where specifics are needed for implementation
+- **Implicit underspecification**: The plan describes testing something in vague terms ("loads", "works", "interaction",
+  "handles requests") but the actual source (explored in §2) reveals significant behavior — multiple modes, stateful
+  flows, non-trivial computation, branching logic — that the plan doesn't explicitly cover. For each, present:
+  - What the plan says (quote)
+  - What the code actually does (from source exploration)
+  - The gap between the two
+  - Ask the user how deep testing should go — smoke test (exists/responds), functional test (core flows), or exhaustive
+    (all modes/edge cases/error paths)
 
 Collect **all** unresolved items and present them to the user in a single batch. For each item:
 
