@@ -1169,7 +1169,7 @@ watch:
     --preview='
       session={2}; wt={3}
       worktree_path=$(echo "$WATCH_PROJECT_DIR/$wt" | sed "s|/\./|/|g")
-      escaped_path=$(echo "$worktree_path" | sed "s|/|-|g")
+      escaped_path=$(echo "$worktree_path" | sed "s|[/.]|-|g")
       session_file="$HOME/.claude/projects/$escaped_path/$session.jsonl"
       [[ -f "$session_file" ]] || { echo "Session file not found"; exit 0; }
       jq -r "$WATCH_JQ_FILTER" "$session_file" 2>/dev/null
@@ -1181,7 +1181,7 @@ watch:
   session=$(echo "$selected" | cut -d$'\t' -f2)
   wt=$(echo "$selected" | cut -d$'\t' -f3)
   worktree_path=$(echo "$WATCH_PROJECT_DIR/$wt" | sed 's|/\./|/|g')
-  escaped_path=$(echo "$worktree_path" | sed 's|/|-|g')
+  escaped_path=$(echo "$worktree_path" | sed 's|[/.]|-|g')
   session_file="$HOME/.claude/projects/$escaped_path/$session.jsonl"
 
   if [[ ! -f "$session_file" ]]; then
