@@ -149,11 +149,16 @@ tk add-note <ticket-id> '[coder] SCOPE DISCOVERY: <detailed explanation of what 
 
 ### Environment blockers (escalate)
 
-When tests cannot run due to missing system dependencies, tools, or runtime requirements you cannot install:
+When tests cannot run due to missing dependencies, tools, or runtime requirements:
 
+- **Project-local dependencies are your job.** Missing npm packages, Python venv packages, or other project-scoped
+  dependencies — install them normally and keep going.
+- **System/global dependencies are not.** Do NOT run `sudo`, `apt-get`, global `pip install`, or any command that
+  modifies the host system outside the project. Do NOT search the filesystem for missing system libraries or try
+  `LD_LIBRARY_PATH` hacks. If something needs root or a system package, that's a human problem — escalate immediately.
 - Do NOT work around the issue (e.g., curl instead of running the actual test)
 - Do NOT mark work as done with "correct for real environments" or similar rationalization
-- If acceptance criteria cannot be verified, the task is not done — escalate
+- If acceptance criteria cannot be verified, the task is not done — commit your implementation and escalate
 
 Signal escalation with environment details:
 
