@@ -72,6 +72,24 @@ Feature: Orchestrator signal dispatch
     And the output should contain "ESCALATE"
     And the output should contain "Drain: skipping dispatch"
 
+  Scenario: No-human-review closes feature after architect approval
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent always returns "requesting-review" for "task-impl" as "tk:coder"
+    And the mock subagent always returns "approved" for "task-impl" as "tk:code-reviewer"
+    And the mock subagent always returns "approved" for "feat-1" as "tk:architect-reviewer"
+    When I run the orchestrator with no-human-review
+    Then ticket "task-impl" should be closed
+    And ticket "feat-1" should be closed
+    And the orchestrator should exit with code 0
+    And the output should contain "no-human-review"
+
+  Scenario: No-human-review recovery closes human-assigned feature
+    Given a feature "feat-1" with all tasks closed
+    When I run the orchestrator with no-human-review
+    Then ticket "feat-1" should be closed
+    And the orchestrator should exit with code 0
+    And the output should contain "no-human-review recovery"
+
   Scenario: Escalation after max architect review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And all tasks in "feat-1" are closed

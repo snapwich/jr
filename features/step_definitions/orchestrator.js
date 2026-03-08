@@ -148,6 +148,10 @@ When("I run the orchestrator", async function () {
   await this.runOrchestrator();
 });
 
+When("I run the orchestrator with no-human-review", async function () {
+  await this.runOrchestrator({ TK_NO_HUMAN_REVIEW: "1" });
+});
+
 // --- Assertions ---
 
 Then("ticket {string} should be closed", async function (name) {

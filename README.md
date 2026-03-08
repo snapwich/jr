@@ -78,6 +78,38 @@ just request-changes <feature-id> "Fix error handling in auth module"
 
 After `request-changes`, run `just start-work` again to begin the rework cycle.
 
+## Autonomous Mode (Optional)
+
+By default, the orchestrator pauses for human review after architect approval (exit code 3). For fully autonomous
+workflows where you trust the architect's judgment, skip the human gate:
+
+```sh
+# Via flag
+just start-work --no-human-review
+
+# Or via environment variable
+TK_NO_HUMAN_REVIEW=1 just start-work
+```
+
+With this flag, architect approval closes features directly instead of assigning them for human review. The orchestrator
+exits 0 when all work completes. This is **not the default** — the standard workflow includes human review as a quality
+gate.
+
+### Merging completed features
+
+After features are closed (either via human review or `--no-human-review`), merge their branches into the base branch:
+
+```sh
+# Merge all closed feature branches (preserves commit history)
+just merge-all
+
+# Or squash each feature into a single commit
+just merge-all --squash
+```
+
+This merges in dependency order, uses a temp branch for atomicity (rolls back if any merge fails), cleans up worktrees
+and branches on success, and does not push — you decide when to push.
+
 ## Stacked Features
 
 When features depend on each other (stacked branches), use `just deps` to see the merge order:
@@ -123,6 +155,7 @@ just ls                      # Show repos and their worktrees (alias: just workt
 # After orchestration
 just approve <feature-id>    # Validate and close a feature
 just request-changes <id> "feedback"  # Reopen for rework
+just merge-all [--squash]    # Merge closed feature branches into base
 just deps                    # Show merge order for stacked features (alias: worktree-deps)
 just rebase-feature <id>     # Rebase a stacked feature after upstream merges
 ```
@@ -131,11 +164,12 @@ just rebase-feature <id>     # Rebase a stacked feature after upstream merges
 
 Environment variables for tuning the orchestrator:
 
-| Variable            | Default       | Description                               |
-| ------------------- | ------------- | ----------------------------------------- |
-| `TK_MAX_CONCURRENT` | 3             | Max concurrent subagents                  |
-| `TK_AGENT_TIMEOUT`  | 1800          | Agent timeout in seconds (30 min)         |
-| `TK_BASE_BRANCH`    | `origin/HEAD` | Default base branch for feature worktrees |
+| Variable             | Default       | Description                               |
+| -------------------- | ------------- | ----------------------------------------- |
+| `TK_MAX_CONCURRENT`  | 3             | Max concurrent subagents                  |
+| `TK_AGENT_TIMEOUT`   | 1800          | Agent timeout in seconds (30 min)         |
+| `TK_BASE_BRANCH`     | `origin/HEAD` | Default base branch for feature worktrees |
+| `TK_NO_HUMAN_REVIEW` | 0             | Skip human review gate when set to 1      |
 
 ## Details
 

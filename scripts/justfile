@@ -466,12 +466,18 @@ remove-worktree name repo=".":
   git -C {{ repo }}/default branch -d {{ name }}
 
 # Run the orchestration loop — discovers ready work, launches subagents, reacts to signals
-start-work:
+start-work *args:
   #!/usr/bin/env bash
   set -o pipefail
 
   # --- Configuration ---
   MAX_CONCURRENT="${TK_MAX_CONCURRENT:-3}"
+  NO_HUMAN_REVIEW="${TK_NO_HUMAN_REVIEW:-0}"
+  for arg in {{ args }}; do
+    case "$arg" in
+      --no-human-review) NO_HUMAN_REVIEW=1 ;;
+    esac
+  done
   PROJECT_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
   OUTPUT_DIR="${TK_OUTPUT_DIR:-$PROJECT_DIR/.agents/tmp}"
   LOCK_DIR="$OUTPUT_DIR/locks"
@@ -714,6 +720,11 @@ start-work:
       if [[ "$agent" == "tk:architect-reviewer" ]]; then
         : # Fall through to launch architect for feature review
       elif [[ "$agent" == "human" ]]; then
+        if [[ "$NO_HUMAN_REVIEW" == "1" ]]; then
+          tk close "$ticket_id"
+          log "Feature $ticket_id auto-closed (no-human-review recovery)"
+          return 1
+        fi
         if [[ -z "${LOGGED_FEATURES[$ticket_id]:-}" ]]; then
           log "Feature $ticket_id ready for human review"
           LOGGED_FEATURES[$ticket_id]=1
@@ -863,9 +874,13 @@ start-work:
     if [[ "$ticket_type" == "feature" ]]; then
       case "${SIGNAL:-}" in
         approved)
-          # Architect approved — assign to human for final review
-          tk assign "$ticket_id" human
-          log "Feature $ticket_id approved by architect — assigned to human for review"
+          if [[ "$NO_HUMAN_REVIEW" == "1" ]]; then
+            tk close "$ticket_id"
+            log "Feature $ticket_id approved — closed (no-human-review)"
+          else
+            tk assign "$ticket_id" human
+            log "Feature $ticket_id approved by architect — assigned to human for review"
+          fi
           ;;
         changes-requested)
           # Architect reopened tasks — check iteration cap then let discover() find them
@@ -1524,6 +1539,245 @@ approve feature-id:
   echo "Next steps:"
   echo "  - Create PR from branch: $wt"
   echo "  - Or merge locally and run: just rebase-feature <downstream-feature>"
+
+# Merge closed feature branches into base branch in dependency order
+merge-all *args:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  JUSTFILE="{{ justfile() }}"
+  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  SQUASH=0
+  for arg in {{ args }}; do
+    case "$arg" in
+      --squash) SQUASH=1 ;;
+      *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    esac
+  done
+
+  # --- Helpers ---
+
+  feature_label() {
+    local fid="$1" fjson="$2"
+    local prefix title slug
+    prefix=$(echo "$fjson" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
+    title=$(tk show "$fid" | grep '^# ' | head -1 | sed 's/^# //')
+    if [[ -n "$prefix" ]]; then
+      echo "$prefix: $title"
+    else
+      echo "$fid: $title"
+    fi
+  }
+
+  resolve_local_base() {
+    local base="${TK_BASE_BRANCH:-origin/HEAD}"
+    if [[ "$base" == origin/* ]]; then
+      # Resolve origin/HEAD → refs/remotes/origin/main → main
+      local remote_ref
+      if [[ "$base" == "origin/HEAD" ]]; then
+        remote_ref=$(git -C "$1/default" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)
+      else
+        remote_ref="refs/remotes/$base"
+      fi
+      if [[ -z "$remote_ref" ]]; then
+        echo "ERROR: Could not resolve $base" >&2
+        return 1
+      fi
+      local local_branch="${remote_ref##*/}"
+      if ! git -C "$1/default" rev-parse --verify "$local_branch" &>/dev/null; then
+        echo "ERROR: No local branch '$local_branch' tracking $base" >&2
+        return 1
+      fi
+      echo "$local_branch"
+    else
+      echo "$base"
+    fi
+  }
+
+  # --- Collect closed features with existing branches ---
+
+  declare -A FEAT_JSON   # fid → json
+  declare -A FEAT_REPO   # fid → repo dir
+  declare -A FEAT_BRANCH # fid → branch name
+  declare -A FEAT_DEPS   # fid → space-separated dep fids (features only)
+  FEAT_ORDER=()          # topologically sorted feature IDs
+
+  while IFS= read -r fjson; do
+    [[ -z "$fjson" ]] && continue
+    fid=$(echo "$fjson" | jq -r '.id')
+    fstatus=$(echo "$fjson" | jq -r '.status')
+    [[ "$fstatus" == "closed" ]] || continue
+
+    repo=$(echo "$fjson" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+    branch=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "$fid" 2>/dev/null || true)
+    [[ -z "$branch" ]] && continue
+
+    # Check branch exists
+    if ! git -C "$repo/default" rev-parse --verify "$branch" &>/dev/null; then
+      continue
+    fi
+
+    FEAT_JSON[$fid]="$fjson"
+    FEAT_REPO[$fid]="$repo"
+    FEAT_BRANCH[$fid]="$branch"
+
+    # Collect feature deps (only features, not tasks)
+    local deps=""
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+      dep_type=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null | jq -r '.type' 2>/dev/null || true)
+      [[ "$dep_type" == "feature" ]] && deps+="$dep_id "
+    done < <(echo "$fjson" | jq -r '.deps[]?' 2>/dev/null)
+    FEAT_DEPS[$fid]="${deps% }"
+  done < <(tk query 'select(.type == "feature")' 2>/dev/null)
+
+  if [[ ${#FEAT_JSON[@]} -eq 0 ]]; then
+    echo "No closed features with existing branches to merge."
+    exit 0
+  fi
+
+  # --- Topological sort (roots first) ---
+
+  declare -A VISITED
+  topo_visit() {
+    local fid="$1"
+    [[ -n "${VISITED[$fid]:-}" ]] && return
+    VISITED[$fid]=1
+    for dep in ${FEAT_DEPS[$fid]:-}; do
+      [[ -n "${FEAT_JSON[$dep]:-}" ]] && topo_visit "$dep"
+    done
+    FEAT_ORDER+=("$fid")
+  }
+
+  for fid in "${!FEAT_JSON[@]}"; do
+    topo_visit "$fid"
+  done
+
+  # --- Group by repo ---
+
+  declare -A REPO_FEATURES  # repo → space-separated fids in order
+  for fid in "${FEAT_ORDER[@]}"; do
+    repo="${FEAT_REPO[$fid]}"
+    REPO_FEATURES[$repo]+="$fid "
+  done
+
+  # --- Per-repo merge ---
+
+  TEMP_BRANCH="_merge-all"
+  declare -A ORIGINAL_SHAS     # branch → original SHA (for rollback)
+  declare -A REBASED_BRANCHES  # branch → original SHA (branches we rebased, for rollback)
+  MERGED_FIDS=()               # features successfully merged (across all repos)
+  FAILED=0
+
+  for repo in "${!REPO_FEATURES[@]}"; do
+    local_base=$(resolve_local_base "$repo") || exit 1
+    repo_dir="$repo/default"
+
+    base_sha=$(git -C "$repo_dir" rev-parse "$local_base")
+    ORIGINAL_SHAS["$repo:$local_base"]="$base_sha"
+
+    # Create temp branch from base
+    git -C "$repo_dir" branch -f "$TEMP_BRANCH" "$local_base" 2>/dev/null \
+      || git -C "$repo_dir" checkout -b "$TEMP_BRANCH" "$local_base" 2>/dev/null
+    git -C "$repo_dir" checkout "$TEMP_BRANCH"
+
+    for fid in ${REPO_FEATURES[$repo]}; do
+      branch="${FEAT_BRANCH[$fid]}"
+      label=$(feature_label "$fid" "${FEAT_JSON[$fid]}")
+
+      # If squash and this feature has an upstream dep that was merged this run, rebase first
+      if [[ "$SQUASH" == "1" ]]; then
+        for dep in ${FEAT_DEPS[$fid]:-}; do
+          for merged_fid in "${MERGED_FIDS[@]:-}"; do
+            if [[ "$dep" == "$merged_fid" && "${FEAT_REPO[$dep]}" == "$repo" ]]; then
+              # Save original SHA for rollback
+              REBASED_BRANCHES[$branch]=$(git -C "$repo_dir" rev-parse "$branch")
+              echo "Rebasing $branch onto $TEMP_BRANCH (upstream $dep was squash-merged)"
+              if ! git -C "$repo_dir" rebase "$TEMP_BRANCH" "$branch" 2>/dev/null; then
+                echo "ERROR: Rebase failed for $branch" >&2
+                git -C "$repo_dir" rebase --abort 2>/dev/null || true
+                FAILED=1
+                break 3
+              fi
+              git -C "$repo_dir" checkout "$TEMP_BRANCH"
+              break 2
+            fi
+          done
+        done
+      fi
+
+      echo "Merging $branch ($label)"
+      if [[ "$SQUASH" == "1" ]]; then
+        if ! git -C "$repo_dir" merge --squash "$branch" 2>/dev/null; then
+          echo "ERROR: Squash merge failed for $branch ($label)" >&2
+          git -C "$repo_dir" merge --abort 2>/dev/null || true
+          FAILED=1
+          break 2
+        fi
+        git -C "$repo_dir" commit -m "$label" --no-edit
+      else
+        if ! git -C "$repo_dir" merge --no-ff -m "$label" "$branch" 2>/dev/null; then
+          echo "ERROR: Merge failed for $branch ($label)" >&2
+          git -C "$repo_dir" merge --abort 2>/dev/null || true
+          FAILED=1
+          break 2
+        fi
+      fi
+
+      MERGED_FIDS+=("$fid")
+    done
+  done
+
+  # --- Rollback on failure ---
+
+  if [[ "$FAILED" == "1" ]]; then
+    echo "Aborting — rolling back all changes"
+    for repo in "${!REPO_FEATURES[@]}"; do
+      repo_dir="$repo/default"
+      local_base=$(resolve_local_base "$repo") || true
+      # Restore base branch
+      git -C "$repo_dir" checkout "$local_base" 2>/dev/null || true
+      git -C "$repo_dir" branch -D "$TEMP_BRANCH" 2>/dev/null || true
+    done
+    # Restore rebased branches
+    for branch in "${!REBASED_BRANCHES[@]}"; do
+      for repo in "${!REPO_FEATURES[@]}"; do
+        git -C "$repo/default" branch -f "$branch" "${REBASED_BRANCHES[$branch]}" 2>/dev/null || true
+      done
+    done
+    exit 1
+  fi
+
+  # --- Success: fast-forward base, clean up ---
+
+  for repo in "${!REPO_FEATURES[@]}"; do
+    local_base=$(resolve_local_base "$repo") || continue
+    repo_dir="$repo/default"
+
+    # Fast-forward base branch to temp
+    git -C "$repo_dir" checkout "$local_base"
+    git -C "$repo_dir" merge --ff-only "$TEMP_BRANCH"
+    git -C "$repo_dir" branch -d "$TEMP_BRANCH"
+
+    # Clean up merged feature worktrees and branches
+    for fid in ${REPO_FEATURES[$repo]}; do
+      branch="${FEAT_BRANCH[$fid]}"
+      # Remove worktree if it exists
+      git -C "$repo_dir" worktree remove "../$branch" 2>/dev/null || true
+      # Delete branch
+      git -C "$repo_dir" branch -D "$branch" 2>/dev/null || true
+    done
+  done
+
+  echo ""
+  echo "Merged ${#MERGED_FIDS[@]} feature(s):"
+  for fid in "${MERGED_FIDS[@]}"; do
+    label=$(feature_label "$fid" "${FEAT_JSON[$fid]}")
+    echo "  - $label"
+  done
+  echo ""
+  echo "Branches merged into local base. Run 'git push' when ready."
 
 # Rebase a feature's worktree onto its correct base (lazy — run when ready to merge)
 # Optional rework-notes: if provided, triggers a rework cycle after rebase (for API changes)

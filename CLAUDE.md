@@ -223,6 +223,20 @@ The optional `role` parameter overrides the default note prefix. The architect-r
 Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`, `[architect]`, `[orchestrator]`,
 `[human]`. Task notes are for the next agent on the same task. Feature notes are for sibling tasks and the architect.
 
+### Autonomous mode (`--no-human-review`)
+
+By default, the orchestrator exits with code 3 at the human review gate. `--no-human-review` (or `TK_NO_HUMAN_REVIEW=1`)
+skips this — architect approval closes the feature directly, no exit 3. Crash-safe: if the orchestrator restarts and
+finds a human-assigned feature, it auto-closes it. The architect's `tk assign human` is kept as a crash-safety measure;
+the orchestrator overrides it in both `react()` and `launch()`.
+
+### Merging completed features (`merge-all`)
+
+`just merge-all [--squash]` merges closed feature branches into `TK_BASE_BRANCH` in dependency order. Atomic: merges
+into a temp branch, fast-forwards base only if all succeed. Handles stacked branches with `--squash` by rebasing
+downstream branches onto the temp branch after each squash merge. Rolls back on failure (deletes temp branch, restores
+rebased branches). Cleans up worktrees and branches on success. Multi-repo aware via `repo:<name>` tags. Does not push.
+
 ### Concurrency
 
 The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`).
