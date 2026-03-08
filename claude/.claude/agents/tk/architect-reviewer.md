@@ -48,7 +48,13 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
    tk add-note <feature-id> '[architect] Coherence: <assessment of how pieces fit together>'
    ```
 
-4. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
+4. **After spec completeness check** — Log findings:
+
+   ```sh
+   tk add-note <feature-id> '[architect] Spec completeness: <N significant gaps, M minor gaps noted>'
+   ```
+
+5. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
 
 ## Review Process
 
@@ -105,6 +111,28 @@ These may span multiple tasks.
   and what test is missing.
 - Check that existing tests were considered. If the codebase had tests covering the modified behavior before this
   feature, those tests should have been updated — not left broken or duplicated with new tests.
+
+### Specification Completeness
+
+The previous section checks whether stated acceptance criteria have test coverage. This section checks whether the
+**stated criteria were sufficient** for the code's actual behavior.
+
+Scan the branch diff for code with significant behavior — interactive flows, computation, branching logic, multiple
+modes, state machines, external integrations — and compare against the feature's acceptance criteria and task
+requirements. Look for behavior that exists in the code, or should exist in the code, but has no corresponding spec or
+test.
+
+**Two-tier response:**
+
+- **Significant gaps** — core functionality, primary user flows, or non-trivial computation with no test coverage and no
+  corresponding requirement in any task description. These warrant `changes-requested`: create a new task with specific
+  requirements for the missing coverage.
+- **Minor gaps** — edge cases, secondary modes, or low-risk paths that aren't covered. Note these on the feature for
+  human awareness but do not block approval:
+
+  ```sh
+  tk add-note <feature-id> '[architect] Spec gap (minor): <description of untested behavior>'
+  ```
 
 ### Test Appropriateness
 
