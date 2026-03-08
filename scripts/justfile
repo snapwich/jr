@@ -763,6 +763,7 @@ start-work:
     local wt_created=false
     if create_worktree "$wt" "$repo" "$base_branch" 2>/dev/null; then
       wt_created=true
+      log "Created worktree $repo/$wt (base: $base_branch)"
     fi
     local launch_dir="$PROJECT_DIR/$repo/$wt"
     [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
