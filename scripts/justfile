@@ -1048,6 +1048,7 @@ start-work:
             commit_body+=$'\n'"- $fname"
           done
           just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — features awaiting review${commit_body}" || log "Warning: ticket commit failed (non-fatal)"
+          printf '\a'
           exit 3
         elif (( launchable > 0 )); then
           sleep 1
@@ -1059,9 +1060,11 @@ start-work:
       open_count=$(tk query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
       if (( open_count == 0 )); then
         log "All work complete"
+        printf '\a'
         exit 0
       else
         log "DEADLOCK: $open_count open ticket(s) but none are ready"
+        printf '\a'
         exit 2
       fi
     fi
@@ -1080,6 +1083,7 @@ start-work:
         drain
       fi
       log "Exiting due to escalation: $ESCALATION"
+      printf '\a'
       exit 2
     fi
   done
