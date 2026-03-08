@@ -773,6 +773,11 @@ start-work:
       tk add-note "$ticket_id" "[orchestrator] Assigned to coder."
     fi
 
+    # Extract model from agent frontmatter
+    local agent_file model
+    agent_file="$PROJECT_DIR/.claude/agents/${agent/://}.md"
+    model=$(sed -n '/^---$/,/^---$/{ s/^model: *//p }' "$agent_file")
+
     local prompt outfile session_uuid
     prompt=$(make_prompt "$ticket_id" "$repo")
     outfile="$OUTPUT_DIR/output-$ticket_id.txt"
@@ -784,7 +789,7 @@ start-work:
     (
       cd "$launch_dir"
       export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
-      exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" --session-id "$session_uuid" --dangerously-skip-permissions \
+      exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} --session-id "$session_uuid" --dangerously-skip-permissions \
         -p "$prompt" < /dev/null > "$outfile" 2>&1
     ) &
     local pid=$!
