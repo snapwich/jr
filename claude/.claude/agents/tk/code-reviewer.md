@@ -131,6 +131,10 @@ When requesting changes for insufficient tests, be specific: name what's missing
 the API returns 404", "the validation logic in `parser.ts:45` has no coverage") so a fresh coder can act on it without
 guessing.
 
+- **Visual regression tests**: When the task includes screenshot/visual regression tests that produce diff images on
+  failure, use the Read tool to view a few `*-diff.png` files rather than only checking pass/fail counts. This helps
+  verify that test assertions are actually meaningful.
+
 ### Mutation Testing
 
 After reviewing tests conceptually, introduce targeted mutations to empirically verify that tests catch real bugs.

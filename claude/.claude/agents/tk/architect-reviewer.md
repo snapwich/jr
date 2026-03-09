@@ -218,6 +218,17 @@ to run broader test suites that could catch regressions from the feature's chang
 7. **Missing coverage**: If no integration tests exist but this is a shared component feature, note on the feature as a
    risk
 
+### Visual Regression / Screenshot Test Failures
+
+When screenshot or visual regression tests fail and produce diff images (e.g., in `test-results/`):
+
+1. **Read a few diff images** — use the Read tool on 2-3 `*-diff.png` files to visually understand what changed. This is
+   far more informative than analyzing image metadata (file sizes, byte headers, dimensions). Pick failures from
+   different pages/routes to check whether the issue is systemic or isolated.
+2. **Read expected and actual images** if the diff alone isn't clear.
+3. **Check baseline provenance** — `git log` on the snapshots directory to understand when baselines were generated and
+   whether they reflect the intended state.
+
 ## Outcomes
 
 ### Approved
