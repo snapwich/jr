@@ -1013,15 +1013,41 @@ start-work *args:
     done
   }
 
+  # Walk process tree from given PIDs, collect all unique PGIDs (breadth-first).
+  # Must run BEFORE killing anything — once parents die, children reparent to PID 1.
+  collect_pgids() {
+    local queue=("$@") seen=()
+    while [[ ${#queue[@]} -gt 0 ]]; do
+      local cur="${queue[0]}"; queue=("${queue[@]:1}")
+      local pgid; pgid=$(ps -o pgid= -p "$cur" 2>/dev/null | tr -d ' ') || continue
+      [[ -n "$pgid" ]] && seen+=("$pgid")
+      while IFS= read -r child; do
+        child="${child// /}"; [[ -n "$child" ]] && queue+=("$child")
+      done < <(ps -o pid= --ppid "$cur" 2>/dev/null)
+    done
+    printf '%s\n' "${seen[@]}" | sort -un
+  }
+
   cleanup() {
     log "Interrupted — cleaning up"
-    # Kill all child processes
-    pkill -P $$ 2>/dev/null || true
+    # Snapshot all descendant PGIDs before sending any signals
+    local pgids
+    pgids=$(collect_pgids "${!PID_TO_TICKET[@]}")
+    # Release worktree locks
     for pid in "${!PID_TO_TICKET[@]}"; do
-      kill "$pid" 2>/dev/null || true
       local wt="${PID_TO_WORKTREE[$pid]:-}"
       [[ -n "$wt" ]] && release_lock "$wt"
     done
+    # SIGTERM each process group
+    local my_pgid; my_pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+    while IFS= read -r pgid; do
+      [[ -n "$pgid" && "$pgid" != "$my_pgid" ]] && kill -TERM -- -"$pgid" 2>/dev/null || true
+    done <<< "$pgids"
+    sleep 0.5
+    # SIGKILL stragglers
+    while IFS= read -r pgid; do
+      [[ -n "$pgid" && "$pgid" != "$my_pgid" ]] && kill -KILL -- -"$pgid" 2>/dev/null || true
+    done <<< "$pgids"
     exit 130
   }
 
