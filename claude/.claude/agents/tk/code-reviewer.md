@@ -26,13 +26,17 @@ Every potential issue you find must pass this gate before becoming feedback:
 
 Only concerns that pass all three filters belong in a changes-requested note.
 
+## Commands
+
+Run `just code-reviewer` to see all available commands for this agent.
+
 ## Setup
 
-1. Read your task: `tk show <ticket-id>`
+1. Read your task: `just show <ticket-id>`
 2. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
 3. Use `just task-diff <ticket-id>` to see the current task's changes and `just task-commits <ticket-id>` to list its
    commits
-4. Read the parent feature for broader context: `tk show <parent-id>`
+4. Read the parent feature for broader context: `just show <parent-id>`
 5. Add the **after setup** checkpoint note (see Notes section)
 
 ## Notes
@@ -44,25 +48,25 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 1. **After setup** — Log that you've started the review:
 
    ```sh
-   tk add-note <ticket-id> '[code-reviewer] Starting review. Prior iterations: <N>'
+   just add-note <ticket-id> '[code-reviewer] Starting review. Prior iterations: <N>'
    ```
 
 2. **After reading diff** — Log scope of changes:
 
    ```sh
-   tk add-note <ticket-id> '[code-reviewer] Diff reviewed: <N files, brief scope>'
+   just add-note <ticket-id> '[code-reviewer] Diff reviewed: <N files, brief scope>'
    ```
 
 3. **After running tests** — Log test results:
 
    ```sh
-   tk add-note <ticket-id> '[code-reviewer] Tests: <X/Y pass>'
+   just add-note <ticket-id> '[code-reviewer] Tests: <X/Y pass>'
    ```
 
 4. **After mutation testing** — Log mutation testing results:
 
    ```sh
-   tk add-note <ticket-id> '[code-reviewer] Mutation testing: <N mutations, M caught>. <brief findings or "skipped: <reason>">'
+   just add-note <ticket-id> '[code-reviewer] Mutation testing: <N mutations, M caught>. <brief findings or "skipped: <reason>">'
    ```
 
 5. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
@@ -210,7 +214,7 @@ If the code and tests meet quality standards:
 Before approving, consider: what is the strongest argument for rejecting this? Log it:
 
 ```sh
-tk add-note <ticket-id> '[code-reviewer] Devil'\''s advocate: <strongest rejection argument>. Verdict: <why it doesn'\''t hold / was investigated and cleared>'
+just add-note <ticket-id> '[code-reviewer] Devil'\''s advocate: <strongest rejection argument>. Verdict: <why it doesn'\''t hold / was investigated and cleared>'
 ```
 
 If you cannot clear your own objection, investigate further or request changes.
@@ -226,7 +230,7 @@ If issues are found:
 1. Add a note with specific, actionable feedback (file:line, what to fix):
 
    ```sh
-   tk add-note <ticket-id> '[code-reviewer] CHANGES REQUESTED.
+   just add-note <ticket-id> '[code-reviewer] CHANGES REQUESTED.
    1. <file:line> <specific issue and what to do about it>
    2. <file:line> <specific issue and what to do about it>'
    ```

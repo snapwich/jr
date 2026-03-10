@@ -36,13 +36,13 @@ Conflicts happen when rebasing stacked branches. There are two scenarios:
 - The upstream feature was merged to main (typically squash-merged)
 - The `rebase-onto` SHA points to the commit containing the merged changes
 - Use `git show <rebase-onto>:<file>` to see the upstream's final state
-- Read the upstream feature ticket (`tk show <upstream-feature-id>`) for intent
+- Read the upstream feature ticket (`just show <upstream-feature-id>`) for intent
 - The merge may have squashed multiple commits, so the upstream ticket notes are valuable context
 
 ## Setup
 
-1. Read the feature context: `tk show <feature-id>`
-2. Read the upstream feature: `tk show <upstream-feature-id>` — understand what upstream implemented
+1. Read the feature context: `just show <feature-id>`
+2. Read the upstream feature: `just show <upstream-feature-id>` — understand what upstream implemented
 3. Check the current rebase state: `git status`
 4. Identify conflicting files from the git status output
 5. If upstream-worktree exists, examine it for context; otherwise use `git show` to view the merged state
@@ -81,7 +81,7 @@ When the rebase completes successfully:
 1. Add a conflict-info note to the feature:
 
    ```sh
-   tk add-note <feature-id> '[rebaser] Conflicts: <files>. Resolution: <brief>'
+   just add-note <feature-id> '[rebaser] Conflicts: <files>. Resolution: <brief>'
    ```
 
    - `<files>` is a comma-separated list of files that had conflicts

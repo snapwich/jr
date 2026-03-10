@@ -1,8 +1,4 @@
-Work on `tk show $ARGUMENTS[0]`. Use `tk show <parent>` if you need higher-level context around the current task.
-
-## tk CLI
-
-Run `tk` (no args) to see available commands. There is no help subcommand or `--help` flag.
+Work on `just show $ARGUMENTS[0]`. Use `just show <parent>` if you need higher-level context around the current task.
 
 ## Signaling Completion
 

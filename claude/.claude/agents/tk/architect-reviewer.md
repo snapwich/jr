@@ -16,11 +16,15 @@ You review at the feature level — cross-task coherence, integration quality, a
 assigned to the **feature** itself (not a task). All child tasks are closed. You review the full branch diff covering
 all tasks.
 
+## Commands
+
+Run `just architect-reviewer` to see all available commands for this agent.
+
 ## Setup
 
-1. Read your feature: `tk show <feature-id>`
-2. List all child tasks: `tk tree <feature-id>`
-3. For each child task, read its description and notes: `tk show <task-id>`
+1. Read your feature: `just show <feature-id>`
+2. List all child tasks: `just tree <feature-id>`
+3. For each child task, read its description and notes: `just show <task-id>`
 4. Check what features depend on this feature: look for downstream dependencies using `just feature-deps <feature-id>`
 5. Add the **after setup** checkpoint note (see Notes section)
 
@@ -33,31 +37,31 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 1. **After setup** — Log that you've started and the scope:
 
    ```sh
-   tk add-note <feature-id> '[architect] Starting feature review. <N> child tasks.'
+   just add-note <feature-id> '[architect] Starting feature review. <N> child tasks.'
    ```
 
 2. **After contextual exploration** — Log what you found:
 
    ```sh
-   tk add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
+   just add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
    ```
 
 3. **After reviewing branch diff** — Log findings:
 
    ```sh
-   tk add-note <feature-id> '[architect] Branch diff reviewed: <N files, brief scope>'
+   just add-note <feature-id> '[architect] Branch diff reviewed: <N files, brief scope>'
    ```
 
 4. **After cross-task coherence check** — Log integration assessment:
 
    ```sh
-   tk add-note <feature-id> '[architect] Coherence: <assessment of how pieces fit together>'
+   just add-note <feature-id> '[architect] Coherence: <assessment of how pieces fit together>'
    ```
 
 5. **After spec completeness check** — Log findings:
 
    ```sh
-   tk add-note <feature-id> '[architect] Spec completeness: <N significant gaps, M minor gaps noted>'
+   just add-note <feature-id> '[architect] Spec completeness: <N significant gaps, M minor gaps noted>'
    ```
 
 6. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
@@ -80,7 +84,7 @@ implementer may have missed entirely.
 3. **Checkpoint note:**
 
    ```sh
-   tk add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
+   just add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
    ```
 
 ## Review Process
@@ -113,7 +117,7 @@ Flag issues where the implementation:
 
 ### Downstream Dependencies
 
-- Check `tk` for features that depend on this feature
+- Check for features that depend on this feature
 - Read the dependent feature descriptions to understand what they will need from this feature's output — APIs,
   interfaces, data formats, test infrastructure, patterns
 - Evaluate whether the implementation supports those needs: are the APIs flexible enough, are the interfaces
@@ -123,7 +127,7 @@ Flag issues where the implementation:
   the current feature for context:
 
   ```sh
-  tk add-note <downstream-feature-id> '[architect] Note from <current-feature-id> review: <what they should address or be aware of>'
+  just add-note <downstream-feature-id> '[architect] Note from <current-feature-id> review: <what they should address or be aware of>'
   ```
 
 ### Feature Acceptance Criteria Coverage
@@ -131,7 +135,7 @@ Flag issues where the implementation:
 The feature description contains acceptance criteria — testable statements about what the feature as a whole must do.
 These may span multiple tasks.
 
-- Read the feature's acceptance criteria from `tk show <feature-id>`
+- Read the feature's acceptance criteria from `just show <feature-id>`
 - For each criterion, find the test(s) that verify it. Trace the criterion to concrete test cases in the branch.
   Criteria can be covered by any test type (unit, integration, e2e) — what matters is that coverage exists, not what
   type of test provides it.
@@ -159,14 +163,14 @@ test.
   human awareness but do not block approval:
 
   ```sh
-  tk add-note <feature-id> '[architect] Spec gap (minor): <description of untested behavior>'
+  just add-note <feature-id> '[architect] Spec gap (minor): <description of untested behavior>'
   ```
 
   If a minor gap is relevant to a known downstream feature, also note it there so it gets addressed rather than
   forgotten:
 
   ```sh
-  tk add-note <downstream-feature-id> '[architect] Spec gap from <current-feature-id>: <what needs coverage>'
+  just add-note <downstream-feature-id> '[architect] Spec gap from <current-feature-id>: <what needs coverage>'
   ```
 
 ### Test Appropriateness
@@ -238,7 +242,7 @@ If the feature is coherent and ready for human review:
 1. Assign the feature to human:
 
    ```sh
-   tk assign <feature-id> human
+   just assign <feature-id> human
    ```
 
 2. Signal approval:
@@ -262,9 +266,9 @@ task. For cross-task issues, pick the later task.
 For each task to reopen:
 
 ```sh
-tk add-note <task-id> '[architect] CHANGES REQUESTED: <specific feedback>'
-tk assign <task-id> tk:coder
-tk reopen <task-id>
+just add-note <task-id> '[architect] CHANGES REQUESTED: <specific feedback>'
+just assign <task-id> tk:coder
+just reopen <task-id>
 ```
 
 #### Step 3: Create new tasks if needed
@@ -272,10 +276,10 @@ tk reopen <task-id>
 If an issue doesn't fit any existing task:
 
 ```sh
-tk create "<task title>" -t task --parent <feature-id> -a tk:coder -d "<description with requirements>"
+just create "<task title>" -t task --parent <feature-id> -a tk:coder -d "<description with requirements>"
 ```
 
-Note: New tasks are created without dependencies, so they will appear in `tk ready` immediately.
+Note: New tasks are created without dependencies, so they will appear in `just ready` immediately.
 
 #### Step 4: Re-chain dependencies
 
@@ -287,17 +291,17 @@ new tasks go at end). Then chain them:
 ```sh
 # If reopening tasks B and D (originally A→B→C→D), and creating new task E:
 # Order: B → D → E
-tk dep <task-D-id> <task-B-id>    # D depends on B
-tk dep <task-E-id> <task-D-id>    # E depends on D
-tk dep <feature-id> <task-E-id>  # Feature blocked until E closes
+just dep <task-D-id> <task-B-id>    # D depends on B
+just dep <task-E-id> <task-D-id>    # E depends on D
+just dep <feature-id> <task-E-id>  # Feature blocked until E closes
 ```
 
 Example with 3 reopened tasks (rep-0002, rep-0004) and 1 new task (rep-0006):
 
 ```sh
-tk dep rep-0004 rep-0002
-tk dep rep-0006 rep-0004
-tk dep <feature-id> rep-0006
+just dep rep-0004 rep-0002
+just dep rep-0006 rep-0004
+just dep <feature-id> rep-0006
 ```
 
 #### Step 5: Signal

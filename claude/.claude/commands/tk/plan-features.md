@@ -5,20 +5,12 @@ Break down a plan document into features and tasks, or modify existing ticket st
 The user provides a plan document or update request — either as a file path (`$ARGUMENTS`) or pasted directly. The input
 describes work to be done: new features, new tasks, or modifications to existing tickets.
 
-## Tools
+## Commands
 
-**Use `tk` CLI for ALL ticket operations.** This orchestration framework uses its own git-backed ticket system accessed
-via the `tk` command (always in PATH). Do NOT use MCP task tools (`mcp__mc-dev__tasks`, `TaskCreate`, `TaskUpdate`,
+Run `just plan-work` to see all available commands for this workflow.
+
+**Use `just` for ALL ticket operations.** Do NOT use MCP task tools (`mcp__mc-dev__tasks`, `TaskCreate`, `TaskUpdate`,
 `TaskList`, `TaskGet`) — those are generic Claude Code task tracking, unrelated to this system's tickets.
-
-- `tk create` — create tickets
-- `tk show` — read ticket content
-- `tk query` — query tickets with jq filters
-- `tk tree` — show hierarchy
-- `tk dep` / `tk undep` — manage dependencies
-- `tk assign` — set assignee
-- `tk add-note` — add notes
-- `tk reopen` / `tk close` — change status
 
 ## Process
 
@@ -27,10 +19,10 @@ via the `tk` command (always in PATH). Do NOT use MCP task tools (`mcp__mc-dev__
 Before analyzing the input, map the existing ticket landscape:
 
 ```sh
-tk tree
+just tree
 ```
 
-Then build structured data per feature using `tk query` with jq filters:
+Then build structured data per feature using `just query` with jq filters:
 
 - Feature ID, status, assignee, child tasks
 - Chain order — walk from the task with no sibling deps (first) → follow dependents to the end
@@ -48,7 +40,7 @@ Then build structured data per feature using `tk query` with jq filters:
 Also run:
 
 ```sh
-just worktree-list
+just ls
 ```
 
 This shows the project structure — repos and their worktrees. A single level of entries under `.` means single-repo
@@ -189,14 +181,14 @@ Wait for user confirmation before executing.
 For each new feature identified:
 
 ```sh
-tk create "<feature title>" \
+just create "<feature title>" \
   -t feature \
   -a tk:architect-reviewer \
   -d "<plan context embedded in the description>"
 ```
 
 Features are assigned to `tk:architect-reviewer` at creation. When all child tasks close, the feature appears in
-`tk ready` and the orchestrator launches the architect for feature-level review.
+`just ready` and the orchestrator launches the architect for feature-level review.
 
 In multi-repo mode, add a `repo:<name>` tag to each feature matching the target repo directory name. If the user also
 specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to the **feature** ticket.
@@ -222,7 +214,7 @@ before frontend, data model before API, etc.).
 For each task within a feature:
 
 ```sh
-tk create "<task title>" \
+just create "<task title>" \
   -t task \
   -a tk:coder \
   --parent <feature-id> \
@@ -293,21 +285,21 @@ Handle each scenario differently:
 
 **Scenario 2 — Awaiting architect** (open, all children closed, assignee = tk:architect-reviewer):
 
-- Add a note explaining what changed: `tk add-note $FEATURE "[human] Adding new tasks: <brief description>"`
+- Add a note explaining what changed: `just add-note $FEATURE "[human] Adding new tasks: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 - The architect review will trigger again after the new tasks close.
 
 **Scenario 3 — Awaiting human** (open, all children closed, assignee = human):
 
-- Reassign feature back to architect: `tk assign $FEATURE tk:architect-reviewer`
-- Add a note: `tk add-note $FEATURE "[human] Adding new tasks — re-review required: <brief description>"`
+- Reassign feature back to architect: `just assign $FEATURE tk:architect-reviewer`
+- Add a note: `just add-note $FEATURE "[human] Adding new tasks — re-review required: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 
 **Scenario 4 — Closed feature**:
 
-- Reopen the feature: `tk reopen $FEATURE`
-- Reassign to architect: `tk assign $FEATURE tk:architect-reviewer`
-- Add note: `tk add-note $FEATURE "[human] Reopened to add new tasks: <brief description>"`
+- Reopen the feature: `just reopen $FEATURE`
+- Reassign to architect: `just assign $FEATURE tk:architect-reviewer`
+- Add note: `just add-note $FEATURE "[human] Reopened to add new tasks: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 - **Warning**: Reopening a closed feature re-blocks any downstream features that depend on it. Note this to the user.
 
@@ -315,14 +307,14 @@ Handle each scenario differently:
 
 ```sh
 # New task chains after last existing task
-tk dep $NEW_TASK_1 $LAST_TASK
+just dep $NEW_TASK_1 $LAST_TASK
 
 # Chain new tasks together (if multiple)
-tk dep $NEW_TASK_2 $NEW_TASK_1
+just dep $NEW_TASK_2 $NEW_TASK_1
 
 # Feature depends on each new task
-tk dep $FEATURE $NEW_TASK_1
-tk dep $FEATURE $NEW_TASK_2
+just dep $FEATURE $NEW_TASK_1
+just dep $FEATURE $NEW_TASK_2
 ```
 
 For **mid-chain insertion** (inserting between two existing tasks): break the link between the two adjacent tasks,
@@ -332,11 +324,11 @@ insert the new task(s), and re-wire both ends.
 
 #### Feature depends on all its child tasks
 
-Every feature must depend on all its child tasks so it only appears in `tk ready` when all children are closed:
+Every feature must depend on all its child tasks so it only appears in `just ready` when all children are closed:
 
 ```sh
-tk dep <feature-id> <task-id-1>
-tk dep <feature-id> <task-id-2>
+just dep <feature-id> <task-id-1>
+just dep <feature-id> <task-id-2>
 # ... for each child task
 ```
 
@@ -345,8 +337,8 @@ tk dep <feature-id> <task-id-2>
 Tasks within a feature form a linear chain — each task depends on the previous one:
 
 ```sh
-tk dep <task-2> <task-1>
-tk dep <task-3> <task-2>
+just dep <task-2> <task-1>
+just dep <task-3> <task-2>
 # ... and so on
 ```
 
@@ -356,16 +348,16 @@ If one feature depends on another completing first:
 
 ```sh
 # Feature B depends on Feature A
-tk dep <feature-B-id> <feature-A-id>
+just dep <feature-B-id> <feature-A-id>
 # First task of Feature B also depends on Feature A (blocks until A is human-reviewed and closed)
-tk dep <first-task-B-id> <feature-A-id>
+just dep <first-task-B-id> <feature-A-id>
 ```
 
 This blocks all tasks in the dependent feature until the dependency feature is closed by a human.
 
 ### 11. Execute: Modify Descriptions
 
-Use `tk show <id>` to read the current ticket content. Then use the Edit tool on `.tickets/<id>.md` to modify the body
+Use `just show <id>` to read the current ticket content. Then use the Edit tool on `.tickets/<id>.md` to modify the body
 text.
 
 **Do not hand-edit frontmatter** — use `tk` commands for metadata changes (status, assignee, tags, deps).
@@ -374,9 +366,9 @@ text.
 
 After all changes:
 
-1. Show the full hierarchy: `tk tree`
-2. Check for dependency cycles: `tk dep cycle`
-3. Show what's immediately ready to work on: `tk ready`
+1. Show the full hierarchy: `just tree`
+2. Check for dependency cycles: `just dep cycle`
+3. Show what's immediately ready to work on: `just ready`
 4. Run `just verify-tickets` to check for linear chains and cross-feature task dependencies
 5. Report a summary to the user: what was created, reopened, re-wired
 
@@ -385,7 +377,7 @@ After all changes:
 Present the user with:
 
 - Total features and tasks created/modified
-- The ticket hierarchy (from `tk tree`)
+- The ticket hierarchy (from `just tree`)
 - What's immediately ready to work on
 - Any cross-feature dependencies
 - Confirmation that no dependency cycles exist

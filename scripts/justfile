@@ -31,14 +31,18 @@ orchestrator: (_list-group "orchestrator")
 [private]
 human: (_list-group "human")
 [private]
-subagent: (_list-group "subagent")
-[private]
 plan-features: (_list-group "plan-features")
+[private]
+coder: (_list-group "subagent-coder")
+[private]
+code-reviewer: (_list-group "subagent-code-reviewer")
+[private]
+architect-reviewer: (_list-group "subagent-architect-reviewer")
 
 alias deps := worktree-deps
 
 # Show features that depend on a given ticket as a tree
-[group("subagent-architect")]
+[group("subagent-architect-reviewer")]
 feature-deps ticket-id:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
@@ -1367,7 +1371,7 @@ watch:
   tail -n +1 -f "$session_file" | stdbuf -oL jq -r --unbuffered "$WATCH_JQ_FILTER" 2>/dev/null
 
 # List commit SHAs for a task (found by Tk-Task trailer)
-[group('subagent')]
+[group('subagent-code-reviewer')]
 task-commits ticket-id repo='.':
   #!/usr/bin/env bash
   set -euo pipefail
@@ -1377,7 +1381,7 @@ task-commits ticket-id repo='.':
   git -C "$WORKING_DIR/{{ repo }}/$wt" log --reverse --format='%H' --grep="Tk-Task: {{ ticket-id }}" HEAD
 
 # Show per-commit diffs for a task in chronological order
-[group('subagent')]
+[group('subagent-code-reviewer')]
 task-diff ticket-id repo='.':
   #!/usr/bin/env bash
   set -euo pipefail
@@ -1391,7 +1395,7 @@ task-diff ticket-id repo='.':
   done
 
 # Output signal block and add completion note — use this instead of manual signal output
-[group('subagent')]
+[group('subagent-coder'), group('subagent-code-reviewer'), group('subagent-architect-reviewer')]
 signal type ticket-id summary details="" role="":
   #!/usr/bin/env bash
   set -e
@@ -1429,7 +1433,7 @@ signal type ticket-id summary details="" role="":
 # Acquire exclusive lock on a named resource, then run command.
 # Usage: just with-lock <resource> <command> [args...]
 [no-cd]
-[group('subagent')]
+[group('subagent-coder'), group('subagent-code-reviewer'), group('subagent-architect-reviewer')]
 with-lock resource *command:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -2138,3 +2142,85 @@ rebase-feature feature-id rework-notes="":
     echo "Feature $feature_id reassigned to architect for rework"
     echo "Run 'just start-work' — architect will determine which tasks to reopen"
   fi
+
+# --- tk pass-through commands ---
+
+# Show ticket hierarchy — [id] [--status=X] [-a ASSIGNEE] [-T TYPE]
+[group('human'), group('plan-features'), group('subagent-architect-reviewer')]
+tree *args:
+  {{ tk }} tree {{ args }}
+
+# Show plan.md content (loaded plan document)
+[group('human')]
+plan:
+  {{ tk }} plan
+
+# Show ready tickets — [--status=X] [-a ASSIGNEE] [-T TYPE]
+[group('human'), group('plan-features')]
+ready:
+  {{ tk }} ready
+
+# Open ticket in $EDITOR — [--children]
+[group('human')]
+edit ticket-id:
+  {{ tk }} edit {{ ticket-id }}
+
+# Show blocked tickets — [-a ASSIGNEE] [-T TYPE]
+[group('human')]
+blocked:
+  {{ tk }} blocked
+
+# Close a ticket
+[group('plan-features')]
+close ticket-id:
+  {{ tk }} close {{ ticket-id }}
+
+# Reopen a closed ticket
+[group('plan-features'), group('subagent-architect-reviewer')]
+reopen ticket-id:
+  {{ tk }} reopen {{ ticket-id }}
+
+# Show/set ticket status — (open|in_progress|closed)
+[group('plan-features')]
+status ticket-id *args:
+  {{ tk }} status {{ ticket-id }} {{ args }}
+
+# Create ticket — -d DESC, -t TYPE, -a ASSIGNEE, --parent ID, --tags TAG,TAG
+[group('plan-features'), group('subagent-architect-reviewer')]
+create title *args:
+  {{ tk }} create {{ title }} {{ args }}
+
+# Show ticket content
+[group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
+show ticket-id:
+  {{ tk }} show {{ ticket-id }}
+
+# Query tickets as JSON — filter is wrapped in select(), e.g. '.type == "feature"'
+[group('plan-features')]
+query filter:
+  {{ tk }} query {{ filter }}
+
+# Add dependency — ticket-id depends on dependency-id
+[group('plan-features'), group('subagent-architect-reviewer')]
+dep ticket-id dependency-id:
+  {{ tk }} dep {{ ticket-id }} {{ dependency-id }}
+
+# Remove dependency between tickets
+[group('plan-features')]
+undep ticket-id dependency-id:
+  {{ tk }} undep {{ ticket-id }} {{ dependency-id }}
+
+# Set ticket assignee
+[group('plan-features'), group('subagent-architect-reviewer')]
+assign ticket-id assignee:
+  {{ tk }} assign {{ ticket-id }} {{ assignee }}
+
+# Add note to ticket — text arg or pipe via stdin
+[group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
+add-note ticket-id note:
+  {{ tk }} add-note {{ ticket-id }} {{ note }}
+
+# Mark ticket as in progress
+[group('subagent-coder')]
+start ticket-id:
+  {{ tk }} start {{ ticket-id }}

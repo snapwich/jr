@@ -11,11 +11,11 @@ Post-mortem analysis of a completed or in-progress feature. Read-only — presen
 Read the feature and all child tasks with their notes:
 
 ```sh
-tk show <feature-id>
-tk tree <feature-id>
+just show <feature-id>
+just tree <feature-id>
 ```
 
-Then for each child task: `tk show <task-id>` to get description, status, and notes.
+Then for each child task: `just show <task-id>` to get description, status, and notes.
 
 ### 2. Find Session Logs
 
@@ -95,4 +95,4 @@ process. These are surfaced for the user to act on separately. Examples:
   Y, change agent definition Z)
 - **Proportional** — focus on patterns that caused real friction, not theoretical improvements. A single minor hiccup is
   not worth a recommendation.
-- Use `tk` CLI for all ticket operations
+- Use `just` for all ticket operations
