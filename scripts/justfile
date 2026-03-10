@@ -2,11 +2,42 @@
 _default:
   just --list
 
-alias ls := worktree-list
+# List recipes in a specific group
+_list-group group:
+  #!/usr/bin/env bash
+  group="{{ group }}"
+  # Validate group exists
+  if ! just --groups 2>/dev/null | grep -qxF "    $group"; then
+    echo "error: Unknown group '$group'" >&2
+    echo "Available groups:" >&2
+    just --groups 2>&1 | tail -n +2 >&2
+    exit 1
+  fi
+  # Filter --list output: find group header, print until next header/end
+  yellow=$(tput setaf 3 2>/dev/null || true)
+  bold=$(tput bold 2>/dev/null || true)
+  reset=$(tput sgr0 2>/dev/null || true)
+  printf 'Available recipes for [%s%s%s]:\n' "$bold$yellow" "$group" "$reset"
+  just --list --unsorted 2>/dev/null | awk -v g="    [$group]" '
+    $0 == g { found=1; next }
+    found && /^    \[.*\]$/ { exit }
+    found { print }
+  '
+
+[private]
+orchestrator: (_list-group "orchestrator")
+[private]
+human: (_list-group "human")
+[private]
+subagent: (_list-group "subagent")
+[private]
+plan-features: (_list-group "plan-features")
+
 alias deps := worktree-deps
 
 # Show project layout — repos and their worktrees (mirrors `git worktree list`)
-worktree-list:
+[group("human")]
+ls:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
   JUSTFILE="{{ justfile() }}"
@@ -94,6 +125,7 @@ worktree-list:
   fi
 
 # Show worktrees in dependency order — merge leaves first, roots last
+[group("human")]
 worktree-deps:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
@@ -466,6 +498,7 @@ remove-worktree name repo=".":
   git -C {{ repo }}/default branch -d {{ name }}
 
 # Run the orchestration loop — discovers ready work, launches subagents, reacts to signals
+[group("human")]
 start-work *args:
   #!/usr/bin/env bash
   set -o pipefail
@@ -1184,6 +1217,7 @@ _watch-list:
   done < "$sessions_file" | sort -t$'\t' -k1,1n -k2,2rn | cut -f3-
 
 # Watch a running or completed subagent session (auto-refreshing)
+[group("human")]
 watch:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -1372,6 +1406,7 @@ with-lock resource *command:
   exit $EXIT_CODE
 
 # Show status of all resource locks
+[group("human")]
 locks:
   #!/usr/bin/env bash
   LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.agents/tmp/locks"
@@ -1520,6 +1555,7 @@ verify-tickets:
 
 # Request changes on a feature after human review — reassigns to architect for rework
 # If feedback is omitted, opens $EDITOR for multi-line input.
+[group("human")]
 request-changes feature-id feedback="":
   #!/usr/bin/env bash
   set -e
@@ -1567,6 +1603,7 @@ request-changes feature-id feedback="":
   echo "Run 'just start-work' — architect will determine which tasks to reopen"
 
 # Approve a feature — validates, closes, prints next steps
+[group("human")]
 approve feature-id:
   #!/usr/bin/env bash
   set -e
@@ -1619,6 +1656,7 @@ approve feature-id:
   echo "  - Or merge locally and run: just rebase-feature <downstream-feature>"
 
 # Merge closed feature branches into base branch in dependency order
+[group("human")]
 merge-all *args:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -1859,6 +1897,7 @@ merge-all *args:
 
 # Rebase a feature's worktree onto its correct base (lazy — run when ready to merge)
 # Optional rework-notes: if provided, triggers a rework cycle after rebase (for API changes)
+[group("human")]
 rebase-feature feature-id rework-notes="":
   #!/usr/bin/env bash
   set -e
