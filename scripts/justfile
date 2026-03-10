@@ -37,6 +37,59 @@ plan-features: (_list-group "plan-features")
 
 alias deps := worktree-deps
 
+# Show features that depend on a given ticket as a tree
+[group("subagent-architect")]
+feature-deps ticket-id:
+  #!/usr/bin/env bash
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  root_id="{{ ticket-id }}"
+
+  # Resolve partial ID
+  root_json=$({{ tk }} query "select(.id | contains(\"$root_id\"))" 2>/dev/null | head -1)
+  if [[ -z "$root_json" ]]; then
+    echo "Ticket not found: $root_id" >&2
+    exit 1
+  fi
+  root_id=$(echo "$root_json" | jq -r '.id')
+
+  # Build children map: dep_id → space-separated dependent feature IDs
+  declare -A children
+
+  while IFS= read -r feat_json; do
+    [[ -z "$feat_json" ]] && continue
+    feat_id=$(echo "$feat_json" | jq -r '.id')
+    while IFS= read -r dep_id; do
+      [[ -z "$dep_id" ]] && continue
+      children["$dep_id"]="${children[$dep_id]:-} $feat_id"
+    done < <(echo "$feat_json" | jq -r '.deps[]?' 2>/dev/null)
+  done < <({{ tk }} query 'select(.type == "feature")' 2>/dev/null)
+
+  # Recursive tree render
+  render() {
+    local id="$1" prefix="$2" connector="$3"
+    local title
+    title=$({{ tk }} show "$id" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //')
+    echo "${prefix}${connector}${id}: ${title}"
+
+    local kids=(${children[$id]:-})
+    local count=${#kids[@]}
+    local i=0
+    local child_prefix="$prefix"
+    [[ "$connector" == "├── " ]] && child_prefix="${prefix}│   "
+    [[ "$connector" == "└── " ]] && child_prefix="${prefix}    "
+
+    for kid in "${kids[@]}"; do
+      ((i++))
+      if (( i == count )); then
+        render "$kid" "$child_prefix" "└── "
+      else
+        render "$kid" "$child_prefix" "├── "
+      fi
+    done
+  }
+
+  render "$root_id" "" ""
+
 # Show project layout — repos and their worktrees (mirrors `git worktree list`)
 [group("human")]
 ls:

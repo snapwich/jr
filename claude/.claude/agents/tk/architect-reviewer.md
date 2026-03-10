@@ -21,7 +21,7 @@ all tasks.
 1. Read your feature: `tk show <feature-id>`
 2. List all child tasks: `tk tree <feature-id>`
 3. For each child task, read its description and notes: `tk show <task-id>`
-4. Check what features depend on this feature: look for downstream dependencies
+4. Check what features depend on this feature: look for downstream dependencies using `just feature-deps <feature-id>`
 5. Add the **after setup** checkpoint note (see Notes section)
 
 ## Notes
