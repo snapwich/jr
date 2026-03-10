@@ -2,6 +2,13 @@
 _default:
   just --list
 
+# Fetch latest ticket script from upstream
+sync-ticket:
+  mkdir -p ticket
+  curl -s -o ticket/ticket https://raw.githubusercontent.com/snapwich/ticket/master/ticket
+  curl -s -o ticket/LICENSE https://raw.githubusercontent.com/snapwich/ticket/master/LICENSE
+  chmod +x ticket/ticket
+
 init dir:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -23,6 +30,11 @@ init dir:
 
   # Stow agent configs and scripts
   stow -t "$dir" claude scripts
+
+  # Symlink bundled ticket script
+  mkdir -p "$dir/.agents/ticket"
+  ln -sf "$(realpath ticket/ticket)" "$dir/.agents/ticket/ticket"
+  ln -sf "$(realpath ticket/LICENSE)" "$dir/.agents/ticket/LICENSE"
 
   # Copy linting config (not symlinked — avoids breakage if .agents repo moves)
   cp .prettierrc.yml "$dir/.agents/"
@@ -56,12 +68,15 @@ init dir:
   PKGJSON
   fi
 
-  # Ensure .gitignore has node_modules/ and tmp/
+  # Ensure .gitignore has node_modules/, tmp/, and ticket/
   if ! grep -q '^node_modules/$' "$dir/.agents/.gitignore" 2>/dev/null; then
     echo 'node_modules/' >> "$dir/.agents/.gitignore"
   fi
   if ! grep -q '^tmp/$' "$dir/.agents/.gitignore" 2>/dev/null; then
     echo 'tmp/' >> "$dir/.agents/.gitignore"
+  fi
+  if ! grep -q '^ticket/$' "$dir/.agents/.gitignore" 2>/dev/null; then
+    echo 'ticket/' >> "$dir/.agents/.gitignore"
   fi
 
   # Install pre-commit hook (direct, no husky dependency)

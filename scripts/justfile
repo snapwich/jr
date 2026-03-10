@@ -1,3 +1,5 @@
+# Bundled ticket CLI
+tk := ".agents/ticket/ticket"
 
 _default:
   just --list
@@ -50,7 +52,7 @@ ls:
     feat_id=$(echo "$feat_json" | jq -r '.id')
     wt_name=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "$feat_id" 2>/dev/null)
     [[ -n "$wt_name" ]] && wt_to_fid["$wt_name"]="$feat_id"
-  done < <(tk query 'select(.type == "feature")' 2>/dev/null)
+  done < <({{ tk }} query 'select(.type == "feature")' 2>/dev/null)
 
   render_worktrees() {
     local dir="$1" prefix="$2"
@@ -206,13 +208,13 @@ worktree-deps:
     # Find upstream feature dep (first feature-type dep)
     while IFS= read -r dep_id; do
       [[ -z "$dep_id" ]] && continue
-      dep_type=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null | jq -r '.type // empty')
+      dep_type=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null | jq -r '.type // empty')
       if [[ "$dep_type" == "feature" ]]; then
         feat_upstream["$feat_id"]="$dep_id"
         break
       fi
     done < <(echo "$feat_json" | jq -r '.deps[]?' 2>/dev/null)
-  done < <(tk query 'select(.type == "feature")' 2>/dev/null)
+  done < <({{ tk }} query 'select(.type == "feature")' 2>/dev/null)
 
   # 2.5. Prune resolved upstream deps (upstream merged and downstream already has those changes)
   for fid in "${!feat_upstream[@]}"; do
@@ -343,7 +345,7 @@ worktree-deps:
 [group('orchestrator')]
 worktree-name ticket-id:
   #!/usr/bin/env bash
-  ticket_json=$(tk query 'select(.id | contains("{{ ticket-id }}"))')
+  ticket_json=$({{ tk }} query 'select(.id | contains("{{ ticket-id }}"))')
   ticket_type=$(echo "$ticket_json" | jq -r '.type')
   ticket_id=$(echo "$ticket_json" | jq -r '.id')
 
@@ -351,7 +353,7 @@ worktree-name ticket-id:
   if [[ "$ticket_type" == "task" ]]; then
     parent=$(echo "$ticket_json" | jq -r '.parent // empty')
     if [[ -n "$parent" ]]; then
-      ticket_json=$(tk query "select(.id == \"$parent\")")
+      ticket_json=$({{ tk }} query "select(.id == \"$parent\")")
       ticket_id=$(echo "$ticket_json" | jq -r '.id')
     fi
   fi
@@ -359,7 +361,7 @@ worktree-name ticket-id:
   # Check for prefix:<value> tag — use as name prefix instead of tk ID
   prefix=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
 
-  title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
+  title=$({{ tk }} show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
   slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
 
   if [[ -n "$prefix" ]]; then
@@ -374,7 +376,7 @@ worktree-name ticket-id:
 resolve-repo feature-id:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
-  feature_json=$(tk query "select(.id == \"{{ feature-id }}\")" 2>/dev/null)
+  feature_json=$({{ tk }} query "select(.id == \"{{ feature-id }}\")" 2>/dev/null)
   repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
   wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "{{ feature-id }}")
 
@@ -407,14 +409,14 @@ resolve-repo feature-id:
 resolve-base-branch feature-id:
   #!/usr/bin/env bash
   cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
-  feature_json=$(tk query "select(.id == \"{{ feature-id }}\")")
+  feature_json=$({{ tk }} query "select(.id == \"{{ feature-id }}\")")
 
   # Find repo for this feature (needed to check branch existence)
   repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
 
   while IFS= read -r dep_id; do
     [[ -z "$dep_id" ]] && continue
-    dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+    dep_json=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null)
     [[ -z "$dep_json" ]] && continue
     dep_type=$(echo "$dep_json" | jq -r '.type')
     if [[ "$dep_type" == "feature" ]]; then
@@ -552,7 +554,7 @@ start-work *args:
     done
     log "Starting orchestration"
     log "Ready tickets:"
-    tk ready 2>/dev/null || true
+    {{ tk }} ready 2>/dev/null || true
   }
 
   acquire_lock() {
@@ -581,12 +583,12 @@ start-work *args:
 
   get_ready_tickets() {
     local ready_ids
-    ready_ids=$(tk ready 2>/dev/null | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
+    ready_ids=$({{ tk }} ready 2>/dev/null | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
     if [[ -z "$ready_ids" ]]; then
       return
     fi
     while IFS= read -r id; do
-      tk query "select(.id == \"$id\")" | jq -c '{id: .id, type: .type, assignee: .assignee, tags: .tags, parent: .parent}'
+      {{ tk }} query "select(.id == \"$id\")" | jq -c '{id: .id, type: .type, assignee: .assignee, tags: .tags, parent: .parent}'
     done <<< "$ready_ids"
   }
 
@@ -690,7 +692,7 @@ start-work *args:
   count_review_rounds() {
     local ticket_id="$1" prefix="$2"
     local notes
-    notes=$(tk show "$ticket_id")
+    notes=$({{ tk }} show "$ticket_id")
 
     # Find reset points: last APPROVED or last Run started
     local last_approved last_run last_reset=0
@@ -719,7 +721,7 @@ start-work *args:
     if [[ -f "$template" ]]; then
       prompt=$(sed "s/\\\$ARGUMENTS\\[0\\]/$ticket_id/" "$template")
     else
-      prompt="Work on \`tk show $ticket_id\`."
+      prompt="Work on \`{{ tk }} show $ticket_id\`."
     fi
 
     # Append default (_) extension if exists
@@ -745,7 +747,7 @@ start-work *args:
 
     # Get ticket metadata
     local ticket_json
-    ticket_json=$(tk query "select(.id == \"$ticket_id\")")
+    ticket_json=$({{ tk }} query "select(.id == \"$ticket_id\")")
     local agent parent title
     agent=$(echo "$ticket_json" | jq -r '.assignee')
 
@@ -755,7 +757,7 @@ start-work *args:
         : # Fall through to launch architect for feature review
       elif [[ "$agent" == "human" ]]; then
         if [[ "$NO_HUMAN_REVIEW" == "1" ]]; then
-          tk close "$ticket_id"
+          {{ tk }} close "$ticket_id"
           log "Feature $ticket_id auto-closed (no-human-review recovery)"
           return 1
         fi
@@ -770,12 +772,12 @@ start-work *args:
       fi
     fi
     parent=$(echo "$ticket_json" | jq -r '.parent // empty')
-    title=$(tk show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
+    title=$({{ tk }} show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
 
     # Add run marker if first launch this session (resets code-reviewer counter for tasks)
     # Skip for features — architect iteration count persists across runs
     if [[ "$ticket_type" != "feature" && -z "${LAUNCHED_THIS_RUN[$ticket_id]:-}" ]]; then
-      tk add-note "$ticket_id" "[orchestrator] Run started"
+      {{ tk }} add-note "$ticket_id" "[orchestrator] Run started"
       LAUNCHED_THIS_RUN[$ticket_id]=1
     fi
 
@@ -815,7 +817,7 @@ start-work *args:
 
     # Add assignment note before launching coder
     if [[ "$agent" == "tk:coder" ]]; then
-      tk add-note "$ticket_id" "[orchestrator] Assigned to coder."
+      {{ tk }} add-note "$ticket_id" "[orchestrator] Assigned to coder."
     fi
 
     # Extract model from agent frontmatter
@@ -909,10 +911,10 @@ start-work *args:
       case "${SIGNAL:-}" in
         approved)
           if [[ "$NO_HUMAN_REVIEW" == "1" ]]; then
-            tk close "$ticket_id"
+            {{ tk }} close "$ticket_id"
             log "Feature $ticket_id approved — closed (no-human-review)"
           else
-            tk assign "$ticket_id" human
+            {{ tk }} assign "$ticket_id" human
             log "Feature $ticket_id approved by architect — assigned to human for review"
           fi
           ;;
@@ -939,7 +941,7 @@ start-work *args:
             log "TIMEOUT: $ticket_id timed out after ${duration}s"
             local session_uuid
             session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
-            tk add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
+            {{ tk }} add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
             ESCALATION="Timeout on $ticket_id after ${duration}s"
           else
             log "ESCALATE: $ticket_id returned no valid signal"
@@ -958,12 +960,12 @@ start-work *args:
     case "${SIGNAL:-}" in
       requesting-review)
         log "Assigning $ticket_id to tk:code-reviewer"
-        tk assign "$ticket_id" "tk:code-reviewer"
+        {{ tk }} assign "$ticket_id" "tk:code-reviewer"
         launch "$ticket_id" "task" || log "Could not immediately launch reviewer for $ticket_id"
         ;;
       approved)
         log "Closing $ticket_id (approved)"
-        tk close "$ticket_id"
+        {{ tk }} close "$ticket_id"
         ;;
       changes-requested)
         # Check iteration cap for code-reviewer
@@ -975,8 +977,8 @@ start-work *args:
           return
         fi
         log "Assigning $ticket_id back to tk:coder"
-        tk assign "$ticket_id" "tk:coder"
-        tk add-note "$ticket_id" "[orchestrator] Assigned to coder."
+        {{ tk }} assign "$ticket_id" "tk:coder"
+        {{ tk }} add-note "$ticket_id" "[orchestrator] Assigned to coder."
         launch "$ticket_id" "task" || log "Could not immediately relaunch coder for $ticket_id"
         ;;
       escalate)
@@ -993,7 +995,7 @@ start-work *args:
           log "TIMEOUT: $ticket_id timed out after ${duration}s"
           local session_uuid
           session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
-          tk add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
+          {{ tk }} add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
           ESCALATION="Timeout on $ticket_id after ${duration}s"
         else
           # Unknown failure
@@ -1097,7 +1099,7 @@ start-work *args:
       # Check ready tickets for human review gate or launchable work
       local ready_count=0 human_features=0 launchable=0
       local -a human_feature_names=()
-      ready_count=$(tk ready 2>/dev/null | grep -c '^[a-z]') || true
+      ready_count=$({{ tk }} ready 2>/dev/null | grep -c '^[a-z]') || true
 
       if (( ready_count > 0 )); then
         while IFS= read -r line; do
@@ -1106,7 +1108,7 @@ start-work *args:
           rid=$(echo "$line" | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
           [[ -z "$rid" ]] && continue
           local rjson
-          rjson=$(tk query "select(.id == \"$rid\")" 2>/dev/null || true)
+          rjson=$({{ tk }} query "select(.id == \"$rid\")" 2>/dev/null || true)
           rtype=$(echo "$rjson" | jq -r '.type' 2>/dev/null || true)
           rassignee=$(echo "$rjson" | jq -r '.assignee // empty' 2>/dev/null || true)
 
@@ -1118,7 +1120,7 @@ start-work *args:
           elif [[ "$rtype" == "task" || "$rassignee" == "tk:architect-reviewer" ]]; then
             launchable=$((launchable + 1))
           fi
-        done < <(tk ready 2>/dev/null || true)
+        done < <({{ tk }} ready 2>/dev/null || true)
 
         if (( human_features > 0 && launchable == 0 )); then
           # Only human-assigned features remain — human review gate
@@ -1137,7 +1139,7 @@ start-work *args:
       fi
 
       local open_count=0
-      open_count=$(tk query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
+      open_count=$({{ tk }} query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
       if (( open_count == 0 )); then
         log "All work complete"
         printf '\a'
@@ -1204,7 +1206,7 @@ _watch-list:
     s_pid=$(echo "$line" | jq -r .pid)
     s_session=$(echo "$line" | jq -r .session)
     s_worktree=$(echo "$line" | jq -r .worktree)
-    s_title=$(tk show "$s_ticket" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //' || true)
+    s_title=$({{ tk }} show "$s_ticket" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //' || true)
 
     if kill -0 "$s_pid" 2>/dev/null; then
       status="running"
@@ -1355,7 +1357,7 @@ signal type ticket-id summary details="" role="":
       if [[ -n "$role" ]]; then
         agent="$role"
       else
-        assignee=$(tk query "select(.id == \"$ticket\")" | jq -r '.assignee // "tk:coder"')
+        assignee=$({{ tk }} query "select(.id == \"$ticket\")" | jq -r '.assignee // "tk:coder"')
         agent="${assignee#tk:}"
       fi
       prefix="Escalating"
@@ -1363,7 +1365,7 @@ signal type ticket-id summary details="" role="":
     *) echo "Unknown signal type: $type" >&2; exit 1 ;;
   esac
 
-  tk add-note "$ticket" "[signal:$agent] $prefix. $summary"
+  {{ tk }} add-note "$ticket" "[signal:$agent] $prefix. $summary"
   echo "---"
   echo "signal: $type"
   echo "ticket: $ticket"
@@ -1450,7 +1452,7 @@ verify-tickets:
     task_parent=$(echo "$task_json" | jq -r '.parent // empty')
     [[ -z "$task_parent" ]] && continue
     FEATURE_CHILDREN[$task_parent]="${FEATURE_CHILDREN[$task_parent]:-} $task_id"
-  done < <(tk query 'select(.type == "task")' 2>/dev/null)
+  done < <({{ tk }} query 'select(.type == "task")' 2>/dev/null)
 
   # Check 1: No cross-feature task dependencies
   while IFS= read -r task_json; do
@@ -1467,7 +1469,7 @@ verify-tickets:
       [[ -z "$dep_id" ]] && continue
 
       # Get dependency ticket info
-      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+      dep_json=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null)
       [[ -z "$dep_json" ]] && continue
 
       dep_type=$(echo "$dep_json" | jq -r '.type')
@@ -1485,7 +1487,7 @@ verify-tickets:
         fi
       fi
     done < <(echo "$task_json" | jq -r '.deps[]?' 2>/dev/null)
-  done < <(tk query 'select(.type == "task")' 2>/dev/null)
+  done < <({{ tk }} query 'select(.type == "task")' 2>/dev/null)
 
   # Check 2: Tasks within a feature form a linear chain
   for feature_id in "${!FEATURE_CHILDREN[@]}"; do
@@ -1507,7 +1509,7 @@ verify-tickets:
     done
 
     for child_id in "${children[@]}"; do
-      child_json=$(tk query "select(.id == \"$child_id\")" 2>/dev/null)
+      child_json=$({{ tk }} query "select(.id == \"$child_id\")" 2>/dev/null)
       while IFS= read -r dep_id; do
         [[ -z "$dep_id" ]] && continue
         # Check if dep is a sibling
@@ -1564,7 +1566,7 @@ request-changes feature-id feedback="":
   feedback="{{ feedback }}"
 
   # Validate feature exists
-  feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
+  feature_json=$({{ tk }} query "select(.id == \"$feature_id\")" 2>/dev/null)
   if [[ -z "$feature_json" ]]; then
     echo "ERROR: Feature $feature_id not found" >&2
     exit 1
@@ -1596,8 +1598,8 @@ request-changes feature-id feedback="":
   fi
 
   # Add human feedback note and reassign to architect
-  tk add-note "$feature_id" "[human] CHANGES REQUESTED: $feedback"
-  tk assign "$feature_id" "tk:architect-reviewer"
+  {{ tk }} add-note "$feature_id" "[human] CHANGES REQUESTED: $feedback"
+  {{ tk }} assign "$feature_id" "tk:architect-reviewer"
 
   echo "Feature $feature_id reassigned to architect for rework"
   echo "Run 'just start-work' — architect will determine which tasks to reopen"
@@ -1611,7 +1613,7 @@ approve feature-id:
   feature_id="{{ feature-id }}"
 
   # Validate ticket exists and is a feature
-  feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
+  feature_json=$({{ tk }} query "select(.id == \"$feature_id\")" 2>/dev/null)
   if [[ -z "$feature_json" ]]; then
     echo "ERROR: Ticket $feature_id not found" >&2
     exit 1
@@ -1634,14 +1636,14 @@ approve feature-id:
       echo "ERROR: Child task $task_id is still $task_status" >&2
       open_children=$((open_children + 1))
     fi
-  done < <(tk query 'select(.type == "task")' 2>/dev/null)
+  done < <({{ tk }} query 'select(.type == "task")' 2>/dev/null)
 
   if (( open_children > 0 )); then
     echo "ERROR: $open_children child task(s) not closed" >&2
     exit 1
   fi
 
-  tk close "$feature_id"
+  {{ tk }} close "$feature_id"
 
   # Derive worktree location for display
   repo=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-repo "$feature_id")
@@ -1678,7 +1680,7 @@ merge-all *args:
     local fid="$1" fjson="$2"
     local prefix title slug
     prefix=$(echo "$fjson" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
-    title=$(tk show "$fid" | grep '^# ' | head -1 | sed 's/^# //')
+    title=$({{ tk }} show "$fid" | grep '^# ' | head -1 | sed 's/^# //')
     if [[ -n "$prefix" ]]; then
       echo "$prefix: $title"
     else
@@ -1742,11 +1744,11 @@ merge-all *args:
     local deps=""
     while IFS= read -r dep_id; do
       [[ -z "$dep_id" ]] && continue
-      dep_type=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null | jq -r '.type' 2>/dev/null || true)
+      dep_type=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null | jq -r '.type' 2>/dev/null || true)
       [[ "$dep_type" == "feature" ]] && deps+="$dep_id "
     done < <(echo "$fjson" | jq -r '.deps[]?' 2>/dev/null)
     FEAT_DEPS[$fid]="${deps% }"
-  done < <(tk query 'select(.type == "feature")' 2>/dev/null)
+  done < <({{ tk }} query 'select(.type == "feature")' 2>/dev/null)
 
   if [[ ${#FEAT_JSON[@]} -eq 0 ]]; then
     echo "No closed features with existing branches to merge."
@@ -1906,7 +1908,7 @@ rebase-feature feature-id rework-notes="":
   rework_notes="{{ rework-notes }}"
 
   # Validate feature exists and is a feature
-  feature_json=$(tk query "select(.id == \"$feature_id\")" 2>/dev/null)
+  feature_json=$({{ tk }} query "select(.id == \"$feature_id\")" 2>/dev/null)
   if [[ -z "$feature_json" ]]; then
     echo "ERROR: Ticket $feature_id not found" >&2
     exit 1
@@ -1952,7 +1954,7 @@ rebase-feature feature-id rework-notes="":
       exit 1
     fi
 
-    task_ids=$(tk query "select(.parent == \"$feature_id\")" 2>/dev/null | jq -r '.id' || true)
+    task_ids=$({{ tk }} query "select(.parent == \"$feature_id\")" 2>/dev/null | jq -r '.id' || true)
     if [[ -z "$task_ids" ]]; then
       echo "ERROR: No tasks found for feature $feature_id" >&2
       exit 1
@@ -1978,7 +1980,7 @@ rebase-feature feature-id rework-notes="":
     upstream_wt=""
     while IFS= read -r dep_id; do
       [[ -z "$dep_id" ]] && continue
-      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+      dep_json=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null)
       [[ -z "$dep_json" ]] && continue
       dep_type=$(echo "$dep_json" | jq -r '.type')
       if [[ "$dep_type" == "feature" ]]; then
@@ -2049,7 +2051,7 @@ rebase-feature feature-id rework-notes="":
     upstream_feature_id=""
     while IFS= read -r dep_id; do
       [[ -z "$dep_id" ]] && continue
-      dep_json=$(tk query "select(.id == \"$dep_id\")" 2>/dev/null)
+      dep_json=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null)
       [[ -z "$dep_json" ]] && continue
       dep_type=$(echo "$dep_json" | jq -r '.type')
       if [[ "$dep_type" == "feature" ]]; then
@@ -2074,11 +2076,11 @@ rebase-feature feature-id rework-notes="":
     else
       upstream_note=$(printf '[upstream-change] API change from origin (commits: %s)\n\n%s' "$commit_shas" "$rework_notes")
     fi
-    tk add-note "$feature_id" "$upstream_note"
+    {{ tk }} add-note "$feature_id" "$upstream_note"
     echo "Added upstream-change note to feature $feature_id"
 
     # Reassign feature to architect for rework
-    tk assign "$feature_id" "tk:architect-reviewer"
+    {{ tk }} assign "$feature_id" "tk:architect-reviewer"
 
     echo "Feature $feature_id reassigned to architect for rework"
     echo "Run 'just start-work' — architect will determine which tasks to reopen"
