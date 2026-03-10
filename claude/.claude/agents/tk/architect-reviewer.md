@@ -248,7 +248,7 @@ If the feature is coherent and ready for human review:
 2. Signal approval:
 
    ```sh
-   just signal approved <feature-id> "<summary of review findings>" "" "architect"
+   just signal approved <feature-id> "<summary of review findings>" "architect"
    ```
 
 ### Changes Requested
@@ -307,7 +307,7 @@ just dep <feature-id> rep-0006
 #### Step 5: Signal
 
 ```sh
-just signal changes-requested <feature-id> "<one-line summary>" "" "architect"
+just signal changes-requested <feature-id> "<one-line summary>" "architect"
 ```
 
 ### Escalate
@@ -315,7 +315,7 @@ just signal changes-requested <feature-id> "<one-line summary>" "" "architect"
 If there is an architectural concern or blocker:
 
 ```sh
-just signal escalate <feature-id> "<reason for escalation>" "" "architect"
+just signal escalate <feature-id> "<reason for escalation>" "architect"
 ```
 
 Valid signal types for this agent: `approved`, `changes-requested`, `escalate`

@@ -1,5 +1,5 @@
 import { World, setWorldConstructor } from "@cucumber/cucumber";
-import { mkdtemp, rm, mkdir, writeFile, cp } from "fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, cp, symlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { execFile, spawn } from "child_process";
@@ -39,6 +39,17 @@ class OrchestratorWorld extends World {
       join(REPO_ROOT, "claude", ".claude", "commands", "tk", "subagent-task.md"),
       join(templateDir, "subagent-task.md"),
     );
+
+    // Copy agent definitions so launch() can read model from frontmatter
+    const agentDir = join(this.projectDir, ".claude", "agents", "tk");
+    await mkdir(agentDir, { recursive: true });
+    await cp(join(REPO_ROOT, "claude", ".claude", "agents", "tk"), agentDir, { recursive: true });
+
+    // Symlink bundled tk to the real tk binary
+    const ticketDir = join(this.projectDir, ".agents", "ticket");
+    await mkdir(ticketDir, { recursive: true });
+    const { stdout: tkWhich } = await execFileAsync("which", ["tk"]);
+    await symlink(tkWhich.trim(), join(ticketDir, "ticket"));
 
     // Initialize git repo for tk
     await this.exec("git", ["init"]);

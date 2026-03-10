@@ -924,7 +924,6 @@ start-work *args:
     SIGNAL=$(echo "$tail" | grep -oP '^signal:\s*\K\S+' || true)
     SIGNAL_TICKET=$(echo "$tail" | grep -oP '^ticket:\s*\K\S+' || true)
     SIGNAL_SUMMARY=$(echo "$tail" | grep -oP '^summary:\s*\K.*' || true)
-    SIGNAL_DETAILS=$(echo "$tail" | grep -oP '^details:\s*\K.*' || true)
   }
 
   react() {
@@ -1154,24 +1153,24 @@ start-work *args:
 
     if (( ${#PID_TO_TICKET[@]} == 0 )); then
       # Check ready tickets for human review gate or launchable work
-      local ready_count=0 human_features=0 launchable=0
-      local -a human_feature_names=()
+      ready_count=0; human_features=0; launchable=0
+      human_feature_names=()
       ready_count=$({{ tk }} ready 2>/dev/null | grep -c '^[a-z]') || true
 
       if (( ready_count > 0 )); then
         while IFS= read -r line; do
           [[ -z "$line" ]] && continue
-          local rid rtype rassignee
+          rid="" rtype="" rassignee=""
           rid=$(echo "$line" | grep -oP '^[a-z0-9]+-[a-z0-9]+' || true)
           [[ -z "$rid" ]] && continue
-          local rjson
+          rjson=""
           rjson=$({{ tk }} query "select(.id == \"$rid\")" 2>/dev/null || true)
           rtype=$(echo "$rjson" | jq -r '.type' 2>/dev/null || true)
           rassignee=$(echo "$rjson" | jq -r '.assignee // empty' 2>/dev/null || true)
 
           if [[ "$rtype" == "feature" && "$rassignee" == "human" ]]; then
             human_features=$((human_features + 1))
-            local rtitle
+            rtitle=""
             rtitle=$(echo "$rjson" | jq -r '.title // .id' 2>/dev/null || echo "$rid")
             human_feature_names+=("$rid: $rtitle")
           elif [[ "$rtype" == "task" || "$rassignee" == "tk:architect-reviewer" ]]; then
@@ -1182,7 +1181,7 @@ start-work *args:
         if (( human_features > 0 && launchable == 0 )); then
           # Only human-assigned features remain — human review gate
           log "All automated work complete — features awaiting human review"
-          local commit_body=""
+          commit_body=""
           for fname in "${human_feature_names[@]}"; do
             commit_body+=$'\n'"- $fname"
           done
@@ -1195,7 +1194,7 @@ start-work *args:
         fi
       fi
 
-      local open_count=0
+      open_count=0
       open_count=$({{ tk }} query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
       if (( open_count == 0 )); then
         log "All work complete"
@@ -1396,13 +1395,12 @@ task-diff ticket-id repo='.':
 
 # Output signal block and add completion note — use this instead of manual signal output
 [group('subagent-coder'), group('subagent-code-reviewer'), group('subagent-architect-reviewer')]
-signal type ticket-id summary details="" role="":
+signal type ticket-id summary role="":
   #!/usr/bin/env bash
   set -e
   type="{{ type }}"
   ticket="{{ ticket-id }}"
   summary="{{ summary }}"
-  details="{{ details }}"
   role="{{ role }}"
 
   case "$type" in
@@ -1427,7 +1425,6 @@ signal type ticket-id summary details="" role="":
   echo "signal: $type"
   echo "ticket: $ticket"
   echo "summary: $summary"
-  [[ -n "$details" ]] && echo "details: $details"
   exit 0
 
 # Acquire exclusive lock on a named resource, then run command.
@@ -2217,8 +2214,13 @@ assign ticket-id assignee:
 
 # Add note to ticket — text arg or pipe via stdin
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
-add-note ticket-id note:
-  {{ tk }} add-note {{ ticket-id }} {{ note }}
+add-note ticket-id *note:
+  #!/usr/bin/env bash
+  if [[ -n "{{ note }}" ]]; then
+    {{ tk }} add-note "{{ ticket-id }}" {{ note }}
+  else
+    {{ tk }} add-note "{{ ticket-id }}"
+  fi
 
 # Mark ticket as in progress
 [group('subagent-coder')]

@@ -206,7 +206,7 @@ All subagents must use `just signal` as the **last command** in their output. Th
 and outputs the signal block for the orchestrator to parse:
 
 ```sh
-just signal <type> <ticket-id> "<summary>" ["<details>"] ["<role>"]
+just signal <type> <ticket-id> "<summary>" ["<role>"]
 ```
 
 | Signal              | Agent                             | Meaning                                       |

@@ -6,7 +6,7 @@ Every subagent MUST end by running `just signal` and **outputting its result ver
 summarize, add commentary, or output anything after the signal block.
 
 ```sh
-just signal <type> <ticket-id> "<summary>" ["<details>"] ["<role>"]
+just signal <type> <ticket-id> "<summary>" ["<role>"]
 ```
 
 The command outputs a signal block — copy it exactly as your final output:

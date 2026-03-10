@@ -90,7 +90,7 @@ When the rebase completes successfully:
 2. Signal success:
 
    ```sh
-   just signal rebase-complete <feature-id> "<brief summary of resolved conflicts>" "" "rebaser"
+   just signal rebase-complete <feature-id> "<brief summary of resolved conflicts>" "rebaser"
    ```
 
 ## Escalation
@@ -104,7 +104,7 @@ Escalate if you cannot resolve the conflicts. This includes:
 To escalate:
 
 ```sh
-just signal escalate <feature-id> "<explanation of why conflicts cannot be auto-resolved>" "" "rebaser"
+just signal escalate <feature-id> "<explanation of why conflicts cannot be auto-resolved>" "rebaser"
 ```
 
 ## Rules

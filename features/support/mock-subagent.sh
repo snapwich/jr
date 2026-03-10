@@ -19,7 +19,7 @@ done
 # Extract ticket ID from prompt
 # Standard pattern: "tk show <ticket-id>"
 # Rebaser pattern: "feature-id: <ticket-id>" (multiline prompt)
-ticket_id=$(echo "$prompt" | grep -oP 'tk show \K[a-zA-Z0-9_-]+' | head -1 || true)
+ticket_id=$(echo "$prompt" | grep -oP '(?:tk|just) show \K[a-zA-Z0-9_-]+' | head -1 || true)
 if [[ -z "$ticket_id" ]]; then
   ticket_id=$(echo "$prompt" | grep -oP 'feature-id:\s*\K[a-zA-Z0-9_-]+' | head -1 || true)
 fi
