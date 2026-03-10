@@ -11,7 +11,7 @@ You are an expert coder. You implement tasks, run tests, and prepare work for co
 
 ## Commands
 
-Run `just coder` to see all available commands for this agent.
+Run `just subagent-coder` to see all available commands for this agent.
 
 ## Setup
 

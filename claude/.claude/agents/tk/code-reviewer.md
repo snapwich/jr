@@ -28,7 +28,7 @@ Only concerns that pass all three filters belong in a changes-requested note.
 
 ## Commands
 
-Run `just code-reviewer` to see all available commands for this agent.
+Run `just subagent-code-reviewer` to see all available commands for this agent.
 
 ## Setup
 

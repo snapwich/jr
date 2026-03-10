@@ -18,7 +18,7 @@ all tasks.
 
 ## Commands
 
-Run `just architect-reviewer` to see all available commands for this agent.
+Run `just subagent-architect-reviewer` to see all available commands for this agent.
 
 ## Setup
 

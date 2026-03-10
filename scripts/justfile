@@ -33,11 +33,11 @@ human: (_list-group "human")
 [private]
 plan-features: (_list-group "plan-features")
 [private]
-coder: (_list-group "subagent-coder")
+subagent-coder: (_list-group "subagent-coder")
 [private]
-code-reviewer: (_list-group "subagent-code-reviewer")
+subagent-code-reviewer: (_list-group "subagent-code-reviewer")
 [private]
-architect-reviewer: (_list-group "subagent-architect-reviewer")
+subagent-architect-reviewer: (_list-group "subagent-architect-reviewer")
 
 alias deps := worktree-deps
 
