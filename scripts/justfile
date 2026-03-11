@@ -20,9 +20,10 @@ _list-group group:
   bold=$(tput bold 2>/dev/null || true)
   reset=$(tput sgr0 2>/dev/null || true)
   printf 'Available recipes for [%s%s%s]:\n' "$bold$yellow" "$group" "$reset"
-  just --list --unsorted 2>/dev/null | awk -v g="    [$group]" '
-    $0 == g { found=1; next }
-    found && /^    \[.*\]$/ { exit }
+  just --list --unsorted --color always 2>/dev/null | awk -v g="    [$group]" '
+    function strip(s) { gsub(/\033\[[0-9;]*m/, "", s); return s }
+    strip($0) == g { found=1; next }
+    found && strip($0) ~ /^    \[.*\]$/ { exit }
     found { print }
   '
 
