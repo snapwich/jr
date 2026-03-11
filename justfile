@@ -19,7 +19,7 @@ init dir:
 
   # Create project-level claude extension structure
   mkdir -p "$dir/.agents/claude/_/agents/tk"
-  mkdir -p "$dir/.agents/claude/_/commands/tk"
+  mkdir -p "$dir/.agents/claude/_/prompts/tk"
   mkdir -p "$dir/.agents/claude/_/rules"
 
   # Copy README explaining the extension pattern

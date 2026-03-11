@@ -43,6 +43,7 @@ definitions, commands, and a `scripts/justfile` for worktree/subagent management
 ─────────────                         ──────────────
 claude/.claude/agents/tk/*    ──→     .claude/agents/tk/*
 claude/.claude/commands/tk/*  ──→     .claude/commands/tk/*
+claude/.claude/prompts/tk/*  ──→     .claude/prompts/tk/*
 scripts/justfile              ──→     justfile (worktree mgmt)
 .prettierrc.yml               ──(cp)  .agents/.prettierrc.yml
 .markdownlint.yaml            ──(cp)  .agents/.markdownlint.yaml
@@ -255,9 +256,10 @@ claude/.claude/
     code-reviewer.md                  # code reviewer agent (opus, read-only, cyan)
     architect-reviewer.md             # architect reviewer agent (opus, tk write access, magenta)
   commands/tk/
-    subagent-task.md                  # slash command: work on a ticket by ID
     plan-features.md                  # slash command: create/modify features and tasks
     retro.md                          # slash command: post-mortem analysis of a feature
+  prompts/tk/
+    subagent-task.md                  # subagent prompt template (injected by orchestrator)
 scripts/
   justfile                            # worktree/subagent/orchestrator recipes
 .husky/pre-commit                     # runs lint-staged on commit (this repo only)

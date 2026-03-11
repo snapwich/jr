@@ -10,7 +10,7 @@ This directory contains project-specific extensions for tk subagents.
 ## Structure
 
 - `_/agents/tk/<agent>.md` — Agent extensions (appended at worktree creation)
-- `_/commands/tk/subagent-task.md` — Prompt extension for ALL subagents (appended at runtime)
+- `_/prompts/tk/subagent-task.md` — Prompt extension for ALL subagents (appended at runtime)
 - `_/rules/*.md` — Additional rules (copied to worktree)
 - `<repo>/...` — Repo-specific extensions (same structure)
 
@@ -19,6 +19,7 @@ This directory contains project-specific extensions for tk subagents.
 | Type             | When Applied           | Notes                                      |
 | ---------------- | ---------------------- | ------------------------------------------ |
 | Agents           | Worktree creation      | Appended to base agent                     |
+| Commands         | Worktree creation      | Appending to base command                  |
 | subagent-task.md | Runtime (orchestrator) | Appended — applies to ALL subagents        |
 | Rules            | Worktree creation      | Copied — no base to extend, just new rules |
 
@@ -26,7 +27,7 @@ This directory contains project-specific extensions for tk subagents.
 
 Extensions are pure markdown (no frontmatter).
 
-Example `_/commands/tk/subagent-task.md` (applies to all subagents):
+Example `_/prompts/tk/subagent-task.md` (applies to all subagents):
 
 ````markdown
 ## Project-Specific: Shared Resources

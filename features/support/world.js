@@ -33,10 +33,10 @@ class OrchestratorWorld extends World {
     await mkdir(join(this.projectDir, ".tickets"), { recursive: true });
 
     // Copy prompt template so the orchestrator can generate prompts
-    const templateDir = join(this.projectDir, ".claude", "commands", "tk");
+    const templateDir = join(this.projectDir, ".claude", "prompts", "tk");
     await mkdir(templateDir, { recursive: true });
     await cp(
-      join(REPO_ROOT, "claude", ".claude", "commands", "tk", "subagent-task.md"),
+      join(REPO_ROOT, "claude", ".claude", "prompts", "tk", "subagent-task.md"),
       join(templateDir, "subagent-task.md"),
     );
 
