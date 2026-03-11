@@ -2186,7 +2186,8 @@ status ticket-id *args:
 # Create ticket — -d DESC, -t TYPE, -a ASSIGNEE, --parent ID, --tags TAG,TAG
 [group('plan-features'), group('subagent-architect-reviewer')]
 create title *args:
-  {{ tk }} create {{ title }} {{ args }}
+  #!/usr/bin/env bash
+  {{ tk }} create '{{ replace(title, "'", "'\\''") }}' {{ args }}
 
 # Show ticket content
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
@@ -2196,7 +2197,8 @@ show ticket-id:
 # Query tickets as JSON — filter is wrapped in select(), e.g. '.type == "feature"'
 [group('plan-features')]
 query filter:
-  {{ tk }} query {{ filter }}
+  #!/usr/bin/env bash
+  {{ tk }} query '{{ replace(filter, "'", "'\\''") }}'
 
 # Add dependency — ticket-id depends on dependency-id
 [group('plan-features'), group('subagent-architect-reviewer')]
@@ -2217,8 +2219,9 @@ assign ticket-id assignee:
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
 add-note ticket-id *note:
   #!/usr/bin/env bash
-  if [[ -n "{{ note }}" ]]; then
-    {{ tk }} add-note "{{ ticket-id }}" {{ note }}
+  note='{{ replace(note, "'", "'\\''") }}'
+  if [[ -n "$note" ]]; then
+    {{ tk }} add-note "{{ ticket-id }}" "$note"
   else
     {{ tk }} add-note "{{ ticket-id }}"
   fi

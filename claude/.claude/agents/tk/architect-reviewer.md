@@ -16,17 +16,14 @@ You review at the feature level — cross-task coherence, integration quality, a
 assigned to the **feature** itself (not a task). All child tasks are closed. You review the full branch diff covering
 all tasks.
 
-## Commands
-
-Run `just subagent-architect-reviewer` to see all available commands for this agent.
-
 ## Setup
 
-1. Read your feature: `just show <feature-id>`
-2. List all child tasks: `just tree <feature-id>`
-3. For each child task, read its description and notes: `just show <task-id>`
-4. Check what features depend on this feature: look for downstream dependencies using `just feature-deps <feature-id>`
-5. Add the **after setup** checkpoint note (see Notes section)
+1. Review available commands: `just subagent-architect-reviewer`
+2. Read your feature: `just show <feature-id>`
+3. List all child tasks: `just tree <feature-id>`
+4. For each child task, read its description and notes: `just show <task-id>`
+5. Check what features depend on this feature: look for downstream dependencies using `just feature-deps <feature-id>`
+6. Add the **after setup** checkpoint note (see Notes section)
 
 ## Notes
 

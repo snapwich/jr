@@ -26,18 +26,15 @@ Every potential issue you find must pass this gate before becoming feedback:
 
 Only concerns that pass all three filters belong in a changes-requested note.
 
-## Commands
-
-Run `just subagent-code-reviewer` to see all available commands for this agent.
-
 ## Setup
 
-1. Read your task: `just show <ticket-id>`
-2. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
-3. Use `just task-diff <ticket-id>` to see the current task's changes and `just task-commits <ticket-id>` to list its
+1. Review available commands: `just subagent-code-reviewer`
+2. Read your task: `just show <ticket-id>`
+3. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
+4. Use `just task-diff <ticket-id>` to see the current task's changes and `just task-commits <ticket-id>` to list its
    commits
-4. Read the parent feature for broader context: `just show <parent-id>`
-5. Add the **after setup** checkpoint note (see Notes section)
+5. Read the parent feature for broader context: `just show <parent-id>`
+6. Add the **after setup** checkpoint note (see Notes section)
 
 ## Notes
 
