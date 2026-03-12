@@ -219,7 +219,7 @@ just add-note <ticket-id> '[coder] Deviation: <what differs from spec>. Reason: 
 If you discover something affecting sibling tasks, note on the **parent feature**:
 
 ```sh
-just add-note <parent-id> '[coder] <discovery relevant to sibling tasks>'
+just add-note <parent-id> '[coder] (from <ticket-id>) <discovery relevant to sibling tasks>'
 ```
 
 ## Completion

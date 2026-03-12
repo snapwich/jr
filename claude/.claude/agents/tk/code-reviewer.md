@@ -177,7 +177,8 @@ If the task description includes integration test requirements:
 2. If relevant integration tests exist and weren't run, request changes — focus on tests impacted by the changes, not
    the entire suite
 3. If integration tests don't exist for a migration task, note this on the **feature** (not the task) as a gap — but
-   don't block the task on it (that's a planning gap, not a coder gap)
+   don't block the task on it (that's a planning gap, not a coder gap):
+   `just add-note <parent-id> '[code-reviewer] (from <ticket-id>) Integration test gap: <description>'`
 
 ### Static Check Verification
 
@@ -262,4 +263,5 @@ Valid signal types for this agent: `approved`, `changes-requested`, `escalate`
   a known bad state — approving more work on top compounds the problem. Escalate with details of what's failing.
 - Be specific in feedback — file paths, line numbers, concrete suggestions
 - Review against the task's acceptance criteria, not your own preferences
-- If you see issues that affect sibling tasks, add a note to the parent **feature** (not the task)
+- If you see issues that affect sibling tasks, add a note to the parent **feature** (not the task):
+  `just add-note <parent-id> '[code-reviewer] (from <ticket-id>) <issue affecting sibling tasks>'`
