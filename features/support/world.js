@@ -46,7 +46,7 @@ class OrchestratorWorld extends World {
     await cp(join(REPO_ROOT, "claude", ".claude", "agents", "tk"), agentDir, { recursive: true });
 
     // Symlink bundled tk to the real tk binary
-    const ticketDir = join(this.projectDir, ".agents", "ticket");
+    const ticketDir = join(this.projectDir, ".jr", "ticket");
     await mkdir(ticketDir, { recursive: true });
     const { stdout: tkWhich } = await execFileAsync("which", ["tk"]);
     await symlink(tkWhich.trim(), join(ticketDir, "ticket"));

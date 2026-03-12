@@ -78,7 +78,7 @@ details? Should remaining open tickets be updated before continuing work? Exampl
 
 #### Workflow recommendations
 
-Observations about agent behavior that suggest `.agents`-level changes — agent definitions, orchestrator logic, review
+Observations about agent behavior that suggest `jr`-level changes — agent definitions, orchestrator logic, review
 process. These are surfaced for the user to act on separately. Examples:
 
 - "Code-reviewer approved a migration without checking semantic equivalence — consider adding a migration-specific

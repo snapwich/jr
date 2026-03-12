@@ -1,5 +1,5 @@
 # Bundled ticket CLI
-tk := ".agents/ticket/ticket"
+tk := ".jr/ticket/ticket"
 set positional-arguments
 
 _default:
@@ -515,8 +515,8 @@ create-worktree name repo="." base="${TK_BASE_BRANCH:-origin/HEAD}":
   if [[ -d ".claude" && -d "$WORKTREE_DIR" ]]; then
     # Merge tk agents (creates actual files from base + extensions)
     BASE_DIR="$PROJECT_DIR/.claude/agents/tk"
-    DEFAULT_DIR="$PROJECT_DIR/.agents/claude/_/agents/tk"
-    REPO_DIR="$PROJECT_DIR/.agents/claude/$REPO/agents/tk"
+    DEFAULT_DIR="$PROJECT_DIR/.jr/claude/_/agents/tk"
+    REPO_DIR="$PROJECT_DIR/.jr/claude/$REPO/agents/tk"
     TARGET_DIR="$WORKTREE_DIR/.claude/agents/tk"
 
     if [[ -d "$BASE_DIR" ]]; then
@@ -531,9 +531,9 @@ create-worktree name repo="." base="${TK_BASE_BRANCH:-origin/HEAD}":
       done
     fi
 
-    # Copy project-level .agents rules
-    DEFAULT_RULES="$PROJECT_DIR/.agents/claude/_/rules"
-    REPO_RULES="$PROJECT_DIR/.agents/claude/$REPO/rules"
+    # Copy project-level .jr rules
+    DEFAULT_RULES="$PROJECT_DIR/.jr/claude/_/rules"
+    REPO_RULES="$PROJECT_DIR/.jr/claude/$REPO/rules"
     TARGET_RULES="$WORKTREE_DIR/.claude/rules"
 
     if [[ -d "$DEFAULT_RULES" ]] && compgen -G "$DEFAULT_RULES/*.md" >/dev/null; then
@@ -574,7 +574,7 @@ start-work *args:
     esac
   done
   PROJECT_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
-  OUTPUT_DIR="${TK_OUTPUT_DIR:-$PROJECT_DIR/.agents/tmp}"
+  OUTPUT_DIR="${TK_OUTPUT_DIR:-$PROJECT_DIR/.jr/tmp}"
   LOCK_DIR="$OUTPUT_DIR/locks"
   CLAUDE="${CLAUDE_CMD:-claude}"
   JUSTFILE="{{ justfile() }}"
@@ -664,8 +664,8 @@ start-work *args:
   merge_tk_agents() {
     local worktree_dir="$1" repo="$2"
     local base_dir="$PROJECT_DIR/.claude/agents/tk"
-    local default_dir="$PROJECT_DIR/.agents/claude/_/agents/tk"
-    local repo_dir="$PROJECT_DIR/.agents/claude/$repo/agents/tk"
+    local default_dir="$PROJECT_DIR/.jr/claude/_/agents/tk"
+    local repo_dir="$PROJECT_DIR/.jr/claude/$repo/agents/tk"
     local target_dir="$worktree_dir/.claude/agents/tk"
 
     # Skip if no base agents directory
@@ -699,8 +699,8 @@ start-work *args:
 
   copy_tk_rules() {
     local worktree_dir="$1" repo="$2"
-    local default_dir="$PROJECT_DIR/.agents/claude/_/rules"
-    local repo_dir="$PROJECT_DIR/.agents/claude/$repo/rules"
+    local default_dir="$PROJECT_DIR/.jr/claude/_/rules"
+    local repo_dir="$PROJECT_DIR/.jr/claude/$repo/rules"
     local target_dir="$worktree_dir/.claude/rules"
 
     # Copy default (_) rules if any exist
@@ -726,7 +726,7 @@ start-work *args:
       if [[ -d "$PROJECT_DIR/.claude" ]]; then
         # Merge tk agents (creates actual files, not symlinks)
         merge_tk_agents "$worktree_dir" "$repo"
-        # Copy project-level .agents rules
+        # Copy project-level .jr rules
         copy_tk_rules "$worktree_dir" "$repo"
         # Then rsync the rest (--ignore-existing preserves our files)
         rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
@@ -737,7 +737,7 @@ start-work *args:
     if [[ -d "$PROJECT_DIR/.claude" && -d "$worktree_dir" ]]; then
       # Merge tk agents (creates actual files, not symlinks)
       merge_tk_agents "$worktree_dir" "$repo"
-      # Copy project-level .agents rules
+      # Copy project-level .jr rules
       copy_tk_rules "$worktree_dir" "$repo"
       # Then rsync the rest (--ignore-existing preserves our files)
       rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
@@ -771,8 +771,8 @@ start-work *args:
   make_prompt() {
     local ticket_id="$1" repo="$2"
     local template="$PROJECT_DIR/.claude/prompts/tk/subagent-task.md"
-    local default_ext="$PROJECT_DIR/.agents/claude/_/prompts/tk/subagent-task.md"
-    local repo_ext="$PROJECT_DIR/.agents/claude/$repo/prompts/tk/subagent-task.md"
+    local default_ext="$PROJECT_DIR/.jr/claude/_/prompts/tk/subagent-task.md"
+    local repo_ext="$PROJECT_DIR/.jr/claude/$repo/prompts/tk/subagent-task.md"
 
     local prompt=""
 
@@ -1228,20 +1228,20 @@ start-work *args:
     fi
   done
 
-# Commit and optionally push .agents/.tickets/ changes
+# Commit and optionally push .jr/.tickets/ changes
 [group('orchestrator')]
 commit-tickets subject:
   #!/usr/bin/env bash
   set -euo pipefail
   project_dir="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
-  git -C "$project_dir/.agents" add .tickets/
-  if git -C "$project_dir/.agents" diff --cached --quiet; then
+  git -C "$project_dir/.jr" add .tickets/
+  if git -C "$project_dir/.jr" diff --cached --quiet; then
     echo "No ticket changes to commit"
     exit 0
   fi
-  git -C "$project_dir/.agents" commit -m "{{ subject }}"
-  if git -C "$project_dir/.agents" remote get-url origin &>/dev/null; then
-    git -C "$project_dir/.agents" push
+  git -C "$project_dir/.jr" commit -m "{{ subject }}"
+  if git -C "$project_dir/.jr" remote get-url origin &>/dev/null; then
+    git -C "$project_dir/.jr" push
   fi
 
 # Print tab-delimited session entries to stdout (used by watch + fzf reload)
@@ -1250,7 +1250,7 @@ _watch-list:
   #!/usr/bin/env bash
   set -euo pipefail
 
-  output_dir="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.agents/tmp}"
+  output_dir="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}"
   sessions_file="$output_dir/sessions.jsonl"
 
   if [[ ! -f "$sessions_file" ]] || [[ ! -s "$sessions_file" ]]; then
@@ -1283,7 +1283,7 @@ watch:
   set -euo pipefail
 
   project_dir="{{ justfile_directory() }}"
-  export TK_OUTPUT_DIR="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.agents/tmp}"
+  export TK_OUTPUT_DIR="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}"
 
   reload_cmd="just --justfile {{ justfile() }} --working-directory $project_dir _watch-list"
 
@@ -1437,7 +1437,7 @@ with-lock resource *command:
   #!/usr/bin/env bash
   set -euo pipefail
 
-  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.agents/tmp/locks"
+  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.jr/tmp/locks"
   LOCK_FILE="$LOCK_DIR/{{ resource }}.lock"
   LOCK_INFO="$LOCK_FILE.info"
   mkdir -p "$LOCK_DIR"
@@ -1467,7 +1467,7 @@ with-lock resource *command:
 [group("human")]
 locks:
   #!/usr/bin/env bash
-  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.agents/tmp/locks"
+  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.jr/tmp/locks"
 
   if [[ ! -d "$LOCK_DIR" ]] || ! compgen -G "$LOCK_DIR/*.lock" >/dev/null; then
     echo "No locks found"

@@ -1,18 +1,18 @@
 {
-  "name": "dotagents",
+  "name": "jr",
   "version": "1.0.0",
-  "description": "Stores shared AI-generated content for agents across repos using stow",
+  "description": "just ralph, agent orchestration",
   "keywords": [
     "claude",
     "agents"
   ],
-  "homepage": "https://github.com/snapwich/.agents#readme",
+  "homepage": "https://github.com/snapwich/jr#readme",
   "bugs": {
-    "url": "https://github.com/snapwich/.agents/issues"
+    "url": "https://github.com/snapwich/jr/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/snapwich/.agents.git"
+    "url": "git+https://github.com/snapwich/jr.git"
   },
   "license": "MIT",
   "author": "Rich Snapp",

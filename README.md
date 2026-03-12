@@ -1,4 +1,4 @@
-# .agents (dotagents)
+# jr
 
 Multi-agent orchestration toolkit for Claude Code. Deploys agent configs into a project directory, then coordinates
 subagents that implement, review, and close tickets in parallel git worktrees.

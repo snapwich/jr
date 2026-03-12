@@ -1,4 +1,4 @@
-# .agents (dotagents)
+# jr
 
 Stow-based toolkit for deploying AI agent configs into project directories. Orchestrates multi-agent workflows where
 Claude subagents work on `tk` tickets in git worktrees.
@@ -39,17 +39,17 @@ letting subagents grind on a bad path.
 definitions, commands, and a `scripts/justfile` for worktree/subagent management.
 
 ```text
-.agents repo                          target project
+jr repo                          target project
 ─────────────                         ──────────────
 claude/.claude/agents/tk/*    ──→     .claude/agents/tk/*
 claude/.claude/commands/tk/*  ──→     .claude/commands/tk/*
 claude/.claude/prompts/tk/*  ──→     .claude/prompts/tk/*
 scripts/justfile              ──→     justfile (worktree mgmt)
-.prettierrc.yml               ──(cp)  .agents/.prettierrc.yml
-.markdownlint.yaml            ──(cp)  .agents/.markdownlint.yaml
-                                      .agents/.tickets/  (git-tracked tickets)
-                                      .agents/package.json  (generated, per-project)
-                                      .tickets → .agents/.tickets  (symlink)
+.prettierrc.yml               ──(cp)  .jr/.prettierrc.yml
+.markdownlint.yaml            ──(cp)  .jr/.markdownlint.yaml
+                                      .jr/.tickets/  (git-tracked tickets)
+                                      .jr/package.json  (generated, per-project)
+                                      .tickets → .jr/.tickets  (symlink)
 ```
 
 ### Expected project structure
@@ -60,10 +60,10 @@ The toolkit supports two modes depending on whether the project works with one r
 
 ```text
 ~/
-├── .agents/                              # this repo
+├── .jr/                              # this repo
 └── <project>/                            # target project (single repo)
-    ├── .agents/, .claude/, justfile      # project-level (stowed)
-    ├── .tickets → .agents/.tickets
+    ├── .jr/, .claude/, justfile      # project-level (stowed)
+    ├── .tickets → .jr/.tickets
     ├── default/                          # main checkout
     │   └── .claude/                      # merged copy (if repo has .claude/ committed)
     ├── feat-abcd-my-feature/             # feature worktree (one per feature)
@@ -75,10 +75,10 @@ The toolkit supports two modes depending on whether the project works with one r
 
 ```text
 ~/
-├── .agents/                              # this repo
+├── .jr/                              # this repo
 └── <project>/                            # target project (multi-repo)
-    ├── .agents/, .claude/, justfile      # project-level (stowed)
-    ├── .tickets → .agents/.tickets
+    ├── .jr/, .claude/, justfile      # project-level (stowed)
+    ├── .tickets → .jr/.tickets
     ├── <repo-a>/                         # user-managed git repo
     │   ├── default/                      # main checkout
     │   └── feat-abcd-backend-feature/    # feature worktree
@@ -264,8 +264,8 @@ scripts/
   justfile                            # worktree/subagent/orchestrator recipes
 .husky/pre-commit                     # runs lint-staged on commit (this repo only)
 package.json                          # prettier + lint-staged dev deps
-.prettierrc.yml                       # prettier config (copied to project .agents/)
-.markdownlint.yaml                    # markdownlint config (copied to project .agents/)
+.prettierrc.yml                       # prettier config (copied to project .jr/)
+.markdownlint.yaml                    # markdownlint config (copied to project .jr/)
 ```
 
 ## Intended Workflow

@@ -6,27 +6,27 @@ Feature: Project initialization
   Scenario: Fresh init creates expected structure
     Given an empty target directory
     When I run init on the target directory
-    Then the target should have directory ".agents/.tickets"
-    And the target should have directory ".agents/plans"
-    And the target should have directory ".agents/.git"
+    Then the target should have directory ".jr/.tickets"
+    And the target should have directory ".jr/plans"
+    And the target should have directory ".jr/.git"
     And the target should have symlink ".claude"
     And the target should have file ".claude/agents/tk/coder.md"
     And the target should have file ".claude/prompts/tk/subagent-task.md"
     And the target should have symlink "justfile"
-    And the target should have directory ".agents/claude/_/agents/tk"
-    And the target should have directory ".agents/claude/_/prompts/tk"
-    And the target should have directory ".agents/claude/_/rules"
-    And the target should have file ".agents/claude/README.md"
-    And the target should have file ".agents/.prettierrc.yml"
-    And the target should have file ".agents/.markdownlint.yaml"
-    And the target ".tickets" should be a symlink to ".agents/.tickets"
-    And the target ".agents/package.json" should contain "devDependencies"
-    And the target ".agents/package.json" should contain "lint-staged"
-    And the target ".agents/package.json" should contain "prettier"
-    And the target ".agents/package.json" should contain "markdownlint-cli2"
-    And the target ".agents/.gitignore" should contain "node_modules/"
-    And the target ".agents/.git/hooks/pre-commit" should be executable
-    And the target should have directory ".agents/node_modules"
+    And the target should have directory ".jr/claude/_/agents/tk"
+    And the target should have directory ".jr/claude/_/prompts/tk"
+    And the target should have directory ".jr/claude/_/rules"
+    And the target should have file ".jr/claude/README.md"
+    And the target should have file ".jr/.prettierrc.yml"
+    And the target should have file ".jr/.markdownlint.yaml"
+    And the target ".tickets" should be a symlink to ".jr/.tickets"
+    And the target ".jr/package.json" should contain "devDependencies"
+    And the target ".jr/package.json" should contain "lint-staged"
+    And the target ".jr/package.json" should contain "prettier"
+    And the target ".jr/package.json" should contain "markdownlint-cli2"
+    And the target ".jr/.gitignore" should contain "node_modules/"
+    And the target ".jr/.git/hooks/pre-commit" should be executable
+    And the target should have directory ".jr/node_modules"
 
   Scenario: Init is idempotent
     Given an empty target directory
@@ -37,12 +37,12 @@ Feature: Project initialization
   Scenario: Init preserves existing package.json
     Given an empty target directory
     When I run init on the target directory
-    And I add "custom-field" to the target ".agents/package.json"
+    And I add "custom-field" to the target ".jr/package.json"
     And I run init on the target directory
-    Then the target ".agents/package.json" should contain "custom-field"
+    Then the target ".jr/package.json" should contain "custom-field"
 
   Scenario: Init does not duplicate gitignore entries
     Given an empty target directory
     When I run init on the target directory
     And I run init on the target directory
-    Then the target ".agents/.gitignore" should have exactly 1 line matching "node_modules/"
+    Then the target ".jr/.gitignore" should have exactly 1 line matching "node_modules/"
