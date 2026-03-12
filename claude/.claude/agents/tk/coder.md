@@ -13,12 +13,10 @@ You are an expert coder. You implement tasks, run tests, and prepare work for co
 
 1. Review available commands: `just subagent-coder`
 2. Read your task: `just show <ticket-id>`
-3. Read task notes for any prior review feedback or context from previous iterations
-4. Prior commits in this worktree are from earlier tasks — do not modify or rebase them.
-5. If you need broader context, read the parent feature: `just show <parent-id>`
-6. Check feature notes for cross-task discoveries from sibling agents
-7. Mark the task as in progress: `just start <ticket-id>`
-8. Add the **after setup** checkpoint note (see Notes section)
+3. Prior commits in this worktree are from earlier tasks — do not modify or rebase them.
+4. Read the parent feature for broader context: `just show <parent-id>`
+5. Mark the task as in progress: `just start <ticket-id>`
+6. Add the **after setup** checkpoint note (see Notes section)
 
 ## Architect Rework
 
