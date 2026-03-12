@@ -1,5 +1,6 @@
 # Bundled ticket CLI
 tk := ".agents/ticket/ticket"
+set positional-arguments
 
 _default:
   just --list
@@ -2143,90 +2144,82 @@ rebase-feature feature-id rework-notes="":
 
 # --- tk pass-through commands ---
 
-# Show ticket hierarchy — [id] [--status=X] [-a ASSIGNEE] [-T TYPE]
-[group('human'), group('plan-features'), group('subagent-architect-reviewer')]
-tree *args:
-  {{ tk }} tree {{ args }}
-
 # Show plan.md content (loaded plan document)
 [group('human')]
 plan:
   {{ tk }} plan
 
+# Show ticket hierarchy — [id] [--status=X] [-a ASSIGNEE] [-T TYPE]
+[group('human'), group('plan-features'), group('subagent-architect-reviewer')]
+tree *args:
+  {{ tk }} tree "$@"
+
 # Show ready tickets — [--status=X] [-a ASSIGNEE] [-T TYPE]
 [group('human'), group('plan-features')]
-ready:
-  {{ tk }} ready
+ready *args:
+  {{ tk }} ready "$@"
 
 # Open ticket in $EDITOR — [--children]
 [group('human')]
-edit ticket-id:
-  {{ tk }} edit {{ ticket-id }}
+edit ticket-id *args:
+  {{ tk }} edit "$@"
 
 # Show blocked tickets — [-a ASSIGNEE] [-T TYPE]
 [group('human')]
-blocked:
-  {{ tk }} blocked
+blocked *args:
+  {{ tk }} blocked "$@"
 
 # Close a ticket
 [group('plan-features')]
 close ticket-id:
-  {{ tk }} close {{ ticket-id }}
+  {{ tk }} close "$@"
 
 # Reopen a closed ticket
 [group('plan-features'), group('subagent-architect-reviewer')]
 reopen ticket-id:
-  {{ tk }} reopen {{ ticket-id }}
+  {{ tk }} reopen "$@"
 
 # Show/set ticket status — (open|in_progress|closed)
 [group('plan-features')]
 status ticket-id *args:
-  {{ tk }} status {{ ticket-id }} {{ args }}
+  {{ tk }} status "$@"
 
-# Create ticket — -d DESC, -t TYPE, -a ASSIGNEE, --parent ID, --tags TAG,TAG
+# Create ticket — -d DESC, -t TYPE, -a ASSIGNEE, --parent ID, --tags TAG,TAG --external-ref JIRA-1234
 [group('plan-features'), group('subagent-architect-reviewer')]
 create title *args:
-  #!/usr/bin/env bash
-  {{ tk }} create '{{ replace(title, "'", "'\\''") }}' {{ args }}
+  {{ tk }} create "$@"
 
 # Show ticket content
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
 show ticket-id:
-  {{ tk }} show {{ ticket-id }}
+  {{ tk }} show "$@"
 
 # Query tickets as JSON — filter is wrapped in select(), e.g. '.type == "feature"'
 [group('plan-features')]
 query filter:
-  #!/usr/bin/env bash
-  {{ tk }} query '{{ replace(filter, "'", "'\\''") }}'
+  {{ tk }} query "$@"
 
 # Add dependency — ticket-id depends on dependency-id
 [group('plan-features'), group('subagent-architect-reviewer')]
 dep ticket-id dependency-id:
-  {{ tk }} dep {{ ticket-id }} {{ dependency-id }}
+  {{ tk }} dep "$@"
 
 # Remove dependency between tickets
 [group('plan-features')]
 undep ticket-id dependency-id:
-  {{ tk }} undep {{ ticket-id }} {{ dependency-id }}
+  {{ tk }} undep "$@"
 
 # Set ticket assignee
 [group('plan-features'), group('subagent-architect-reviewer')]
 assign ticket-id assignee:
-  {{ tk }} assign {{ ticket-id }} {{ assignee }}
+  {{ tk }} assign "$@"
 
 # Add note to ticket — text arg or pipe via stdin
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
 add-note ticket-id *note:
-  #!/usr/bin/env bash
-  note='{{ replace(note, "'", "'\\''") }}'
-  if [[ -n "$note" ]]; then
-    {{ tk }} add-note "{{ ticket-id }}" "$note"
-  else
-    {{ tk }} add-note "{{ ticket-id }}"
-  fi
+  {{ tk }} add-note "$@"
 
 # Mark ticket as in progress
 [group('subagent-coder')]
 start ticket-id:
-  {{ tk }} start {{ ticket-id }}
+  {{ tk }} start "$@"
