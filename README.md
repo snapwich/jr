@@ -7,7 +7,6 @@ subagents that implement, review, and close tickets in parallel git worktrees.
 
 - [just](https://github.com/casey/just) -- command runner
 - [GNU stow](https://www.gnu.org/software/stow/) -- symlink manager
-- [tk](https://github.com/snapwich/tk) -- git-backed ticket CLI (must be in PATH)
 - git, Node.js, pnpm
 
 ## Setup
