@@ -10,8 +10,8 @@ Given("a ticket titled {string}", async function (title) {
   this.ticketIds[title] = id;
 });
 
-Given("a ticket titled {string} with tags {string}", async function (title, tags) {
-  const id = await this.createTicket(title, { tags });
+Given("a ticket titled {string} with external-ref {string}", async function (title, externalRef) {
+  const id = await this.createTicket(title, { externalRef });
   this.lastTicketTitle = title;
   this.ticketIds[title] = id;
 });
@@ -23,12 +23,15 @@ Given("a feature {string} with child task {string}", async function (featureTitl
   this.ticketIds[taskTitle] = taskId;
 });
 
-Given("a feature {string} with tags {string} and child task {string}", async function (featureTitle, tags, taskTitle) {
-  const featureId = await this.createTicket(featureTitle, { type: "feature", tags });
-  this.ticketIds[featureTitle] = featureId;
-  const taskId = await this.createTicket(taskTitle, { type: "task", parent: featureId });
-  this.ticketIds[taskTitle] = taskId;
-});
+Given(
+  "a feature {string} with external-ref {string} and child task {string}",
+  async function (featureTitle, externalRef, taskTitle) {
+    const featureId = await this.createTicket(featureTitle, { type: "feature", externalRef });
+    this.ticketIds[featureTitle] = featureId;
+    const taskId = await this.createTicket(taskTitle, { type: "task", parent: featureId });
+    this.ticketIds[taskTitle] = taskId;
+  },
+);
 
 When("I run worktree-name for that ticket", async function () {
   const id = this.ticketIds[this.lastTicketTitle];

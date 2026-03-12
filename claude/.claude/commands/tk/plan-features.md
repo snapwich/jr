@@ -191,9 +191,9 @@ Features are assigned to `tk:architect-reviewer` at creation. When all child tas
 `just ready` and the orchestrator launches the architect for feature-level review.
 
 In multi-repo mode, add a `repo:<name>` tag to each feature matching the target repo directory name. If the user also
-specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), add a `prefix:<value>` tag to the **feature** ticket.
-This overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value. Example:
-`--tags "prefix:PEX-1234,repo:backend"`.
+specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), use `--external-ref` on the **feature** ticket. This
+overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value. Example:
+`--external-ref "PEX-1234" --tags "repo:backend"`.
 
 The description MUST include all relevant plan context for this feature. The plan is consumed — the original document is
 not referenced again. Include:
@@ -415,7 +415,7 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
   ordering
 - Cross-feature deps: feature B depends on feature A, AND first task of feature B depends on feature A
 - In multi-repo mode, every task must have a `repo:<name>` tag
-- `prefix:<value>` tags go on **features** (not tasks) for worktree/branch naming
+- `--external-ref` goes on **features** (not tasks) for worktree/branch naming
 - **No unresolved questions in tickets** — every TBD, open alternative, or ambiguity in the plan must be resolved with
   the user before creating tickets. Coders implement exactly what the ticket says; if it says "TBD", they're stuck.
 - **No explicit shell commands in task descriptions** — describe WHAT to do (run tests, type-check, lint, build), not

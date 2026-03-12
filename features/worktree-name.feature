@@ -2,7 +2,7 @@ Feature: Worktree name slugification
 
   The `worktree-name` recipe derives a worktree/branch name from a ticket.
   For tasks, it resolves to the parent feature first.
-  Uses `prefix:<value>` tag on the feature if present (preserving original case),
+  Uses `external-ref` field on the feature if present (preserving original case),
   otherwise falls back to the tk feature ID: `<feature-id>-<slugified-title>`.
 
   Background:
@@ -43,17 +43,17 @@ Feature: Worktree name slugification
     When I run worktree-name for task "My Task"
     Then the worktree name should end with "my-feature"
 
-  Scenario: Prefix tag on feature overrides ticket ID
-    Given a ticket titled "Add login page" with tags "prefix:PEX-1234"
+  Scenario: External-ref on feature overrides ticket ID
+    Given a ticket titled "Add login page" with external-ref "PEX-1234"
     When I run worktree-name for that ticket
     Then the worktree name should be "PEX-1234-add-login-page"
 
-  Scenario: Prefix tag preserves original case
-    Given a ticket titled "Fix Auth Bug" with tags "prefix:JIRA-567"
+  Scenario: External-ref preserves original case
+    Given a ticket titled "Fix Auth Bug" with external-ref "JIRA-567"
     When I run worktree-name for that ticket
     Then the worktree name should be "JIRA-567-fix-auth-bug"
 
-  Scenario: Task inherits prefix from parent feature
-    Given a feature "My Feature" with tags "prefix:PEX-999" and child task "Backend work"
+  Scenario: Task inherits external-ref from parent feature
+    Given a feature "My Feature" with external-ref "PEX-999" and child task "Backend work"
     When I run worktree-name for task "Backend work"
     Then the worktree name should be "PEX-999-my-feature"

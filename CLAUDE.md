@@ -116,9 +116,9 @@ Each repo has a `default/` checkout with sibling worktrees. All justfile recipes
 Worktree and branch names are derived from the **feature** ticket (not task). The `just worktree-name <ticket-id>`
 recipe computes this — when called with a task ID, it resolves to the parent feature first.
 
-**Prefix logic**: Check the feature's tags for `prefix:<value>`. If present, use the external prefix (preserving
-original case) instead of the tk ticket ID: `PEX-1234-my-feature-title`. If no prefix tag, fall back to the tk feature
-ID: `rep-abcd-my-feature-title`.
+**Prefix logic**: Check the feature's `external-ref` field. If present, use it (preserving original case) instead of the
+tk ticket ID: `PEX-1234-my-feature-title`. If no external-ref, fall back to the tk feature ID:
+`rep-abcd-my-feature-title`.
 
 ### Stacked branches
 

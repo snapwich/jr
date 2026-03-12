@@ -399,7 +399,7 @@ worktree-deps:
   fi
 
 # Derive worktree/branch name from a ticket (resolves tasks to parent feature).
-# Uses prefix:<value> tag on the feature if present (preserving original case),
+# Uses external-ref field on the feature if present (preserving original case),
 # otherwise falls back to the tk feature ID.
 [group('orchestrator')]
 worktree-name ticket-id:
@@ -417,8 +417,8 @@ worktree-name ticket-id:
     fi
   fi
 
-  # Check for prefix:<value> tag — use as name prefix instead of tk ID
-  prefix=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
+  # Check for external-ref field — use as name prefix instead of tk ID
+  prefix=$(echo "$ticket_json" | jq -r '.["external-ref"] // empty')
 
   title=$({{ tk }} show "$ticket_id" | grep '^# ' | head -1 | sed 's/^# //')
   slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/-$//')
@@ -1735,7 +1735,7 @@ merge-all *args:
   feature_label() {
     local fid="$1" fjson="$2"
     local prefix title slug
-    prefix=$(echo "$fjson" | jq -r '(.tags // [] | map(select(startswith("prefix:"))) | first // "") | ltrimstr("prefix:")')
+    prefix=$(echo "$fjson" | jq -r '.["external-ref"] // empty')
     title=$({{ tk }} show "$fid" | grep '^# ' | head -1 | sed 's/^# //')
     if [[ -n "$prefix" ]]; then
       echo "$prefix: $title"

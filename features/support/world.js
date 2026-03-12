@@ -89,6 +89,7 @@ class OrchestratorWorld extends World {
     if (opts.assignee) args.push("-a", opts.assignee);
     if (opts.parent) args.push("--parent", opts.parent);
     if (opts.tags) args.push("--tags", opts.tags);
+    if (opts.externalRef) args.push("--external-ref", opts.externalRef);
     const result = await this.exec("tk", args);
     return result.stdout.trim();
   }
