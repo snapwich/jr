@@ -30,7 +30,7 @@ class OrchestratorWorld extends World {
 
     await mkdir(this.mockResponsesDir, { recursive: true });
     await mkdir(this.outputDir, { recursive: true });
-    await mkdir(join(this.projectDir, ".tickets"), { recursive: true });
+    await mkdir(join(this.projectDir, ".jr", ".tickets"), { recursive: true });
 
     // Copy prompt template so the orchestrator can generate prompts
     const templateDir = join(this.projectDir, ".claude", "prompts", "tk");
@@ -55,7 +55,7 @@ class OrchestratorWorld extends World {
     await this.exec("git", ["init"]);
     await this.exec("git", ["config", "user.email", "test@test.com"]);
     await this.exec("git", ["config", "user.name", "Test"]);
-    await writeFile(join(this.projectDir, ".tickets", ".gitkeep"), "");
+    await writeFile(join(this.projectDir, ".jr", ".tickets", ".gitkeep"), "");
     await this.exec("git", ["add", "."]);
     await this.exec("git", ["commit", "-m", "init"]);
   }
@@ -70,7 +70,15 @@ class OrchestratorWorld extends World {
   }
 
   async exec(cmd, args, opts = {}) {
-    const options = { cwd: this.projectDir, ...opts };
+    const options = {
+      cwd: this.projectDir,
+      env: {
+        ...process.env,
+        TK_PROJECT_DIR: this.projectDir,
+        TICKETS_DIR: join(this.projectDir, ".jr", ".tickets"),
+      },
+      ...opts,
+    };
     try {
       const { stdout, stderr } = await execFileAsync(cmd, args, options);
       return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 };
@@ -108,6 +116,7 @@ class OrchestratorWorld extends World {
       MOCK_RESPONSES_DIR: this.mockResponsesDir,
       TK_OUTPUT_DIR: this.outputDir,
       TK_PROJECT_DIR: this.projectDir,
+      TICKETS_DIR: join(this.projectDir, ".jr", ".tickets"),
       TK_MAX_CONCURRENT: "3",
       ...extraEnv,
     };

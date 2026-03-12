@@ -1,5 +1,7 @@
 # Bundled ticket CLI
 tk := ".jr/ticket/ticket"
+project_dir := env_var_or_default("TK_PROJECT_DIR", justfile_directory())
+export TICKETS_DIR := project_dir / ".jr" / ".tickets"
 set positional-arguments
 
 _default:

@@ -49,7 +49,6 @@ scripts/justfile              ──→     justfile (worktree mgmt)
 .markdownlint.yaml            ──(cp)  .jr/.markdownlint.yaml
                                       .jr/.tickets/  (git-tracked tickets)
                                       .jr/package.json  (generated, per-project)
-                                      .tickets → .jr/.tickets  (symlink)
 ```
 
 ### Expected project structure
@@ -63,7 +62,6 @@ The toolkit supports two modes depending on whether the project works with one r
 ├── .jr/                              # this repo
 └── <project>/                            # target project (single repo)
     ├── .jr/, .claude/, justfile      # project-level (stowed)
-    ├── .tickets → .jr/.tickets
     ├── default/                          # main checkout
     │   └── .claude/                      # merged copy (if repo has .claude/ committed)
     ├── feat-abcd-my-feature/             # feature worktree (one per feature)
@@ -78,7 +76,6 @@ The toolkit supports two modes depending on whether the project works with one r
 ├── .jr/                              # this repo
 └── <project>/                            # target project (multi-repo)
     ├── .jr/, .claude/, justfile      # project-level (stowed)
-    ├── .tickets → .jr/.tickets
     ├── <repo-a>/                         # user-managed git repo
     │   ├── default/                      # main checkout
     │   └── feat-abcd-backend-feature/    # feature worktree

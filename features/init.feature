@@ -19,7 +19,6 @@ Feature: Project initialization
     And the target should have file ".jr/claude/README.md"
     And the target should have file ".jr/.prettierrc.yml"
     And the target should have file ".jr/.markdownlint.yaml"
-    And the target ".tickets" should be a symlink to ".jr/.tickets"
     And the target ".jr/package.json" should contain "devDependencies"
     And the target ".jr/package.json" should contain "lint-staged"
     And the target ".jr/package.json" should contain "prettier"

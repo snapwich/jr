@@ -40,9 +40,6 @@ init dir:
   cp .prettierrc.yml "$dir/.jr/"
   cp .markdownlint.yaml "$dir/.jr/"
 
-  # Create .tickets symlink
-  ln -snf .jr/.tickets "$dir/.tickets"
-
   # Generate package.json if absent (versions pulled from this repo's package.json)
   if [[ ! -f "$dir/.jr/package.json" ]]; then
     project_name="$(basename "$(cd "$dir" && pwd)")"
