@@ -76,8 +76,9 @@ implementer may have missed entirely.
    - Read key files in relevant modules to understand existing architecture
    - Look for existing conventions: naming, file organization, test patterns, error handling approaches
    - Identify existing abstractions and APIs the feature should align with or reuse
-2. **Diff stat** — run `git diff --stat $(git merge-base HEAD origin/HEAD)..HEAD` to see which files were actually
-   touched. Compare against what the exploration found — are there areas the feature _should_ have touched but didn't?
+2. **Diff stat** — run `git diff --stat $(git merge-base HEAD $(just worktree-base))..HEAD` to see which files were
+   actually touched. Compare against what the exploration found — are there areas the feature _should_ have touched but
+   didn't?
 3. **Checkpoint note:**
 
    ```sh
@@ -92,7 +93,7 @@ Read the full branch diff. You now have context from the exploration phase — e
 architecture and patterns you discovered.
 
 ```sh
-git diff $(git merge-base HEAD origin/HEAD)..HEAD
+git diff $(git merge-base HEAD $(just worktree-base))..HEAD
 ```
 
 Flag issues where the implementation:

@@ -165,12 +165,15 @@ just rebase-feature <id>     # Rebase a stacked feature after upstream merges
 
 Environment variables for tuning the orchestrator:
 
-| Variable             | Default       | Description                               |
-| -------------------- | ------------- | ----------------------------------------- |
-| `TK_MAX_CONCURRENT`  | 3             | Max concurrent subagents                  |
-| `TK_AGENT_TIMEOUT`   | 1800          | Agent timeout in seconds (30 min)         |
-| `TK_BASE_BRANCH`     | `origin/HEAD` | Default base branch for feature worktrees |
-| `TK_NO_HUMAN_REVIEW` | 0             | Skip human review gate when set to 1      |
+| Variable             | Default | Description                           |
+| -------------------- | ------- | ------------------------------------- |
+| `TK_MAX_CONCURRENT`  | 3       | Max concurrent subagents              |
+| `TK_AGENT_TIMEOUT`   | 1800    | Agent timeout in seconds (30 min)     |
+| `TK_NO_HUMAN_REVIEW` | 0       | Skip human review gate when set to 1  |
+| `TK_REVIEW_ROUNDS`   | 5       | Max review iterations before escalate |
+
+Per-feature base branches are configured via `base:<branch>` tags on feature tickets (e.g., `base:origin/develop`,
+`base:release/1.0`). No tag defaults to `origin/HEAD`.
 
 ## Details
 

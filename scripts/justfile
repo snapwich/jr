@@ -227,7 +227,7 @@ worktree-deps:
   fi
 
   # 2. Map features → worktrees, extract upstream feature deps
-  declare -A feat_wt feat_repo feat_exists feat_upstream feat_closed
+  declare -A feat_wt feat_repo feat_exists feat_upstream feat_closed feat_base
   declare -A matched  # "repo/wt_name" → 1
 
   while IFS= read -r feat_json; do
@@ -236,6 +236,7 @@ worktree-deps:
     feat_status=$(echo "$feat_json" | jq -r '.status // "open"')
     [[ "$feat_status" == "closed" ]] && feat_closed["$feat_id"]=1
     repo_tag=$(echo "$feat_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+    feat_base["$feat_id"]=$(echo "$feat_json" | jq -r '(.tags // [] | map(select(startswith("base:"))) | first // "origin/HEAD") | ltrimstr("base:")')
 
     wt_name=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "$feat_id" 2>/dev/null)
     [[ -z "$wt_name" ]] && continue
@@ -285,9 +286,9 @@ worktree-deps:
       repo="${feat_repo[$fid]}"
       wt="${feat_wt[$fid]}"
       if [[ -d "$repo/$wt" ]]; then
-        # If origin/HEAD is an ancestor of the downstream branch, the merged upstream
-        # changes are already included — no need to show the dep as a ghost
-        if git -C "$repo/$wt" merge-base --is-ancestor origin/HEAD HEAD 2>/dev/null; then
+        # If the feature's base branch is an ancestor of the downstream branch, the merged
+        # upstream changes are already included — no need to show the dep as a ghost
+        if git -C "$repo/$wt" merge-base --is-ancestor "${feat_base[$fid]}" HEAD 2>/dev/null; then
           unset "feat_upstream[$fid]"
         fi
       fi
@@ -490,7 +491,7 @@ resolve-base-branch feature-id:
         if [[ -n "$upstream_wt" ]] && git -C "$repo/default" rev-parse --verify "$upstream_wt" &>/dev/null; then
           echo "$upstream_wt"
         else
-          echo "${TK_BASE_BRANCH:-origin/HEAD}"
+          echo "$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" feature-base "{{ feature-id }}")"
         fi
         exit 0
       fi
@@ -500,10 +501,41 @@ resolve-base-branch feature-id:
       fi
     fi
   done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
-  echo "${TK_BASE_BRANCH:-origin/HEAD}"
+  echo "$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" feature-base "{{ feature-id }}")"
+
+# Read base branch from a feature's base:<branch> tag, default origin/HEAD
+# Resolve the base branch for the current worktree (for agents inside worktrees)
+[group('subagent-coder')]
+[group('subagent-code-reviewer')]
+[group('subagent-architect-reviewer')]
+worktree-base:
+  #!/usr/bin/env bash
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  wt_name=$(basename "{{ invocation_directory() }}")
+  JUSTFILE="{{ justfile() }}"
+  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  while IFS= read -r feat_json; do
+    [[ -z "$feat_json" ]] && continue
+    fid=$(echo "$feat_json" | jq -r '.id')
+    name=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "$fid" 2>/dev/null)
+    if [[ "$name" == "$wt_name" ]]; then
+      just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" resolve-base-branch "$fid"
+      exit 0
+    fi
+  done < <({{ tk }} query 'select(.type == "feature")' 2>/dev/null)
+
+  echo "origin/HEAD"
 
 [group('orchestrator')]
-create-worktree name repo="." base="${TK_BASE_BRANCH:-origin/HEAD}":
+feature-base feature-id:
+  #!/usr/bin/env bash
+  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  feature_json=$({{ tk }} query "select(.id == \"{{ feature-id }}\")")
+  echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("base:"))) | first // "origin/HEAD") | ltrimstr("base:")'
+
+[group('orchestrator')]
+create-worktree name repo="." base="origin/HEAD":
   #!/usr/bin/env bash
   set -euo pipefail
   PROJECT_DIR="{{ justfile_directory() }}"
@@ -719,7 +751,7 @@ start-work *args:
   }
 
   create_worktree() {
-    local name="$1" repo="${2:-.}" base="${3:-${TK_BASE_BRANCH:-origin/HEAD}}"
+    local name="$1" repo="${2:-.}" base="${3:-origin/HEAD}"
     local git_dir="$PROJECT_DIR/$repo/default/.git"
     local worktree_dir="$PROJECT_DIR/$repo/$name"
     git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
@@ -1747,12 +1779,12 @@ merge-all *args:
   }
 
   resolve_local_base() {
-    local base="${TK_BASE_BRANCH:-origin/HEAD}"
+    local repo_dir="$1" base="$2"
     if [[ "$base" == origin/* ]]; then
       # Resolve origin/HEAD → refs/remotes/origin/main → main
       local remote_ref
       if [[ "$base" == "origin/HEAD" ]]; then
-        remote_ref=$(git -C "$1/default" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)
+        remote_ref=$(git -C "$repo_dir/default" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)
       else
         remote_ref="refs/remotes/$base"
       fi
@@ -1761,7 +1793,7 @@ merge-all *args:
         return 1
       fi
       local local_branch="${remote_ref##*/}"
-      if ! git -C "$1/default" rev-parse --verify "$local_branch" &>/dev/null; then
+      if ! git -C "$repo_dir/default" rev-parse --verify "$local_branch" &>/dev/null; then
         echo "ERROR: No local branch '$local_branch' tracking $base" >&2
         return 1
       fi
@@ -1777,6 +1809,7 @@ merge-all *args:
   declare -A FEAT_REPO   # fid → repo dir
   declare -A FEAT_BRANCH # fid → branch name
   declare -A FEAT_DEPS   # fid → space-separated dep fids (features only)
+  declare -A FEAT_BASE   # fid → base branch (from base: tag or origin/HEAD)
   FEAT_ORDER=()          # topologically sorted feature IDs
 
   while IFS= read -r fjson; do
@@ -1797,6 +1830,7 @@ merge-all *args:
     FEAT_JSON[$fid]="$fjson"
     FEAT_REPO[$fid]="$repo"
     FEAT_BRANCH[$fid]="$branch"
+    FEAT_BASE[$fid]=$(echo "$fjson" | jq -r '(.tags // [] | map(select(startswith("base:"))) | first // "origin/HEAD") | ltrimstr("base:")')
 
     # Collect feature deps (only features, not tasks)
     local deps=""
@@ -1830,35 +1864,64 @@ merge-all *args:
     topo_visit "$fid"
   done
 
-  # --- Group by repo ---
+  # --- Resolve base for stacked features (inherit from upstream) ---
 
-  declare -A REPO_FEATURES  # repo → space-separated fids in order
   for fid in "${FEAT_ORDER[@]}"; do
-    repo="${FEAT_REPO[$fid]}"
-    REPO_FEATURES[$repo]+="$fid "
+    for dep in ${FEAT_DEPS[$fid]:-}; do
+      if [[ -n "${FEAT_BASE[$dep]:-}" && "${FEAT_REPO[$dep]}" == "${FEAT_REPO[$fid]}" ]]; then
+        FEAT_BASE[$fid]="${FEAT_BASE[$dep]}"
+        break
+      fi
+    done
   done
 
-  # --- Per-repo merge ---
+  # --- Group by (repo, base) ---
 
-  TEMP_BRANCH="_merge-all"
-  declare -A ORIGINAL_SHAS     # branch → original SHA (for rollback)
+  declare -A GROUP_FEATURES  # "repo|base" → space-separated fids in order
+  GROUP_KEYS=()              # unique group keys in order of first appearance
+  declare -A GROUP_SEEN
+  for fid in "${FEAT_ORDER[@]}"; do
+    repo="${FEAT_REPO[$fid]}"
+    base="${FEAT_BASE[$fid]}"
+    key="${repo}|${base}"
+    GROUP_FEATURES[$key]+="$fid "
+    if [[ -z "${GROUP_SEEN[$key]:-}" ]]; then
+      GROUP_KEYS+=("$key")
+      GROUP_SEEN[$key]=1
+    fi
+  done
+
+  # --- Per-group merge ---
+
+  declare -A ORIGINAL_SHAS     # "repo|base" → original SHA (for rollback)
+  declare -A GROUP_LOCAL_BASE   # "repo|base" → resolved local branch name
+  declare -A GROUP_TEMP_BRANCH  # "repo|base" → temp branch name
   declare -A REBASED_BRANCHES  # branch → original SHA (branches we rebased, for rollback)
-  MERGED_FIDS=()               # features successfully merged (across all repos)
+  MERGED_FIDS=()               # features successfully merged (across all groups)
   FAILED=0
 
-  for repo in "${!REPO_FEATURES[@]}"; do
-    local_base=$(resolve_local_base "$repo") || exit 1
+  for key in "${GROUP_KEYS[@]}"; do
+    repo="${key%%|*}"
+    base="${key#*|}"
     repo_dir="$repo/default"
 
+    local_base=$(resolve_local_base "$repo" "$base") || exit 1
+    GROUP_LOCAL_BASE[$key]="$local_base"
+
+    # Sanitize base for temp branch name (replace / with -)
+    sanitized_base="${base//\//-}"
+    temp_branch="_merge-all-${sanitized_base}"
+    GROUP_TEMP_BRANCH[$key]="$temp_branch"
+
     base_sha=$(git -C "$repo_dir" rev-parse "$local_base")
-    ORIGINAL_SHAS["$repo:$local_base"]="$base_sha"
+    ORIGINAL_SHAS[$key]="$base_sha"
 
     # Create temp branch from base
-    git -C "$repo_dir" branch -f "$TEMP_BRANCH" "$local_base" 2>/dev/null \
-      || git -C "$repo_dir" checkout -b "$TEMP_BRANCH" "$local_base" 2>/dev/null
-    git -C "$repo_dir" checkout "$TEMP_BRANCH"
+    git -C "$repo_dir" branch -f "$temp_branch" "$local_base" 2>/dev/null \
+      || git -C "$repo_dir" checkout -b "$temp_branch" "$local_base" 2>/dev/null
+    git -C "$repo_dir" checkout "$temp_branch"
 
-    for fid in ${REPO_FEATURES[$repo]}; do
+    for fid in ${GROUP_FEATURES[$key]}; do
       branch="${FEAT_BRANCH[$fid]}"
       label=$(feature_label "$fid" "${FEAT_JSON[$fid]}")
 
@@ -1869,14 +1932,14 @@ merge-all *args:
             if [[ "$dep" == "$merged_fid" && "${FEAT_REPO[$dep]}" == "$repo" ]]; then
               # Save original SHA for rollback
               REBASED_BRANCHES[$branch]=$(git -C "$repo_dir" rev-parse "$branch")
-              echo "Rebasing $branch onto $TEMP_BRANCH (upstream $dep was squash-merged)"
-              if ! git -C "$repo_dir" rebase "$TEMP_BRANCH" "$branch" 2>/dev/null; then
+              echo "Rebasing $branch onto $temp_branch (upstream $dep was squash-merged)"
+              if ! git -C "$repo_dir" rebase "$temp_branch" "$branch" 2>/dev/null; then
                 echo "ERROR: Rebase failed for $branch" >&2
                 git -C "$repo_dir" rebase --abort 2>/dev/null || true
                 FAILED=1
                 break 3
               fi
-              git -C "$repo_dir" checkout "$TEMP_BRANCH"
+              git -C "$repo_dir" checkout "$temp_branch"
               break 2
             fi
           done
@@ -1909,16 +1972,18 @@ merge-all *args:
 
   if [[ "$FAILED" == "1" ]]; then
     echo "Aborting — rolling back all changes"
-    for repo in "${!REPO_FEATURES[@]}"; do
+    for key in "${GROUP_KEYS[@]}"; do
+      repo="${key%%|*}"
       repo_dir="$repo/default"
-      local_base=$(resolve_local_base "$repo") || true
-      # Restore base branch
+      local_base="${GROUP_LOCAL_BASE[$key]}"
+      temp_branch="${GROUP_TEMP_BRANCH[$key]}"
       git -C "$repo_dir" checkout "$local_base" 2>/dev/null || true
-      git -C "$repo_dir" branch -D "$TEMP_BRANCH" 2>/dev/null || true
+      git -C "$repo_dir" branch -D "$temp_branch" 2>/dev/null || true
     done
     # Restore rebased branches
     for branch in "${!REBASED_BRANCHES[@]}"; do
-      for repo in "${!REPO_FEATURES[@]}"; do
+      for key in "${GROUP_KEYS[@]}"; do
+        repo="${key%%|*}"
         git -C "$repo/default" branch -f "$branch" "${REBASED_BRANCHES[$branch]}" 2>/dev/null || true
       done
     done
@@ -1927,17 +1992,19 @@ merge-all *args:
 
   # --- Success: fast-forward base, clean up ---
 
-  for repo in "${!REPO_FEATURES[@]}"; do
-    local_base=$(resolve_local_base "$repo") || continue
+  for key in "${GROUP_KEYS[@]}"; do
+    repo="${key%%|*}"
     repo_dir="$repo/default"
+    local_base="${GROUP_LOCAL_BASE[$key]}"
+    temp_branch="${GROUP_TEMP_BRANCH[$key]}"
 
     # Fast-forward base branch to temp
     git -C "$repo_dir" checkout "$local_base"
-    git -C "$repo_dir" merge --ff-only "$TEMP_BRANCH"
-    git -C "$repo_dir" branch -d "$TEMP_BRANCH"
+    git -C "$repo_dir" merge --ff-only "$temp_branch"
+    git -C "$repo_dir" branch -d "$temp_branch"
 
     # Clean up merged feature worktrees and branches
-    for fid in ${REPO_FEATURES[$repo]}; do
+    for fid in ${GROUP_FEATURES[$key]}; do
       branch="${FEAT_BRANCH[$fid]}"
       # Remove worktree if it exists
       git -C "$repo_dir" worktree remove "../$branch" 2>/dev/null || true

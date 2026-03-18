@@ -79,7 +79,7 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
   just task-diff <ticket-id>
 
   # Full branch context — for understanding integration
-  git diff $(git merge-base HEAD origin/HEAD)..HEAD
+  git diff $(git merge-base HEAD $(just worktree-base))..HEAD
   ```
 
 - However, consider the full branch diff for integration issues between this task and earlier tasks.

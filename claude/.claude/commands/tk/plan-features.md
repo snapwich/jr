@@ -192,8 +192,13 @@ Features are assigned to `tk:architect-reviewer` at creation. When all child tas
 
 In multi-repo mode, add a `repo:<name>` tag to each feature matching the target repo directory name. If the user also
 specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), use `--external-ref` on the **feature** ticket. This
-overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value. Example:
-`--external-ref "PEX-1234" --tags "repo:backend"`.
+overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value.
+
+When the user specifies a non-default base branch (release branch, hotfix branch, etc.), add a `base:<branch>` tag to
+the feature. The tag value is an absolute ref — use exactly what the user specifies: `base:origin/develop`,
+`base:release/1.0`, etc. No tag means the default `origin/HEAD`.
+
+Example: `--external-ref "PEX-1234" --tags "repo:backend,base:origin/develop"`.
 
 The description MUST include all relevant plan context for this feature. The plan is consumed — the original document is
 not referenced again. Include:

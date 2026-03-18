@@ -231,17 +231,18 @@ the orchestrator overrides it in both `react()` and `launch()`.
 
 ### Merging completed features (`merge-all`)
 
-`just merge-all [--squash]` merges closed feature branches into `TK_BASE_BRANCH` in dependency order. Atomic: merges
+`just merge-all [--squash]` merges closed feature branches into their base branches in dependency order. Atomic: merges
 into a temp branch, fast-forwards base only if all succeed. Handles stacked branches with `--squash` by rebasing
 downstream branches onto the temp branch after each squash merge. Rolls back on failure (deletes temp branch, restores
-rebased branches). Cleans up worktrees and branches on success. Multi-repo aware via `repo:<name>` tags. Does not push.
+rebased branches). Cleans up worktrees and branches on success. Groups features by `(repo, base)` — features targeting
+different base branches get separate merge tracks. Multi-repo aware via `repo:<name>` tags. Does not push.
 
 ### Concurrency
 
 The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`).
-`$TK_BASE_BRANCH` overrides the default base branch for feature worktrees (default: `origin/HEAD`). `$TK_REVIEW_ROUNDS`
-sets the max review iterations before escalation (default: 5). One agent per worktree at a time. See
-[docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
+Per-feature base branches are configured via `base:<branch>` tags (e.g., `base:origin/develop`, `base:release/1.0`). No
+tag defaults to `origin/HEAD`. `$TK_REVIEW_ROUNDS` sets the max review iterations before escalation (default: 5). One
+agent per worktree at a time. See [docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
 
 ## Directory Structure
 
