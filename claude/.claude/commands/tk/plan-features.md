@@ -372,7 +372,7 @@ text.
 After all changes:
 
 1. Show the full hierarchy: `just tree`
-2. Check for dependency cycles: `just dep cycle`
+2. Check for dependency cycles: `just dep-cycle`
 3. Show what's immediately ready to work on: `just ready`
 4. Run `just verify-tickets` to check for linear chains and cross-feature task dependencies
 5. Report a summary to the user: what was created, reopened, re-wired
