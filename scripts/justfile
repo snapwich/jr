@@ -803,7 +803,7 @@ start-work *args:
   }
 
   make_prompt() {
-    local ticket_id="$1" repo="$2"
+    local ticket_id="$1" repo="$2" parent="${3:-}"
     local template="$PROJECT_DIR/.claude/prompts/tk/subagent-task.md"
     local default_ext="$PROJECT_DIR/.jr/claude/_/prompts/tk/subagent-task.md"
     local repo_ext="$PROJECT_DIR/.jr/claude/$repo/prompts/tk/subagent-task.md"
@@ -815,6 +815,13 @@ start-work *args:
       prompt=$(sed "s/\\\$ARGUMENTS\\[0\\]/$ticket_id/" "$template")
     else
       prompt="Work on \`{{ tk }} show $ticket_id\`."
+    fi
+
+    # Substitute $PARENT_ID
+    if [[ -n "$parent" ]]; then
+      prompt="${prompt//\$PARENT_ID/ Parent feature: \`just show $parent\`}"
+    else
+      prompt="${prompt//\$PARENT_ID/}"
     fi
 
     # Append default (_) extension if exists
@@ -919,7 +926,7 @@ start-work *args:
     model=$(sed -n '/^---$/,/^---$/{ s/^model: *//p }' "$agent_file")
 
     local prompt outfile session_uuid
-    prompt=$(make_prompt "$ticket_id" "$repo")
+    prompt=$(make_prompt "$ticket_id" "$repo" "$parent")
     outfile="$OUTPUT_DIR/output-$ticket_id.txt"
     session_uuid=$(uuidgen)
 

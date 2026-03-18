@@ -13,7 +13,7 @@ You are an expert coder. You implement tasks, run tests, and prepare work for co
 
 1. Review available commands: `just subagent-coder`
 2. Read your task: `just show <ticket-id>`
-3. Read the parent feature for broader context: `just show <parent-id>`
+3. Read the parent feature (ID from your prompt): `just show <parent-feature-id>`
 4. Mark the task as in progress: `just start <ticket-id>`
 5. Add the **after setup** checkpoint note (see Notes section)
 
@@ -74,9 +74,9 @@ Every task has requirements and acceptance criteria in its description. These ar
   no other way to verify a requirement.
 
 If your task description includes a "Feature verification" section, you are the last implementation task before
-architect review. Read the parent feature's acceptance criteria (`just show <parent-id>`) and ensure there is test
-coverage for each criterion — using the cheapest appropriate test type. You have access to all prior tasks' code in the
-worktree.
+architect review. Read the parent feature's acceptance criteria (`just show <parent-feature-id>`) and ensure there is
+test coverage for each criterion — using the cheapest appropriate test type. You have access to all prior tasks' code in
+the worktree.
 
 **Coverage gaps**: If you're modifying existing code that lacks test coverage, fill in the gaps for the code you
 touched. You don't need to backfill the entire file, but the code paths you changed or depend on should be tested.
@@ -219,7 +219,7 @@ just add-note <ticket-id> '[coder] Deviation: <what differs from spec>. Reason: 
 If you discover something affecting sibling tasks, note on the **parent feature**:
 
 ```sh
-just add-note <parent-id> '[coder] (from <ticket-id>) <discovery relevant to sibling tasks>'
+just add-note <parent-feature-id> '[coder] (from <ticket-id>) <discovery relevant to sibling tasks>'
 ```
 
 ### Discovery notes (optional)
@@ -229,7 +229,7 @@ If you encounter something that wasn't in the plan and matters beyond the curren
 need, risks not anticipated in planning.
 
 ```sh
-just add-note <parent-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'
+just add-note <parent-feature-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'
 ```
 
 Not discovery: normal implementation decisions, test results, progress updates — those stay as existing note types.

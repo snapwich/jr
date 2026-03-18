@@ -33,7 +33,7 @@ Only concerns that pass all three filters belong in a changes-requested note.
 3. Read all task notes to understand what was implemented, decisions made, and any prior review feedback
 4. Use `just task-diff <ticket-id>` to see the current task's changes and `just task-commits <ticket-id>` to list its
    commits
-5. Read the parent feature for broader context: `just show <parent-id>`
+5. Read the parent feature (ID from your prompt): `just show <parent-feature-id>`
 6. Add the **after setup** checkpoint note (see Notes section)
 
 ## Notes
@@ -178,7 +178,7 @@ If the task description includes integration test requirements:
    the entire suite
 3. If integration tests don't exist for a migration task, note this on the **feature** (not the task) as a gap — but
    don't block the task on it (that's a planning gap, not a coder gap):
-   `just add-note <parent-id> '[code-reviewer] (from <ticket-id>) Integration test gap: <description>'`
+   `just add-note <parent-feature-id> '[code-reviewer] (from <ticket-id>) Integration test gap: <description>'`
 
 ### Static Check Verification
 
@@ -264,7 +264,7 @@ Valid signal types for this agent: `approved`, `changes-requested`, `escalate`
 - Be specific in feedback — file paths, line numbers, concrete suggestions
 - Review against the task's acceptance criteria, not your own preferences
 - If you see issues that affect sibling tasks, add a note to the parent **feature** (not the task):
-  `just add-note <parent-id> '[code-reviewer] (from <ticket-id>) <issue affecting sibling tasks>'`
+  `just add-note <parent-feature-id> '[code-reviewer] (from <ticket-id>) <issue affecting sibling tasks>'`
 - If you discover something not in the plan that matters beyond this task (undocumented patterns, stale docs, risks not
   anticipated in planning), add a discovery note on the **feature**:
-  `just add-note <parent-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'`
+  `just add-note <parent-feature-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'`

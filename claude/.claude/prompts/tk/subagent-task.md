@@ -1,4 +1,4 @@
-Work on `just show $ARGUMENTS[0]`. Use `just show <parent>` if you need higher-level context around the current task.
+Work on `just show $ARGUMENTS[0]`.$PARENT_ID
 
 ## Signaling Completion
 
