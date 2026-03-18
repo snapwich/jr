@@ -52,6 +52,10 @@ Cross-reference ticket notes, session logs, and task descriptions to identify:
   long setup phases, multiple escalation notes, scope discovery notes, coder notes expressing confusion about
   requirements. Compare actual work done against what the task description specified.
 
+- **Discoveries**: Read all `[discovery]` notes on the feature. Cross-reference with the architect's discovery triage
+  note. For "migrate" items: generate specific, actionable recommendations (fits into "Project recommendations" below).
+  For items the architect missed or didn't triage: flag as additional recommendations.
+
 ### 4. Present Findings
 
 Organize findings into three categories:

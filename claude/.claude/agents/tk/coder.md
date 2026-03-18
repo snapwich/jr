@@ -222,6 +222,18 @@ If you discover something affecting sibling tasks, note on the **parent feature*
 just add-note <parent-id> '[coder] (from <ticket-id>) <discovery relevant to sibling tasks>'
 ```
 
+### Discovery notes (optional)
+
+If you encounter something that wasn't in the plan and matters beyond the current task, add a `[discovery]` note on the
+**parent feature**. Examples: undocumented project patterns, stale/incorrect docs or skills, context a sibling task will
+need, risks not anticipated in planning.
+
+```sh
+just add-note <parent-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'
+```
+
+Not discovery: normal implementation decisions, test results, progress updates — those stay as existing note types.
+
 ## Completion
 
 When implementation is done and tests pass:

@@ -45,14 +45,15 @@ Prefix every note with your agent role in brackets:
 
 ### Task Notes vs Feature Notes
 
-| Note type              | Where       | Examples                                           |
-| ---------------------- | ----------- | -------------------------------------------------- |
-| Progress/decisions     | Task        | "Implemented X, chose approach Y because Z"        |
-| Review feedback        | Task        | "Changes requested: ...", "Approved"               |
-| Steps taken            | Task        | "Ran tests, 12/12 pass", "Fixed lint errors"       |
-| Cross-task discoveries | **Feature** | "API shape differs from plan, sibling tasks use X" |
-| Architectural findings | **Feature** | "Shared util needed for auth across tasks"         |
-| Blockers/risks         | **Feature** | "External API rate limit may affect tests"         |
+| Note type              | Where       | Examples                                                 |
+| ---------------------- | ----------- | -------------------------------------------------------- |
+| Progress/decisions     | Task        | "Implemented X, chose approach Y because Z"              |
+| Review feedback        | Task        | "Changes requested: ...", "Approved"                     |
+| Steps taken            | Task        | "Ran tests, 12/12 pass", "Fixed lint errors"             |
+| Cross-task discoveries | **Feature** | "API shape differs from plan, sibling tasks use X"       |
+| Architectural findings | **Feature** | "Shared util needed for auth across tasks"               |
+| Discoveries            | **Feature** | "Patterns not in docs, stale context, risks not in plan" |
+| Blockers/risks         | **Feature** | "External API rate limit may affect tests"               |
 
 Rule of thumb: if only the next agent on this task needs it, note on the task. If sibling tasks or the architect needs
 it, note on the feature.

@@ -61,7 +61,15 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
    just add-note <feature-id> '[architect] Spec completeness: <N significant gaps, M minor gaps noted>'
    ```
 
-6. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
+6. **After discovery triage** — Read all `[discovery]` notes on the feature. Categorize each as **migrate** (should be
+   added to durable context like CLAUDE.md, a skill, or docs — note the target) or **resolved** (already addressed by
+   the implementation or only relevant to this feature):
+
+   ```sh
+   just add-note <feature-id> '[architect] Discovery triage: <N> discoveries. Migrate: <list of what + where>. Resolved: <list>.'
+   ```
+
+7. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
 
 ## Contextual Exploration
 
