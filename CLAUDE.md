@@ -23,9 +23,9 @@ This is deliberate, not a limitation to work around:
   specific feedback) without biasing toward a particular approach.
 
 **Orchestrator as bash recipe.** The orchestrator is a bash script inlined in the justfile (`just start-work`). Its
-decision tree is fully deterministic — every signal maps to a fixed action, no LLM reasoning needed. It uses `tk ready`
-to discover work, launches subagents in the background, and uses `wait -n` for instant completion detection. All state
-lives in `tk`, making it fully restartable.
+decision tree is fully deterministic — every signal maps to a fixed action, no LLM reasoning needed. It uses
+`just ready` to discover work, launches subagents in the background, and uses `wait -n` for instant completion
+detection. All state lives in `tk`, making it fully restartable.
 
 **Early issue detection.** A key motivation is avoiding the failure mode of existing long-running loops that do too much
 work before surfacing problems. The orchestrator should catch issues early and surface them to the user rather than
@@ -95,8 +95,9 @@ stowed tk configs and any project-specific claude config (rules, settings, CLAUD
 
 ### Ticket system
 
-`tk` CLI is always in PATH — never reference its source location, just use it as a CLI tool. It's a git-backed markdown
-ticket tracker. Run `tk` (no args) to see available commands. There is no help subcommand or `--help` flag.
+`tk` is the underlying git-backed markdown ticket tracker. All ticket operations are exposed as `just` recipes — use
+`just --list` to see available commands (e.g., `just show`, `just ready`, `just close`, `just create`, `just assign`,
+`just note`).
 
 ### Worktree model
 
@@ -147,8 +148,8 @@ Two levels: **Feature** and **Task**.
 
 - **Feature** (`type: feature`, `assignee: tk:architect-reviewer`) — logical grouping of related work. One feature = one
   worktree = one branch = one PR. Created by `/tk:plan-features` from a plan document. Depends on all its child tasks
-  (appears in `tk ready` when all children close). When ready, orchestrator launches architect for feature review. After
-  architect approval, feature is assigned to `human` and orchestrator exits with code 3 for human review.
+  (appears in `just ready` when all children close). When ready, orchestrator launches architect for feature review.
+  After architect approval, feature is assigned to `human` and orchestrator exits with code 3 for human review.
 - **Task** (`type: task`, parent: feature) — sequential unit of work within a feature. Tasks form a linear chain within
   their feature.
 
@@ -163,16 +164,16 @@ Two levels: **Feature** and **Task**.
 
 ### Feature lifecycle
 
-1. All child tasks closed → feature appears in `tk ready` (architect already assigned)
+1. All child tasks closed → feature appears in `just ready` (architect already assigned)
 2. **Orchestrator** launches architect-reviewer for feature
 3. **Architect** reviews full branch diff
    - If issues → reopens specific tasks (or creates new ones), chains deps, signals `changes-requested`
    - If approved → assigns feature to `human`, signals `approved`
-4. If `changes-requested` → reopened tasks appear in `tk ready` → normal coder→code-reviewer flow → when all close,
+4. If `changes-requested` → reopened tasks appear in `just ready` → normal coder→code-reviewer flow → when all close,
    feature ready again → architect re-reviews (`TK_REVIEW_ROUNDS` (default 5) iterations, then escalate)
 5. If `approved` → feature assigned to `human` → orchestrator exits 3
 6. **Human** reviews the branch/worktree
-   - Satisfied → `tk close <feature-id>` → downstream features unblocked
+   - Satisfied → `just close <feature-id>` → downstream features unblocked
    - Issues found → `just request-changes <feature-id> "<feedback>"` (or omit feedback to open `$EDITOR`) → triggers
      rework loop
 
@@ -181,7 +182,7 @@ Two levels: **Feature** and **Task**.
 Review uses ticket notes as the handoff mechanism:
 
 1. **Orchestrator** adds assignment note before launching coder
-2. **Coder works** — implements the task, commits with `Tk-Task: <ticket-id>` trailers, logs decisions as `tk` notes
+2. **Coder works** — implements the task, commits with `Tk-Task: <ticket-id>` trailers, logs decisions as ticket notes
 3. **Coder finishes** — returns `requesting-review` signal to orchestrator
 4. **Code-reviewer picks up** — reads ticket notes, uses `just task-diff`/`just task-commits` for focused diff review
    (trailers survive rebases, unlike SHA-based tracking)
@@ -226,8 +227,8 @@ Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`
 
 By default, the orchestrator exits with code 3 at the human review gate. `--no-human-review` (or `TK_NO_HUMAN_REVIEW=1`)
 skips this — architect approval closes the feature directly, no exit 3. Crash-safe: if the orchestrator restarts and
-finds a human-assigned feature, it auto-closes it. The architect's `tk assign human` is kept as a crash-safety measure;
-the orchestrator overrides it in both `react()` and `launch()`.
+finds a human-assigned feature, it auto-closes it. The architect's `just assign <id> human` is kept as a crash-safety
+measure; the orchestrator overrides it in both `react()` and `launch()`.
 
 ### Merging completed features (`merge-all`)
 
@@ -273,9 +274,9 @@ package.json                          # prettier + lint-staged dev deps
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
 4. User runs `/tk:plan-features` to break work into tk tickets (features → linear task chains with architect review)
 5. User runs `just start-work` to start the orchestration loop
-6. Orchestrator: `tk ready` → create/reuse feature worktrees → start subagents → react to signals → close tasks
+6. Orchestrator: `just ready` → create/reuse feature worktrees → start subagents → react to signals → close tasks
 7. All automated work done → orchestrator exits 3 → human reviews feature branches
-8. Human closes features (`tk close`) or requests changes (`just request-changes`)
+8. Human closes features (`just close`) or requests changes (`just request-changes`)
 9. Optionally, run `/tk:retro <feature-id>` to analyze friction in the completed workflow and extract improvements
 
 ## Work Breakdown Model
@@ -317,7 +318,7 @@ resort.
 
 ## Development Guidelines
 
-- `tk` is always in PATH — use it as a CLI tool, never reference its source
+- All ticket operations are `just` recipes — use `just --list` to discover commands
 - Formatting enforced by prettier on commit: 120 char width, `proseWrap: always` for markdown
 - Markdown linting via markdownlint (MD013 disabled, MD041 disabled)
 - Agent definitions and commands are the main development surface
@@ -333,7 +334,7 @@ BDD tests using cucumber.js + mock subagents. Run with `just test` or `pnpm test
 - **Framework**: cucumber.js for Gherkin scenarios, zx available for shell scripting in steps
 - **Mock subagent**: `features/support/mock-subagent.sh` — stands in for `claude` CLI, returns preconfigured signal
   blocks. Supports numbered files (queue) and unnumbered files (repeatable) for multi-call scenarios.
-- **Test world**: `features/support/world.js` — creates isolated temp projects with `tk` initialized per scenario
+- **Test world**: `features/support/world.js` — creates isolated temp projects with tickets initialized per scenario
 - **Orchestrator tests**: `features/orchestrator.feature` — covers full signal dispatch lifecycle (task approval,
   changes requested, escalation, feature review, deadlock detection)
 
@@ -341,7 +342,7 @@ Do not use `../portfolio` or other real projects as test targets.
 
 ## Dependencies
 
-- **tk** — git-backed ticket CLI (always in PATH)
+- **tk** — git-backed ticket CLI (wrapped by `just` recipes)
 - **GNU stow** — symlink farm manager
 - **just** — command runner
 - **git** — with worktree support

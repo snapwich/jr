@@ -431,5 +431,5 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
 - When adding tasks to closed features, reopen the feature AND reassign to `tk:architect-reviewer`
 - Add `[human]` notes explaining what was changed and why on modified features
 - New tasks default to appending at end of chain unless user specifies otherwise
-- Use `tk` CLI for all ticket operations — NOT MCP task tools
+- Use `just` recipes for all ticket operations — NOT MCP task tools
 - STOP after verification — do not spawn agents or start implementation

@@ -580,7 +580,7 @@ create-worktree name repo="." base="origin/HEAD":
     fi
 
     # Then rsync the rest (--ignore-existing preserves our files)
-    rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' .claude/ "$WORKTREE_DIR/.claude/"
+    rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/tk/structure.md' .claude/ "$WORKTREE_DIR/.claude/"
   fi
 
   grep -qxF '.claude/agents/tk/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
@@ -763,7 +763,7 @@ start-work *args:
         # Copy project-level .jr rules
         copy_tk_rules "$worktree_dir" "$repo"
         # Then rsync the rest (--ignore-existing preserves our files)
-        rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
+        rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/tk/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
       fi
       return 1
     fi
@@ -774,7 +774,7 @@ start-work *args:
       # Copy project-level .jr rules
       copy_tk_rules "$worktree_dir" "$repo"
       # Then rsync the rest (--ignore-existing preserves our files)
-      rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
+      rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/tk/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
     fi
     # Ensure tk-specific paths are excluded from git status
     grep -qxF '.claude/agents/tk/' "$git_dir/info/exclude" 2>/dev/null \

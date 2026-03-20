@@ -9,10 +9,11 @@ sync-ticket:
   curl -s -o ticket/LICENSE https://raw.githubusercontent.com/snapwich/ticket/master/LICENSE
   chmod +x ticket/ticket
 
-init dir:
+init dir mode="":
   #!/usr/bin/env bash
   set -euo pipefail
   dir="{{ dir }}"
+  mode="{{ mode }}"
 
   # Create .jr directory structure
   mkdir -p "$dir/.jr/.tickets" "$dir/.jr/plans"
@@ -27,6 +28,13 @@ init dir:
 
   # Initialize git repo for .jr
   git -C "$dir/.jr" init
+
+  # Ensure .claude/ is a real directory before stow (prevents tree folding).
+  # On re-init, .claude may be a stow-folded symlink — unstow first.
+  if [[ -L "$dir/.claude" ]]; then
+    stow -D -t "$dir" claude
+  fi
+  mkdir -p "$dir/.claude/rules/tk"
 
   # Stow agent configs and scripts
   stow -t "$dir" claude scripts
@@ -83,6 +91,17 @@ init dir:
   npx lint-staged
   HOOK
   chmod +x "$dir/.jr/.git/hooks/pre-commit"
+
+  # Detect project mode and generate structure rule
+  if [[ -z "$mode" ]]; then
+    if compgen -G "$dir/*/default" > /dev/null 2>&1; then
+      mode="multi"
+    else
+      mode="single"
+    fi
+  fi
+  jr_dir="$(dirname "{{ justfile() }}")"
+  cp "$jr_dir/templates/project-context-${mode}.md" "$dir/.claude/rules/tk/structure.md"
 
   # Install dependencies
   (cd "$dir/.jr" && pnpm install)
