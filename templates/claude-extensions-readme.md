@@ -5,12 +5,12 @@ This directory is deployed to `<project>/.jr/claude/` via stow. Extensions live 
 - `<project>/.jr/claude/_/...` for project-wide extensions
 - `<project>/.jr/claude/<repo>/...` for repo-specific extensions
 
-This directory contains project-specific extensions for tk subagents.
+This directory contains project-specific extensions for jr subagents.
 
 ## Structure
 
-- `_/agents/tk/<agent>.md` — Agent extensions (appended at worktree creation)
-- `_/prompts/tk/subagent-task.md` — Prompt extension for ALL subagents (appended at runtime)
+- `_/agents/jr/<agent>.md` — Agent extensions (appended at worktree creation)
+- `_/prompts/jr/subagent-task.md` — Prompt extension for ALL subagents (appended at runtime)
 - `_/rules/*.md` — Additional rules (copied to worktree)
 - `<repo>/...` — Repo-specific extensions (same structure)
 
@@ -27,7 +27,7 @@ This directory contains project-specific extensions for tk subagents.
 
 Extensions are pure markdown (no frontmatter).
 
-Example `_/prompts/tk/subagent-task.md` (applies to all subagents):
+Example `_/prompts/jr/subagent-task.md` (applies to all subagents):
 
 ````markdown
 ## Project-Specific: Shared Resources

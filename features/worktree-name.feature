@@ -3,10 +3,10 @@ Feature: Worktree name slugification
   The `worktree-name` recipe derives a worktree/branch name from a ticket.
   For tasks, it resolves to the parent feature first.
   Uses `external-ref` field on the feature if present (preserving original case),
-  otherwise falls back to the tk feature ID: `<feature-id>-<slugified-title>`.
+  otherwise falls back to the ticket ID: `<feature-id>-<slugified-title>`.
 
   Background:
-    Given a project with tk initialized
+    Given a project with jr initialized
 
   Scenario: Basic title
     Given a ticket titled "Add login page"

@@ -1,7 +1,7 @@
 Feature: Rebase feature worktree
 
   Background:
-    Given a project with tk initialized
+    Given a project with jr initialized
     And a single-repo project layout
 
   Scenario: Rebase after squash merge of upstream

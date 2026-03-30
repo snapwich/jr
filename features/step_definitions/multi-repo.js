@@ -15,14 +15,14 @@ Given(
     // Create feature with architect assignee (feature-level review)
     const featureId = await this.createTicket(featureName, {
       type: "feature",
-      assignee: "tk:architect-reviewer",
+      assignee: "jr:architect-reviewer",
     });
     this.ticketIds[featureName] = featureId;
 
     // Create implementation task with repo tag
     const taskId = await this.createTicket(taskName, {
       type: "task",
-      assignee: "tk:coder",
+      assignee: "jr:coder",
       parent: featureId,
       tags: `repo:${repoName}`,
     });

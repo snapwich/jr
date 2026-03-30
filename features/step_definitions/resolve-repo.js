@@ -20,7 +20,7 @@ Given("a worktree for {string} in repo {string} with a commit {string}", async f
   const nameResult = await this.exec(
     "just",
     ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
   );
   const wtName = nameResult.stdout.trim();
   this.ticketIds[`${featureName}:wt`] = wtName;
@@ -39,7 +39,7 @@ When("I run resolve-repo for {string}", async function (featureName) {
   const featureId = this.ticketIds[featureName];
   const justfile = join(REPO_ROOT, "scripts", "justfile");
   const result = await this.exec("just", ["--justfile", justfile, "resolve-repo", featureId], {
-    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+    env: { ...process.env, JR_PROJECT_DIR: this.projectDir },
   });
   this.lastExitCode = result.exitCode;
   this.lastOutput = result.stdout + "\n" + result.stderr;

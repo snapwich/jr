@@ -17,7 +17,7 @@ Given("a worktree {string} with no feature ticket", async function (branchName) 
 When("I run worktree-deps", async function () {
   const justfile = join(REPO_ROOT, "scripts", "justfile");
   const result = await this.exec("just", ["--justfile", justfile, "worktree-deps"], {
-    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+    env: { ...process.env, JR_PROJECT_DIR: this.projectDir },
   });
   this.lastExitCode = result.exitCode;
   this.lastOutput = result.stdout + "\n" + result.stderr;
@@ -30,7 +30,7 @@ Then("the worktree-deps output should show {string} as a root", async function (
   const nameResult = await this.exec(
     "just",
     ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
   );
   const wtName = nameResult.stdout.trim();
   // Root nodes have no leading whitespace (no tree prefix before the name)
@@ -47,14 +47,14 @@ Then("the worktree-deps output should show {string} indented under {string}", as
     await this.exec(
       "just",
       ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", childId],
-      { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+      { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
     )
   ).stdout.trim();
   const parentWt = (
     await this.exec(
       "just",
       ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", parentId],
-      { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+      { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
     )
   ).stdout.trim();
 
@@ -80,7 +80,7 @@ Then("the worktree-deps output should show {string} as a ghost", async function 
   const nameResult = await this.exec(
     "just",
     ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
   );
   const wtName = nameResult.stdout.trim();
   const lines = this.depsOutput.split("\n");

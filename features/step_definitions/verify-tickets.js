@@ -14,7 +14,7 @@ Given("a feature {string} with task {string}", async function (featureName, task
   }
 
   const featureId = this.ticketIds[featureName];
-  const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+  const taskId = await this.createTicket(taskName, { type: "task", assignee: "jr:coder", parent: featureId });
   this.ticketIds[taskName] = taskId;
 
   // Feature depends on its child task
@@ -23,14 +23,14 @@ Given("a feature {string} with task {string}", async function (featureName, task
 
 Given("a feature {string} with linear chain tasks {string}", async function (featureName, taskNamesCsv) {
   // Create feature with architect assignee (feature-level review)
-  const featureId = await this.createTicket(featureName, { type: "feature", assignee: "tk:architect-reviewer" });
+  const featureId = await this.createTicket(featureName, { type: "feature", assignee: "jr:architect-reviewer" });
   this.ticketIds[featureName] = featureId;
 
   const taskNames = taskNamesCsv.split(",").map((s) => s.trim());
   let prevTaskId = null;
 
   for (const taskName of taskNames) {
-    const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+    const taskId = await this.createTicket(taskName, { type: "task", assignee: "jr:coder", parent: featureId });
     this.ticketIds[taskName] = taskId;
     await this.addDep(featureId, taskId);
     if (prevTaskId) {
@@ -48,7 +48,7 @@ Given("a feature {string} with parallel tasks {string}", async function (feature
 
   // Create tasks with NO inter-task deps (parallel)
   for (const taskName of taskNames) {
-    const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+    const taskId = await this.createTicket(taskName, { type: "task", assignee: "jr:coder", parent: featureId });
     this.ticketIds[taskName] = taskId;
     await this.addDep(featureId, taskId);
   }
@@ -73,7 +73,7 @@ Given("task {string} depends on feature {string}", async function (taskName, fea
 });
 
 Given("a standalone task {string}", async function (taskName) {
-  const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder" });
+  const taskId = await this.createTicket(taskName, { type: "task", assignee: "jr:coder" });
   this.ticketIds[taskName] = taskId;
 });
 
@@ -82,7 +82,7 @@ Given("a standalone task {string}", async function (taskName) {
 When("I run verify-tickets", async function () {
   const justfile = join(REPO_ROOT, "scripts", "justfile");
   const result = await this.exec("just", ["--justfile", justfile, "verify-tickets"], {
-    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+    env: { ...process.env, JR_PROJECT_DIR: this.projectDir },
   });
   this.lastExitCode = result.exitCode;
   this.lastOutput = result.stdout + "\n" + result.stderr;

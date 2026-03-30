@@ -1,7 +1,7 @@
 Feature: Resolve repo for a feature
 
   Background:
-    Given a project with tk initialized
+    Given a project with jr initialized
 
   Scenario: Feature with repo tag resolves to tag value
     Given a multi-repo project with repo "backend"

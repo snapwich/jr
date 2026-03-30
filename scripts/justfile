@@ -1,6 +1,6 @@
 # Bundled ticket CLI
 tk := ".jr/ticket/ticket"
-project_dir := env_var_or_default("TK_PROJECT_DIR", justfile_directory())
+project_dir := env_var_or_default("JR_PROJECT_DIR", justfile_directory())
 export TICKETS_DIR := project_dir / ".jr" / ".tickets"
 set positional-arguments
 
@@ -49,7 +49,7 @@ alias deps := worktree-deps
 [group("subagent-architect-reviewer")]
 feature-deps ticket-id:
   #!/usr/bin/env bash
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   root_id="{{ ticket-id }}"
 
   # Resolve partial ID
@@ -102,9 +102,9 @@ feature-deps ticket-id:
 [group("human")]
 ls:
   #!/usr/bin/env bash
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   JUSTFILE="{{ justfile() }}"
-  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  WORKING_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
 
   # Build worktree-name → feature-id map
   declare -A wt_to_fid
@@ -191,9 +191,9 @@ ls:
 [group("human")]
 worktree-deps:
   #!/usr/bin/env bash
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   JUSTFILE="{{ justfile() }}"
-  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  WORKING_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
 
   # 1. Discover repos and worktrees (same pattern as worktree-list)
   if [[ -d "default" ]]; then
@@ -403,7 +403,7 @@ worktree-deps:
 
 # Derive worktree/branch name from a ticket (resolves tasks to parent feature).
 # Uses external-ref field on the feature if present (preserving original case),
-# otherwise falls back to the tk feature ID.
+# otherwise falls back to the feature ID.
 [group('orchestrator')]
 worktree-name ticket-id:
   #!/usr/bin/env bash
@@ -437,10 +437,10 @@ worktree-name ticket-id:
 [group('orchestrator')]
 resolve-repo feature-id:
   #!/usr/bin/env bash
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_json=$({{ tk }} query "select(.id == \"{{ feature-id }}\")" 2>/dev/null)
   repo=$(echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
-  wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "{{ feature-id }}")
+  wt=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" worktree-name "{{ feature-id }}")
 
   # Direct match
   if [[ -d "$repo/$wt" ]]; then
@@ -470,7 +470,7 @@ resolve-repo feature-id:
 [group('orchestrator')]
 resolve-base-branch feature-id:
   #!/usr/bin/env bash
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_json=$({{ tk }} query "select(.id == \"{{ feature-id }}\")")
 
   # Find repo for this feature (needed to check branch existence)
@@ -483,7 +483,7 @@ resolve-base-branch feature-id:
     dep_type=$(echo "$dep_json" | jq -r '.type')
     if [[ "$dep_type" == "feature" ]]; then
       upstream_wt=$(just --justfile "{{ justfile() }}" \
-        --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$dep_id")
+        --working-directory "${JR_PROJECT_DIR:-.}" worktree-name "$dep_id")
       dep_status=$(echo "$dep_json" | jq -r '.status')
       if [[ "$dep_status" == "closed" ]]; then
         # Upstream closed — use its branch if it still exists (not yet merged/deleted),
@@ -491,7 +491,7 @@ resolve-base-branch feature-id:
         if [[ -n "$upstream_wt" ]] && git -C "$repo/default" rev-parse --verify "$upstream_wt" &>/dev/null; then
           echo "$upstream_wt"
         else
-          echo "$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" feature-base "{{ feature-id }}")"
+          echo "$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" feature-base "{{ feature-id }}")"
         fi
         exit 0
       fi
@@ -501,7 +501,7 @@ resolve-base-branch feature-id:
       fi
     fi
   done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
-  echo "$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" feature-base "{{ feature-id }}")"
+  echo "$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" feature-base "{{ feature-id }}")"
 
 # Read base branch from a feature's base:<branch> tag, default origin/HEAD
 # Resolve the base branch for the current worktree (for agents inside worktrees)
@@ -510,10 +510,10 @@ resolve-base-branch feature-id:
 [group('subagent-architect-reviewer')]
 worktree-base:
   #!/usr/bin/env bash
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   wt_name=$(basename "{{ invocation_directory() }}")
   JUSTFILE="{{ justfile() }}"
-  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  WORKING_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
 
   while IFS= read -r feat_json; do
     [[ -z "$feat_json" ]] && continue
@@ -530,7 +530,7 @@ worktree-base:
 [group('orchestrator')]
 feature-base feature-id:
   #!/usr/bin/env bash
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_json=$({{ tk }} query "select(.id == \"{{ feature-id }}\")")
   echo "$feature_json" | jq -r '(.tags // [] | map(select(startswith("base:"))) | first // "origin/HEAD") | ltrimstr("base:")'
 
@@ -547,11 +547,11 @@ create-worktree name repo="." base="origin/HEAD":
   git -C "{{ repo }}/default" worktree add --no-track -b "{{ name }}" "../{{ name }}" "{{ base }}" 2>/dev/null || true
 
   if [[ -d ".claude" && -d "$WORKTREE_DIR" ]]; then
-    # Merge tk agents (creates actual files from base + extensions)
-    BASE_DIR="$PROJECT_DIR/.claude/agents/tk"
-    DEFAULT_DIR="$PROJECT_DIR/.jr/claude/_/agents/tk"
-    REPO_DIR="$PROJECT_DIR/.jr/claude/$REPO/agents/tk"
-    TARGET_DIR="$WORKTREE_DIR/.claude/agents/tk"
+    # Merge jr agents (creates actual files from base + extensions)
+    BASE_DIR="$PROJECT_DIR/.claude/agents/jr"
+    DEFAULT_DIR="$PROJECT_DIR/.jr/claude/_/agents/jr"
+    REPO_DIR="$PROJECT_DIR/.jr/claude/$REPO/agents/jr"
+    TARGET_DIR="$WORKTREE_DIR/.claude/agents/jr"
 
     if [[ -d "$BASE_DIR" ]]; then
       mkdir -p "$TARGET_DIR"
@@ -580,11 +580,11 @@ create-worktree name repo="." base="origin/HEAD":
     fi
 
     # Then rsync the rest (--ignore-existing preserves our files)
-    rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/tk/structure.md' .claude/ "$WORKTREE_DIR/.claude/"
+    rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' .claude/ "$WORKTREE_DIR/.claude/"
   fi
 
-  grep -qxF '.claude/agents/tk/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
-    || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
+  grep -qxF '.claude/agents/jr/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
+    || printf '%s\n' '.claude/agents/jr/' '.claude/commands/jr/' '.claude/rules/jr-agents.md' \
       >> "{{ repo }}/default/.git/info/exclude"
 
 [group('orchestrator')]
@@ -599,20 +599,20 @@ start-work *args:
   set -o pipefail
 
   # --- Configuration ---
-  MAX_CONCURRENT="${TK_MAX_CONCURRENT:-3}"
-  REVIEW_ROUNDS="${TK_REVIEW_ROUNDS:-5}"
-  NO_HUMAN_REVIEW="${TK_NO_HUMAN_REVIEW:-0}"
+  MAX_CONCURRENT="${JR_MAX_CONCURRENT:-3}"
+  REVIEW_ROUNDS="${JR_REVIEW_ROUNDS:-5}"
+  NO_HUMAN_REVIEW="${JR_NO_HUMAN_REVIEW:-0}"
   for arg in {{ args }}; do
     case "$arg" in
       --no-human-review) NO_HUMAN_REVIEW=1 ;;
     esac
   done
-  PROJECT_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
-  OUTPUT_DIR="${TK_OUTPUT_DIR:-$PROJECT_DIR/.jr/tmp}"
+  PROJECT_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
+  OUTPUT_DIR="${JR_OUTPUT_DIR:-$PROJECT_DIR/.jr/tmp}"
   LOCK_DIR="$OUTPUT_DIR/locks"
   CLAUDE="${CLAUDE_CMD:-claude}"
   JUSTFILE="{{ justfile() }}"
-  AGENT_TIMEOUT="${TK_AGENT_TIMEOUT:-3600}"
+  AGENT_TIMEOUT="${JR_AGENT_TIMEOUT:-3600}"
 
   cd "$PROJECT_DIR"
 
@@ -697,17 +697,17 @@ start-work *args:
 
   merge_tk_agents() {
     local worktree_dir="$1" repo="$2"
-    local base_dir="$PROJECT_DIR/.claude/agents/tk"
-    local default_dir="$PROJECT_DIR/.jr/claude/_/agents/tk"
-    local repo_dir="$PROJECT_DIR/.jr/claude/$repo/agents/tk"
-    local target_dir="$worktree_dir/.claude/agents/tk"
+    local base_dir="$PROJECT_DIR/.claude/agents/jr"
+    local default_dir="$PROJECT_DIR/.jr/claude/_/agents/jr"
+    local repo_dir="$PROJECT_DIR/.jr/claude/$repo/agents/jr"
+    local target_dir="$worktree_dir/.claude/agents/jr"
 
     # Skip if no base agents directory
     [[ -d "$base_dir" ]] || return 0
 
     mkdir -p "$target_dir"
 
-    # Dynamic discovery: glob all .md files in base agents/tk/
+    # Dynamic discovery: glob all .md files in base agents/jr/
     for base in "$base_dir"/*.md; do
       [[ -f "$base" ]] || continue
       local agent
@@ -758,27 +758,27 @@ start-work *args:
     if [[ -d "$worktree_dir" ]]; then
       # Worktree already exists — still sync .claude/ but return 1
       if [[ -d "$PROJECT_DIR/.claude" ]]; then
-        # Merge tk agents (creates actual files, not symlinks)
+        # Merge jr agents (creates actual files, not symlinks)
         merge_tk_agents "$worktree_dir" "$repo"
         # Copy project-level .jr rules
         copy_tk_rules "$worktree_dir" "$repo"
         # Then rsync the rest (--ignore-existing preserves our files)
-        rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/tk/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
+        rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
       fi
       return 1
     fi
     git -C "$PROJECT_DIR/$repo/default" worktree add --no-track -b "$name" "../$name" "$base" >/dev/null 2>&1 || return 1
     if [[ -d "$PROJECT_DIR/.claude" && -d "$worktree_dir" ]]; then
-      # Merge tk agents (creates actual files, not symlinks)
+      # Merge jr agents (creates actual files, not symlinks)
       merge_tk_agents "$worktree_dir" "$repo"
       # Copy project-level .jr rules
       copy_tk_rules "$worktree_dir" "$repo"
       # Then rsync the rest (--ignore-existing preserves our files)
-      rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/tk/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
+      rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
     fi
     # Ensure tk-specific paths are excluded from git status
-    grep -qxF '.claude/agents/tk/' "$git_dir/info/exclude" 2>/dev/null \
-      || printf '%s\n' '.claude/agents/tk/' '.claude/commands/tk/' '.claude/rules/tk-agents.md' \
+    grep -qxF '.claude/agents/jr/' "$git_dir/info/exclude" 2>/dev/null \
+      || printf '%s\n' '.claude/agents/jr/' '.claude/commands/jr/' '.claude/rules/jr-agents.md' \
         >> "$git_dir/info/exclude"
   }
 
@@ -804,9 +804,9 @@ start-work *args:
 
   make_prompt() {
     local ticket_id="$1" repo="$2" parent="${3:-}"
-    local template="$PROJECT_DIR/.claude/prompts/tk/subagent-task.md"
-    local default_ext="$PROJECT_DIR/.jr/claude/_/prompts/tk/subagent-task.md"
-    local repo_ext="$PROJECT_DIR/.jr/claude/$repo/prompts/tk/subagent-task.md"
+    local template="$PROJECT_DIR/.claude/prompts/jr/subagent-task.md"
+    local default_ext="$PROJECT_DIR/.jr/claude/_/prompts/jr/subagent-task.md"
+    local repo_ext="$PROJECT_DIR/.jr/claude/$repo/prompts/jr/subagent-task.md"
 
     local prompt=""
 
@@ -853,7 +853,7 @@ start-work *args:
 
     # Feature handling: launch if architect-assigned, skip if human or unassigned
     if [[ "$ticket_type" == "feature" ]]; then
-      if [[ "$agent" == "tk:architect-reviewer" ]]; then
+      if [[ "$agent" == "jr:architect-reviewer" ]]; then
         : # Fall through to launch architect for feature review
       elif [[ "$agent" == "human" ]]; then
         if [[ "$NO_HUMAN_REVIEW" == "1" ]]; then
@@ -916,7 +916,7 @@ start-work *args:
     [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
 
     # Add assignment note before launching coder
-    if [[ "$agent" == "tk:coder" ]]; then
+    if [[ "$agent" == "jr:coder" ]]; then
       {{ tk }} add-note "$ticket_id" "[orchestrator] Assigned to coder."
     fi
 
@@ -1058,8 +1058,8 @@ start-work *args:
     # Task-level signals
     case "${SIGNAL:-}" in
       requesting-review)
-        log "Assigning $ticket_id to tk:code-reviewer"
-        {{ tk }} assign "$ticket_id" "tk:code-reviewer"
+        log "Assigning $ticket_id to jr:code-reviewer"
+        {{ tk }} assign "$ticket_id" "jr:code-reviewer"
         launch "$ticket_id" "task" || log "Could not immediately launch reviewer for $ticket_id"
         ;;
       approved)
@@ -1075,8 +1075,8 @@ start-work *args:
           ESCALATION="Max review iterations exceeded for $ticket_id"
           return
         fi
-        log "Assigning $ticket_id back to tk:coder"
-        {{ tk }} assign "$ticket_id" "tk:coder"
+        log "Assigning $ticket_id back to jr:coder"
+        {{ tk }} assign "$ticket_id" "jr:coder"
         {{ tk }} add-note "$ticket_id" "[orchestrator] Assigned to coder."
         launch "$ticket_id" "task" || log "Could not immediately relaunch coder for $ticket_id"
         ;;
@@ -1216,7 +1216,7 @@ start-work *args:
             rtitle=""
             rtitle=$(echo "$rjson" | jq -r '.title // .id' 2>/dev/null || echo "$rid")
             human_feature_names+=("$rid: $rtitle")
-          elif [[ "$rtype" == "task" || "$rassignee" == "tk:architect-reviewer" ]]; then
+          elif [[ "$rtype" == "task" || "$rassignee" == "jr:architect-reviewer" ]]; then
             launchable=$((launchable + 1))
           fi
         done < <({{ tk }} ready 2>/dev/null || true)
@@ -1274,7 +1274,7 @@ start-work *args:
 commit-tickets subject:
   #!/usr/bin/env bash
   set -euo pipefail
-  project_dir="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  project_dir="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   git -C "$project_dir/.jr" add .tickets/
   if git -C "$project_dir/.jr" diff --cached --quiet; then
     echo "No ticket changes to commit"
@@ -1291,7 +1291,7 @@ _watch-list:
   #!/usr/bin/env bash
   set -euo pipefail
 
-  output_dir="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}"
+  output_dir="${JR_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}"
   sessions_file="$output_dir/sessions.jsonl"
 
   if [[ ! -f "$sessions_file" ]] || [[ ! -s "$sessions_file" ]]; then
@@ -1301,7 +1301,7 @@ _watch-list:
   seq=0
   while IFS= read -r line; do
     s_ticket=$(echo "$line" | jq -r .ticket)
-    s_agent=$(echo "$line" | jq -r '.agent | ltrimstr("tk:")')
+    s_agent=$(echo "$line" | jq -r '.agent | ltrimstr("jr:")')
     s_pid=$(echo "$line" | jq -r .pid)
     s_session=$(echo "$line" | jq -r .session)
     s_worktree=$(echo "$line" | jq -r .worktree)
@@ -1324,7 +1324,7 @@ watch:
   set -euo pipefail
 
   project_dir="{{ justfile_directory() }}"
-  export TK_OUTPUT_DIR="${TK_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}"
+  export JR_OUTPUT_DIR="${JR_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}"
 
   reload_cmd="just --justfile {{ justfile() }} --working-directory $project_dir _watch-list"
 
@@ -1351,7 +1351,7 @@ watch:
 
   # Auto-refresh: background poller watches sessions.jsonl, sends reload to fzf via HTTP
   port=$((RANDOM % 10000 + 20000))
-  sessions_file="$TK_OUTPUT_DIR/sessions.jsonl"
+  sessions_file="$JR_OUTPUT_DIR/sessions.jsonl"
   follow_file=$(mktemp)
   echo "on" > "$follow_file"
 
@@ -1418,7 +1418,7 @@ task-commits ticket-id repo='.':
   #!/usr/bin/env bash
   set -euo pipefail
   JUSTFILE="{{ justfile() }}"
-  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  WORKING_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   wt=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "{{ ticket-id }}")
   git -C "$WORKING_DIR/{{ repo }}/$wt" log --reverse --format='%H' --grep="Tk-Task: {{ ticket-id }}" HEAD
 
@@ -1428,7 +1428,7 @@ task-diff ticket-id repo='.':
   #!/usr/bin/env bash
   set -euo pipefail
   JUSTFILE="{{ justfile() }}"
-  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  WORKING_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   wt=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "{{ ticket-id }}")
   commits=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" task-commits "{{ ticket-id }}" "{{ repo }}")
   echo "$commits" | while read -r sha; do
@@ -1455,8 +1455,8 @@ signal type ticket-id summary role="":
       if [[ -n "$role" ]]; then
         agent="$role"
       else
-        assignee=$({{ tk }} query "select(.id == \"$ticket\")" | jq -r '.assignee // "tk:coder"')
-        agent="${assignee#tk:}"
+        assignee=$({{ tk }} query "select(.id == \"$ticket\")" | jq -r '.assignee // "jr:coder"')
+        agent="${assignee#jr:}"
       fi
       prefix="Escalating"
       ;;
@@ -1478,7 +1478,7 @@ with-lock resource *command:
   #!/usr/bin/env bash
   set -euo pipefail
 
-  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.jr/tmp/locks"
+  LOCK_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}/.jr/tmp/locks"
   LOCK_FILE="$LOCK_DIR/{{ resource }}.lock"
   LOCK_INFO="$LOCK_FILE.info"
   mkdir -p "$LOCK_DIR"
@@ -1508,7 +1508,7 @@ with-lock resource *command:
 [group("human")]
 locks:
   #!/usr/bin/env bash
-  LOCK_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}/.jr/tmp/locks"
+  LOCK_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}/.jr/tmp/locks"
 
   if [[ ! -d "$LOCK_DIR" ]] || ! compgen -G "$LOCK_DIR/*.lock" >/dev/null; then
     echo "No locks found"
@@ -1536,7 +1536,7 @@ verify-tickets:
   #!/usr/bin/env bash
   set -e
 
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
 
   errors=0
 
@@ -1658,7 +1658,7 @@ verify-tickets:
 request-changes feature-id feedback="":
   #!/usr/bin/env bash
   set -e
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
   feedback="{{ feedback }}"
 
@@ -1696,7 +1696,7 @@ request-changes feature-id feedback="":
 
   # Add human feedback note and reassign to architect
   {{ tk }} add-note "$feature_id" "[human] CHANGES REQUESTED: $feedback"
-  {{ tk }} assign "$feature_id" "tk:architect-reviewer"
+  {{ tk }} assign "$feature_id" "jr:architect-reviewer"
 
   echo "Feature $feature_id reassigned to architect for rework"
   echo "Run 'just start-work' — architect will determine which tasks to reopen"
@@ -1706,7 +1706,7 @@ request-changes feature-id feedback="":
 approve feature-id:
   #!/usr/bin/env bash
   set -e
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
 
   # Validate ticket exists and is a feature
@@ -1743,8 +1743,8 @@ approve feature-id:
   {{ tk }} close "$feature_id"
 
   # Derive worktree location for display
-  repo=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-repo "$feature_id")
-  wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$feature_id")
+  repo=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" resolve-repo "$feature_id")
+  wt=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" worktree-name "$feature_id")
   wt_path="$repo/$wt"
 
   echo "Feature $feature_id approved and closed"
@@ -1759,9 +1759,9 @@ approve feature-id:
 merge-all *args:
   #!/usr/bin/env bash
   set -euo pipefail
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   JUSTFILE="{{ justfile() }}"
-  WORKING_DIR="${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  WORKING_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
 
   SQUASH=0
   for arg in {{ args }}; do
@@ -2035,7 +2035,7 @@ merge-all *args:
 rebase-feature feature-id rework-notes="":
   #!/usr/bin/env bash
   set -e
-  cd "${TK_PROJECT_DIR:-{{ justfile_directory() }}}"
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
   rework_notes="{{ rework-notes }}"
 
@@ -2052,8 +2052,8 @@ rebase-feature feature-id rework-notes="":
   fi
 
   # Derive repo and worktree
-  repo=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-repo "$feature_id")
-  wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$feature_id")
+  repo=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" resolve-repo "$feature_id")
+  wt=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" worktree-name "$feature_id")
 
   if [[ ! -d "$repo/$wt" ]]; then
     echo "ERROR: Worktree $repo/$wt does not exist" >&2
@@ -2061,7 +2061,7 @@ rebase-feature feature-id rework-notes="":
   fi
 
   # Determine correct new base via resolve-base-branch
-  correct_base=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" resolve-base-branch "$feature_id")
+  correct_base=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" resolve-base-branch "$feature_id")
   git -C "$repo/default" fetch origin >/dev/null 2>&1 || true
   correct_base_sha=$(git -C "$repo/default" rev-parse "$correct_base" 2>/dev/null)
 
@@ -2117,7 +2117,7 @@ rebase-feature feature-id rework-notes="":
       dep_type=$(echo "$dep_json" | jq -r '.type')
       if [[ "$dep_type" == "feature" ]]; then
         upstream_feature_id="$dep_id"
-        upstream_wt=$(just --justfile "{{ justfile() }}" --working-directory "${TK_PROJECT_DIR:-.}" worktree-name "$dep_id" 2>/dev/null || true)
+        upstream_wt=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" worktree-name "$dep_id" 2>/dev/null || true)
         break
       fi
     done < <(echo "$feature_json" | jq -r '.deps[]?' 2>/dev/null)
@@ -2142,10 +2142,10 @@ rebase-feature feature-id rework-notes="":
     # Launch rebaser synchronously
     CLAUDE="${CLAUDE_CMD}"
     [[ -z "$CLAUDE" ]] && CLAUDE='claude'
-    AGENT_TIMEOUT="${TK_AGENT_TIMEOUT}"
+    AGENT_TIMEOUT="${JR_AGENT_TIMEOUT}"
     [[ -z "$AGENT_TIMEOUT" ]] && AGENT_TIMEOUT='1800'
     rebaser_tmpfile=$(mktemp)
-    timeout --foreground "$AGENT_TIMEOUT" $CLAUDE --agent tk:rebaser --dangerously-skip-permissions \
+    timeout --foreground "$AGENT_TIMEOUT" $CLAUDE --agent jr:rebaser --dangerously-skip-permissions \
       -p "$rebaser_prompt" 2>&1 | tee "$rebaser_tmpfile" || true
     rebaser_output=$(cat "$rebaser_tmpfile")
     rm -f "$rebaser_tmpfile"
@@ -2212,7 +2212,7 @@ rebase-feature feature-id rework-notes="":
     echo "Added upstream-change note to feature $feature_id"
 
     # Reassign feature to architect for rework
-    {{ tk }} assign "$feature_id" "tk:architect-reviewer"
+    {{ tk }} assign "$feature_id" "jr:architect-reviewer"
 
     echo "Feature $feature_id reassigned to architect for rework"
     echo "Run 'just start-work' — architect will determine which tasks to reopen"

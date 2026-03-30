@@ -21,7 +21,7 @@ When("I run request-changes for {string} with {string}", async function (feature
   const featureId = this.ticketIds[featureName];
   const justfile = join(REPO_ROOT, "scripts", "justfile");
   const result = await this.exec("just", ["--justfile", justfile, "request-changes", featureId, feedback], {
-    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+    env: { ...process.env, JR_PROJECT_DIR: this.projectDir },
   });
   this.lastExitCode = result.exitCode;
   this.lastOutput = result.stdout + "\n" + result.stderr;
@@ -50,12 +50,12 @@ Then("ticket {string} should be assigned to {string}", async function (name, exp
   );
 });
 
-Then("ticket {string} should appear in tk ready", async function (name) {
+Then("ticket {string} should appear in just ready", async function (name) {
   const id = this.ticketIds[name];
   const result = await this.exec("tk", ["ready"]);
   assert.ok(
     result.stdout.includes(id),
-    `Expected ticket ${name} (${id}) to appear in tk ready.\nReady:\n${result.stdout}`,
+    `Expected ticket ${name} (${id}) to appear in just ready.\nReady:\n${result.stdout}`,
   );
 });
 
@@ -79,11 +79,11 @@ Then("feature {string} should have a note containing {string}", async function (
   );
 });
 
-Then("feature {string} should appear in tk ready", async function (name) {
+Then("feature {string} should appear in just ready", async function (name) {
   const id = this.ticketIds[name];
   const result = await this.exec("tk", ["ready"]);
   assert.ok(
     result.stdout.includes(id),
-    `Expected feature ${name} (${id}) to appear in tk ready.\nReady:\n${result.stdout}`,
+    `Expected feature ${name} (${id}) to appear in just ready.\nReady:\n${result.stdout}`,
   );
 });

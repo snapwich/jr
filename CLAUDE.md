@@ -1,9 +1,9 @@
 # jr
 
 Stow-based toolkit for deploying AI agent configs into project directories. Orchestrates multi-agent workflows where
-Claude subagents work on `tk` tickets in git worktrees.
+Claude subagents work on tickets in git worktrees.
 
-**Intended flow:** `just init` a project → break down work into tk tickets (features/tasks) → run `just start-work` →
+**Intended flow:** `just init` a project → break down work into tickets (features/tasks) → run `just start-work` →
 subagents implement, review, and close tickets → user notified on completion or blockers.
 
 ## Design Goals
@@ -41,9 +41,9 @@ definitions, commands, and a `scripts/justfile` for worktree/subagent management
 ```text
 jr repo                          target project
 ─────────────                         ──────────────
-claude/.claude/agents/tk/*    ──→     .claude/agents/tk/*
-claude/.claude/commands/tk/*  ──→     .claude/commands/tk/*
-claude/.claude/prompts/tk/*  ──→     .claude/prompts/tk/*
+claude/.claude/agents/jr/*    ──→     .claude/agents/jr/*
+claude/.claude/commands/jr/*  ──→     .claude/commands/jr/*
+claude/.claude/prompts/jr/*  ──→     .claude/prompts/jr/*
 scripts/justfile              ──→     justfile (worktree mgmt)
 .prettierrc.yml               ──(cp)  .jr/.prettierrc.yml
 .markdownlint.yaml            ──(cp)  .jr/.markdownlint.yaml
@@ -91,7 +91,7 @@ subdirectories means multi-repo mode.
 Claude Code doesn't recursively search parent directories for `.claude/`, so each worktree needs its own copy.
 `just create-worktree <name> [repo] [base]` handles this — it copies the project-level `.claude/` into the worktree
 using rsync with `--ignore-existing`, which merges without overwriting existing files. This means worktrees get both the
-stowed tk configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
+stowed jr configs and any project-specific claude config (rules, settings, CLAUDE.md, etc.).
 
 ### Ticket system
 
@@ -115,8 +115,7 @@ Worktree and branch names are derived from the **feature** ticket (not task). Th
 recipe computes this — when called with a task ID, it resolves to the parent feature first.
 
 **Prefix logic**: Check the feature's `external-ref` field. If present, use it (preserving original case) instead of the
-tk ticket ID: `PEX-1234-my-feature-title`. If no external-ref, fall back to the tk feature ID:
-`rep-abcd-my-feature-title`.
+ticket ID: `PEX-1234-my-feature-title`. If no external-ref, fall back to the ticket ID: `rep-abcd-my-feature-title`.
 
 ### Stacked branches
 
@@ -133,10 +132,10 @@ worktrees. The orchestrator enforces one agent per worktree at a time.
 
 Three Claude subagents plus a bash orchestrator:
 
-- **Coder** (`tk:coder`, sonnet, full tools, orange) — implements tasks, runs tests, commits
-- **Code-Reviewer** (`tk:code-reviewer`, opus, read-only, cyan) — reviews code + test quality, approves or requests
+- **Coder** (`jr:coder`, sonnet, full tools, orange) — implements tasks, runs tests, commits
+- **Code-Reviewer** (`jr:code-reviewer`, opus, read-only, cyan) — reviews code + test quality, approves or requests
   changes
-- **Architect-Reviewer** (`tk:architect-reviewer`, opus, tk write access, magenta) — reviews full feature branch for
+- **Architect-Reviewer** (`jr:architect-reviewer`, opus, ticket write access, magenta) — reviews full feature branch for
   cross-task coherence, integration quality. Can reopen tasks or create new ones.
 - **Orchestrator** (`just start-work`, bash) — coordinates the workflow, launches subagents, reacts to their signals.
   Deterministic signal dispatch — no LLM. Exits 0 on completion, 2 on escalation/deadlock, 3 on features awaiting human
@@ -146,8 +145,8 @@ Three Claude subagents plus a bash orchestrator:
 
 Two levels: **Feature** and **Task**.
 
-- **Feature** (`type: feature`, `assignee: tk:architect-reviewer`) — logical grouping of related work. One feature = one
-  worktree = one branch = one PR. Created by `/tk:plan-features` from a plan document. Depends on all its child tasks
+- **Feature** (`type: feature`, `assignee: jr:architect-reviewer`) — logical grouping of related work. One feature = one
+  worktree = one branch = one PR. Created by `/jr:plan-features` from a plan document. Depends on all its child tasks
   (appears in `just ready` when all children close). When ready, orchestrator launches architect for feature review.
   After architect approval, feature is assigned to `human` and orchestrator exits with code 3 for human review.
 - **Task** (`type: task`, parent: feature) — sequential unit of work within a feature. Tasks form a linear chain within
@@ -160,7 +159,7 @@ Two levels: **Feature** and **Task**.
 3. **Orchestrator** immediately assigns to code-reviewer and launches
 4. **Code-reviewer** reviews code + tests (finds task commits via `just task-diff`/`just task-commits`)
    - If approved → orchestrator closes task
-   - If changes requested → orchestrator relaunches coder (`TK_REVIEW_ROUNDS` (default 5) iterations, then escalate)
+   - If changes requested → orchestrator relaunches coder (`JR_REVIEW_ROUNDS` (default 5) iterations, then escalate)
 
 ### Feature lifecycle
 
@@ -170,7 +169,7 @@ Two levels: **Feature** and **Task**.
    - If issues → reopens specific tasks (or creates new ones), chains deps, signals `changes-requested`
    - If approved → assigns feature to `human`, signals `approved`
 4. If `changes-requested` → reopened tasks appear in `just ready` → normal coder→code-reviewer flow → when all close,
-   feature ready again → architect re-reviews (`TK_REVIEW_ROUNDS` (default 5) iterations, then escalate)
+   feature ready again → architect re-reviews (`JR_REVIEW_ROUNDS` (default 5) iterations, then escalate)
 5. If `approved` → feature assigned to `human` → orchestrator exits 3
 6. **Human** reviews the branch/worktree
    - Satisfied → `just close <feature-id>` → downstream features unblocked
@@ -225,7 +224,7 @@ Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`
 
 ### Autonomous mode (`--no-human-review`)
 
-By default, the orchestrator exits with code 3 at the human review gate. `--no-human-review` (or `TK_NO_HUMAN_REVIEW=1`)
+By default, the orchestrator exits with code 3 at the human review gate. `--no-human-review` (or `JR_NO_HUMAN_REVIEW=1`)
 skips this — architect approval closes the feature directly, no exit 3. Crash-safe: if the orchestrator restarts and
 finds a human-assigned feature, it auto-closes it. The architect's `just assign <id> human` is kept as a crash-safety
 measure; the orchestrator overrides it in both `react()` and `launch()`.
@@ -240,9 +239,9 @@ different base branches get separate merge tracks. Multi-repo aware via `repo:<n
 
 ### Concurrency
 
-The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$TK_MAX_CONCURRENT`).
+The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$JR_MAX_CONCURRENT`).
 Per-feature base branches are configured via `base:<branch>` tags (e.g., `base:origin/develop`, `base:release/1.0`). No
-tag defaults to `origin/HEAD`. `$TK_REVIEW_ROUNDS` sets the max review iterations before escalation (default: 5). One
+tag defaults to `origin/HEAD`. `$JR_REVIEW_ROUNDS` sets the max review iterations before escalation (default: 5). One
 agent per worktree at a time. See [docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
 
 ## Directory Structure
@@ -250,14 +249,14 @@ agent per worktree at a time. See [docs/workflow.md](docs/workflow.md) for visua
 ```text
 justfile                              # main entry point — `just init <dir>`
 claude/.claude/
-  agents/tk/
+  agents/jr/
     coder.md                          # coder agent (opus, full tools, orange)
     code-reviewer.md                  # code reviewer agent (opus, read-only, cyan)
-    architect-reviewer.md             # architect reviewer agent (opus, tk write access, magenta)
-  commands/tk/
+    architect-reviewer.md             # architect reviewer agent (opus, ticket write access, magenta)
+  commands/jr/
     plan-features.md                  # slash command: create/modify features and tasks
     retro.md                          # slash command: post-mortem analysis of a feature
-  prompts/tk/
+  prompts/jr/
     subagent-task.md                  # subagent prompt template (injected by orchestrator)
 scripts/
   justfile                            # worktree/subagent/orchestrator recipes
@@ -272,12 +271,12 @@ package.json                          # prettier + lint-staged dev deps
 1. `just init ../<project>` — deploys agent configs and ticket infrastructure
 2. User clones repos as named subdirectories (e.g. `repo-a/`, `repo-b/`), each with `default/` as the main checkout
 3. Work comes in as plans (Claude plan mode output), GitHub issues, Jira, etc.
-4. User runs `/tk:plan-features` to break work into tk tickets (features → linear task chains with architect review)
+4. User runs `/jr:plan-features` to break work into tickets (features → linear task chains with architect review)
 5. User runs `just start-work` to start the orchestration loop
 6. Orchestrator: `just ready` → create/reuse feature worktrees → start subagents → react to signals → close tasks
 7. All automated work done → orchestrator exits 3 → human reviews feature branches
 8. Human closes features (`just close`) or requests changes (`just request-changes`)
-9. Optionally, run `/tk:retro <feature-id>` to analyze friction in the completed workflow and extract improvements
+9. Optionally, run `/jr:retro <feature-id>` to analyze friction in the completed workflow and extract improvements
 
 ## Work Breakdown Model
 
@@ -289,7 +288,7 @@ package.json                          # prettier + lint-staged dev deps
 ## Testing Strategy
 
 Testing is requirements-driven at two levels: task requirements drive per-task tests, feature acceptance criteria drive
-feature-level verification. `/tk:plan-features` embeds testable requirements in each task description and testable
+feature-level verification. `/jr:plan-features` embeds testable requirements in each task description and testable
 acceptance criteria in each feature description. The testing strategy follows a cost pyramid: prefer unit tests
 (exhaustive), use integration tests only where unit tests can't cover the interaction, and e2e tests only as a last
 resort.
@@ -313,7 +312,7 @@ resort.
 
 - **Cross-repo features**: Supported — each repo gets its own worktree/branch; ticket metadata tracks the target repo
   via `repo:<name>` tag. Limited test coverage.
-- **Crashed subagents**: Treated as escalation (no valid signal). `TK_AGENT_TIMEOUT` (default: 30 min) prevents
+- **Crashed subagents**: Treated as escalation (no valid signal). `JR_AGENT_TIMEOUT` (default: 30 min) prevents
   indefinite runs.
 
 ## Development Guidelines

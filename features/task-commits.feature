@@ -1,7 +1,7 @@
 Feature: Task commit tracking via trailers
 
   Background:
-    Given a project with tk initialized
+    Given a project with jr initialized
 
   Scenario: task-commits finds commits by Tk-Task trailer
     Given a feature "feat-1" with a linear task chain: "task-impl"

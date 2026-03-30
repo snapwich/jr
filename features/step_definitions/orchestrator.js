@@ -9,7 +9,7 @@ function signalBlock(signal, ticketId, summary, details) {
 
 // --- Background ---
 
-Given("a project with tk initialized", async function () {
+Given("a project with jr initialized", async function () {
   // setup() in Before hook already handles this
   const result = await this.exec("tk", ["list"]);
   // Just verify tk works (may exit 2 for empty list, that's fine)
@@ -22,7 +22,7 @@ Given("a feature {string} with a linear task chain: {string}", async function (f
   await this.setupSingleRepo();
 
   // Create the feature with architect assignee (feature-level review)
-  const featureId = await this.createTicket(featureName, { type: "feature", assignee: "tk:architect-reviewer" });
+  const featureId = await this.createTicket(featureName, { type: "feature", assignee: "jr:architect-reviewer" });
   this.ticketIds[featureName] = featureId;
 
   // Parse task names
@@ -31,7 +31,7 @@ Given("a feature {string} with a linear task chain: {string}", async function (f
   // Create implementation tasks
   let prevTaskId = null;
   for (const taskName of taskNames) {
-    const taskId = await this.createTicket(taskName, { type: "task", assignee: "tk:coder", parent: featureId });
+    const taskId = await this.createTicket(taskName, { type: "task", assignee: "jr:coder", parent: featureId });
     this.ticketIds[taskName] = taskId;
     await this.addDep(featureId, taskId);
     if (prevTaskId) {
@@ -49,7 +49,7 @@ Given("a feature {string} with all tasks closed", async function (featureName) {
   const featureId = await this.createTicket(featureName, { type: "feature", assignee: "human" });
   this.ticketIds[featureName] = featureId;
 
-  const taskId = await this.createTicket("impl-task", { type: "task", assignee: "tk:coder", parent: featureId });
+  const taskId = await this.createTicket("impl-task", { type: "task", assignee: "jr:coder", parent: featureId });
   this.ticketIds["impl-task"] = taskId;
   await this.addDep(featureId, taskId);
 
@@ -96,7 +96,7 @@ Given("ticket {string} has {int} architect notes", async function (name, count) 
 
 Given("ticket {string} depends on nonexistent {string}", async function (name, depName) {
   // Create the dependency ticket but make it depend on something that blocks it
-  const depId = await this.createTicket(depName, { type: "task", assignee: "tk:coder" });
+  const depId = await this.createTicket(depName, { type: "task", assignee: "jr:coder" });
   this.ticketIds[depName] = depId;
   const id = this.ticketIds[name];
   await this.addDep(id, depId);
@@ -149,7 +149,7 @@ When("I run the orchestrator", async function () {
 });
 
 When("I run the orchestrator with no-human-review", async function () {
-  await this.runOrchestrator({ TK_NO_HUMAN_REVIEW: "1" });
+  await this.runOrchestrator({ JR_NO_HUMAN_REVIEW: "1" });
 });
 
 // --- Assertions ---

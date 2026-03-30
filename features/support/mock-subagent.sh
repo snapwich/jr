@@ -17,7 +17,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Extract ticket ID from prompt
-# Standard pattern: "tk show <ticket-id>"
+# Standard pattern: "just show <ticket-id>"
 # Rebaser pattern: "feature-id: <ticket-id>" (multiline prompt)
 ticket_id=$(echo "$prompt" | grep -oP '(?:tk|just) show \K[a-zA-Z0-9_-]+' | head -1 || true)
 if [[ -z "$ticket_id" ]]; then

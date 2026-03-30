@@ -1,5 +1,5 @@
 ---
-name: tk:code-reviewer
+name: jr:code-reviewer
 description: "Reviews code and test quality for completed tasks. Approves or requests changes."
 tools: Bash, Read, Edit, Grep, Glob
 model: opus
@@ -194,7 +194,7 @@ technical debt.
 ### Iteration Cap
 
 Before writing your review, check how many prior `[code-reviewer]` notes exist on this task. If there are already
-`TK_REVIEW_ROUNDS` (default 5) or more prior code-reviewer notes, this task has gone through too many review iterations.
+`JR_REVIEW_ROUNDS` (default 5) or more prior code-reviewer notes, this task has gone through too many review iterations.
 Return an `escalate` signal instead of continuing the cycle.
 
 ### Architect Rework

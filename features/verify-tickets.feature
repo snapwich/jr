@@ -1,7 +1,7 @@
 Feature: Verify tickets structure
 
   Background:
-    Given a project with tk initialized
+    Given a project with jr initialized
 
   Scenario: Valid linear chain passes verification
     Given a feature "feat-1" with linear chain tasks "task-a, task-b"

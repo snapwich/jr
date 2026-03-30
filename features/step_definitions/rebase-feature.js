@@ -36,14 +36,14 @@ Given("a worktree for {string} with a commit {string}", async function (featureN
   const nameResult = await this.exec(
     "just",
     ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
   );
   const wtName = nameResult.stdout.trim();
   this.ticketIds[`${featureName}:wt`] = wtName;
 
   // Resolve base branch
   const baseResult = await this.exec("just", ["--justfile", justfile, "resolve-base-branch", featureId], {
-    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+    env: { ...process.env, JR_PROJECT_DIR: this.projectDir },
   });
   const baseBranch = baseResult.stdout.trim();
 
@@ -70,7 +70,7 @@ Given(
     const nameResult = await this.exec(
       "just",
       ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-      { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+      { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
     );
     const wtName = nameResult.stdout.trim();
     this.ticketIds[`${featureName}:wt`] = wtName;
@@ -79,7 +79,7 @@ Given(
     const baseResult = await this.exec(
       "just",
       ["--justfile", justfile, "--working-directory", this.projectDir, "resolve-base-branch", featureId],
-      { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+      { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
     );
     const baseBranch = baseResult.stdout.trim();
 
@@ -125,7 +125,7 @@ Given(
     const nameResult = await this.exec(
       "just",
       ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-      { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+      { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
     );
     const wtName = nameResult.stdout.trim();
     this.ticketIds[`${featureName}:wt`] = wtName;
@@ -166,7 +166,7 @@ When("I run rebase-feature for {string}", async function (featureName) {
   const mockScript = join(REPO_ROOT, "features", "support", "mock-subagent.sh");
   const env = {
     ...process.env,
-    TK_PROJECT_DIR: this.projectDir,
+    JR_PROJECT_DIR: this.projectDir,
     // Pass mock env vars if mock responses are configured
     ...(this.mockResponsesDir && {
       CLAUDE_CMD: mockScript,
@@ -231,7 +231,7 @@ Given("a worktree for {string} with a conflicting commit on {string}", async fun
   const nameResult = await this.exec(
     "just",
     ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
   );
   const wtName = nameResult.stdout.trim();
   this.ticketIds[`${featureName}:wt`] = wtName;
@@ -263,7 +263,7 @@ Given(
     const nameResult = await this.exec(
       "just",
       ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-      { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+      { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
     );
     const wtName = nameResult.stdout.trim();
     this.ticketIds[`${featureName}:wt`] = wtName;
@@ -293,7 +293,7 @@ Given("a mock rebaser response for {string} that signals {string}", async functi
 signal: ${signalType}
 ticket: ${featureId}
 summary: Mock rebaser completed`;
-  await this.setMockResponse(featureId, "tk:rebaser", content);
+  await this.setMockResponse(featureId, "jr:rebaser", content);
 });
 
 Given(
@@ -304,6 +304,6 @@ Given(
 signal: ${signalType}
 ticket: ${featureId}
 summary: ${summary}`;
-    await this.setMockResponse(featureId, "tk:rebaser", content);
+    await this.setMockResponse(featureId, "jr:rebaser", content);
   },
 );

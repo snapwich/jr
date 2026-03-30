@@ -72,7 +72,7 @@ working in this codebase. Examples:
 
 #### Feature/task recommendations
 
-Were task descriptions underspecified or misleading? Did the planning process (`/tk:plan-features`) miss important
+Were task descriptions underspecified or misleading? Did the planning process (`/jr:plan-features`) miss important
 details? Should remaining open tickets be updated before continuing work? Examples:
 
 - "Task X described 'update styles' but didn't mention the dark mode variant — coder discovered it mid-implementation"

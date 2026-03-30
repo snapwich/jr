@@ -10,7 +10,7 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..");
 const JUSTFILE = join(REPO_ROOT, "scripts", "justfile");
 
 function justEnv(projectDir) {
-  return { ...process.env, TK_PROJECT_DIR: projectDir };
+  return { ...process.env, JR_PROJECT_DIR: projectDir };
 }
 
 Given(

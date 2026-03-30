@@ -1,5 +1,5 @@
 ---
-name: tk:architect-reviewer
+name: jr:architect-reviewer
 description: "Reviews full feature branch for cross-task coherence, integration quality, and architectural soundness."
 tools: Bash, Read, Grep, Glob
 model: opus
@@ -273,7 +273,7 @@ For each task to reopen:
 
 ```sh
 just add-note <task-id> '[architect] CHANGES REQUESTED: <specific feedback>'
-just assign <task-id> tk:coder
+just assign <task-id> jr:coder
 just reopen <task-id>
 ```
 
@@ -282,7 +282,7 @@ just reopen <task-id>
 If an issue doesn't fit any existing task:
 
 ```sh
-just create "<task title>" -t task --parent <feature-id> -a tk:coder -d "<description with requirements>"
+just create "<task title>" -t task --parent <feature-id> -a jr:coder -d "<description with requirements>"
 ```
 
 Note: New tasks are created without dependencies, so they will appear in `just ready` immediately.

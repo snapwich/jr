@@ -19,8 +19,8 @@ init dir mode="":
   mkdir -p "$dir/.jr/.tickets" "$dir/.jr/plans"
 
   # Create project-level claude extension structure
-  mkdir -p "$dir/.jr/claude/_/agents/tk"
-  mkdir -p "$dir/.jr/claude/_/prompts/tk"
+  mkdir -p "$dir/.jr/claude/_/agents/jr"
+  mkdir -p "$dir/.jr/claude/_/prompts/jr"
   mkdir -p "$dir/.jr/claude/_/rules"
 
   # Copy README explaining the extension pattern
@@ -34,7 +34,7 @@ init dir mode="":
   if [[ -L "$dir/.claude" ]]; then
     stow -D -t "$dir" claude
   fi
-  mkdir -p "$dir/.claude/rules/tk"
+  mkdir -p "$dir/.claude/rules/jr"
 
   # Stow agent configs and scripts
   stow -t "$dir" claude scripts
@@ -101,7 +101,7 @@ init dir mode="":
     fi
   fi
   jr_dir="$(dirname "{{ justfile() }}")"
-  cp "$jr_dir/templates/project-context-${mode}.md" "$dir/.claude/rules/tk/structure.md"
+  cp "$jr_dir/templates/project-context-${mode}.md" "$dir/.claude/rules/jr/structure.md"
 
   # Install dependencies
   (cd "$dir/.jr" && pnpm install)

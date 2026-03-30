@@ -1,7 +1,7 @@
 Feature: Stacked branch resolution
 
   Background:
-    Given a project with tk initialized
+    Given a project with jr initialized
 
   Scenario: Feature with no upstream dep resolves to origin/HEAD
     Given a feature "feat-solo"

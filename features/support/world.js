@@ -11,7 +11,7 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..");
 class OrchestratorWorld extends World {
   constructor(options) {
     super(options);
-    this.projectDir = null; // acts as TK_PROJECT_DIR — has .tickets/ and .claude/
+    this.projectDir = null; // acts as JR_PROJECT_DIR — has .tickets/ and .claude/
     this.mockResponsesDir = null;
     this.outputDir = null;
     this.lastExitCode = null;
@@ -33,17 +33,17 @@ class OrchestratorWorld extends World {
     await mkdir(join(this.projectDir, ".jr", ".tickets"), { recursive: true });
 
     // Copy prompt template so the orchestrator can generate prompts
-    const templateDir = join(this.projectDir, ".claude", "prompts", "tk");
+    const templateDir = join(this.projectDir, ".claude", "prompts", "jr");
     await mkdir(templateDir, { recursive: true });
     await cp(
-      join(REPO_ROOT, "claude", ".claude", "prompts", "tk", "subagent-task.md"),
+      join(REPO_ROOT, "claude", ".claude", "prompts", "jr", "subagent-task.md"),
       join(templateDir, "subagent-task.md"),
     );
 
     // Copy agent definitions so launch() can read model from frontmatter
-    const agentDir = join(this.projectDir, ".claude", "agents", "tk");
+    const agentDir = join(this.projectDir, ".claude", "agents", "jr");
     await mkdir(agentDir, { recursive: true });
-    await cp(join(REPO_ROOT, "claude", ".claude", "agents", "tk"), agentDir, { recursive: true });
+    await cp(join(REPO_ROOT, "claude", ".claude", "agents", "jr"), agentDir, { recursive: true });
 
     // Symlink bundled tk to the real tk binary
     const ticketDir = join(this.projectDir, ".jr", "ticket");
@@ -74,7 +74,7 @@ class OrchestratorWorld extends World {
       cwd: this.projectDir,
       env: {
         ...process.env,
-        TK_PROJECT_DIR: this.projectDir,
+        JR_PROJECT_DIR: this.projectDir,
         TICKETS_DIR: join(this.projectDir, ".jr", ".tickets"),
       },
       ...opts,
@@ -114,10 +114,10 @@ class OrchestratorWorld extends World {
       ...process.env,
       CLAUDE_CMD: mockScript,
       MOCK_RESPONSES_DIR: this.mockResponsesDir,
-      TK_OUTPUT_DIR: this.outputDir,
-      TK_PROJECT_DIR: this.projectDir,
+      JR_OUTPUT_DIR: this.outputDir,
+      JR_PROJECT_DIR: this.projectDir,
       TICKETS_DIR: join(this.projectDir, ".jr", ".tickets"),
-      TK_MAX_CONCURRENT: "3",
+      JR_MAX_CONCURRENT: "3",
       ...extraEnv,
     };
 

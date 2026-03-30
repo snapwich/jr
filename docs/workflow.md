@@ -19,8 +19,8 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
      │  FEATURE A       │                   │  FEATURE B       │
      │  type: feature   │                   │  type: feature   │
      │  assignee:       │                   │  dep: Feature A  │
-     │  tk:architect-   │                   │  assignee:       │
-     │  reviewer        │                   │  tk:architect-   │
+     │  jr:architect-   │                   │  assignee:       │
+     │  reviewer        │                   │  jr:architect-   │
      │                  │                   │  reviewer        │
      │  1 worktree      │                   │  1 worktree      │
      │  1 branch        │                   │  1 branch        │
@@ -38,7 +38,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 
   One feature = one worktree = one branch = one PR.
   Tasks are sequential commits within a feature's worktree.
-  Features are assigned to tk:architect-reviewer at creation.
+  Features are assigned to jr:architect-reviewer at creation.
   When all tasks close, architect reviews the full feature branch.
 ```
 
@@ -48,7 +48,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 ┌──────────────────────────────────────────────────────────────────┐
 │                    SINGLE TASK LIFECYCLE                          │
 │                                                                  │
-│  tk ready finds task                                             │
+│  just ready finds task                                             │
 │       │                                                          │
 │       ▼                                                          │
 │  ┌─────────┐         ┌───────────────┐                           │
@@ -78,7 +78,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 │                   FEATURE COMPLETION                                 │
 │                                                                     │
 │  All child tasks closed                                             │
-│  → feature appears in tk ready (architect already assigned)         │
+│  → feature appears in just ready (architect already assigned)         │
 │       │                                                             │
 │       ▼                                                             │
 │  ┌──────────────────────────┐                                       │
@@ -134,7 +134,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
 │  │               ├─ Architect reopens specific tasks (adds notes)     │
 │  │               ├─ Architect may create new tasks                    │
 │  │               ├─ Architect chains deps to keep linear order        │
-│  │               ├─ Tasks appear in tk ready                          │
+│  │               ├─ Tasks appear in just ready                          │
 │  │               ├─ Coder fixes, signals requesting-review            │
 │  │               ├─ Code-reviewer reviews fix                         │
 │  │               │  ├─ changes-requested → back to coder              │
@@ -154,7 +154,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
                          └──────┬───────┘
                                 ▼
             ┌────────────────────────────────────┐
-            │  tk ready → get unblocked items    │◄────────────────────┐
+            │  just ready → get unblocked items    │◄────────────────────┐
             │                                    │                     │
             │  For each result:                  │                     │
             │  • feature with architect assignee │                     │
@@ -199,7 +199,7 @@ Visual reference for the orchestrator workflow. See [CLAUDE.md](../CLAUDE.md) fo
             └──────────────┬─────────────────────┘                     │
                            │                                           │
                            └───────────────────────────────────────────┘
-                        (loop: check tk ready for new work,
+                        (loop: check just ready for new work,
                          handle next completed subagent)
 
   Exit codes:

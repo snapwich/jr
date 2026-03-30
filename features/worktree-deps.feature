@@ -1,7 +1,7 @@
 Feature: Worktree dependency tree
 
   Background:
-    Given a project with tk initialized
+    Given a project with jr initialized
     And a single-repo project layout
 
   Scenario: Stacked features show dependency tree

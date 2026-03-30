@@ -1,5 +1,5 @@
 ---
-name: tk:rebaser
+name: jr:rebaser
 description: "Resolves rebase conflicts in feature worktrees."
 tools: Bash, Read, Edit, Write, Grep, Glob
 model: opus

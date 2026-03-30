@@ -44,7 +44,7 @@ Given("a worktree for {string} from HEAD with a commit {string}", async function
   const nameResult = await this.exec(
     "just",
     ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
   );
   const wtName = nameResult.stdout.trim();
   const defaultDir = join(this.projectDir, "default");
@@ -61,7 +61,7 @@ When("I resolve the base branch for {string}", async function (featureName) {
   const featureId = this.ticketIds[featureName];
   const justfile = join(REPO_ROOT, "scripts", "justfile");
   const result = await this.exec("just", ["--justfile", justfile, "resolve-base-branch", featureId], {
-    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+    env: { ...process.env, JR_PROJECT_DIR: this.projectDir },
   });
   this.lastExitCode = result.exitCode;
   this.lastOutput = result.stdout + "\n" + result.stderr;
@@ -74,13 +74,13 @@ When("I run worktree-base from the worktree for {string}", async function (featu
   const nameResult = await this.exec(
     "just",
     ["--justfile", justfile, "--working-directory", this.projectDir, "worktree-name", featureId],
-    { env: { ...process.env, TK_PROJECT_DIR: this.projectDir } },
+    { env: { ...process.env, JR_PROJECT_DIR: this.projectDir } },
   );
   const wtName = nameResult.stdout.trim();
   const wtDir = join(this.projectDir, wtName);
   const result = await this.exec("just", ["--justfile", justfile, "worktree-base"], {
     cwd: wtDir,
-    env: { ...process.env, TK_PROJECT_DIR: this.projectDir },
+    env: { ...process.env, JR_PROJECT_DIR: this.projectDir },
   });
   this.lastExitCode = result.exitCode;
   this.lastOutput = result.stdout + "\n" + result.stderr;

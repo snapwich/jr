@@ -26,12 +26,12 @@ cd ../my-project
 
 # Break a plan into features and tasks
 # (from within the project, using Claude Code)
-/tk:plan-features path/to/plan.md
+/jr:plan-features path/to/plan.md
 
 # Review ticket structure before starting
 just verify-tickets          # checks linear chains, cross-feature deps
-tk tree                      # visual overview of features → tasks
-tk plan                      # execution plan — shows what will run and in what order
+just tree                      # visual overview of features → tasks
+just plan                      # execution plan — shows what will run and in what order
 
 # Run the orchestration loop
 just start-work
@@ -46,9 +46,9 @@ Before running `just start-work`, verify:
 
 1. **`just verify-tickets`** passes — catches structural issues (non-linear chains, cross-feature task deps) that would
    cause the orchestrator to misbehave
-2. **`tk plan`** looks right — shows the execution order and parallelism; confirm features and task chains match your
+2. **`just plan`** looks right — shows the execution order and parallelism; confirm features and task chains match your
    intent
-3. **`tk ready`** shows expected first tasks — these are what the orchestrator will pick up immediately
+3. **`just ready`** shows expected first tasks — these are what the orchestrator will pick up immediately
 
 ## Exit Codes
 
@@ -89,7 +89,7 @@ workflows where you trust the architect's judgment, skip the human gate:
 just start-work --no-human-review
 
 # Or via environment variable
-TK_NO_HUMAN_REVIEW=1 just start-work
+JR_NO_HUMAN_REVIEW=1 just start-work
 ```
 
 With this flag, architect approval closes features directly instead of assigning them for human review. The orchestrator
@@ -145,9 +145,9 @@ This rebases AND reassigns to the architect to review/reopen tasks for call site
 ```sh
 # Pre-flight
 just verify-tickets          # Validate ticket structure before running orchestrator
-tk tree                      # Show full ticket hierarchy
-tk plan                      # Show execution plan (order, parallelism, deps)
-tk ready                     # Show tickets ready to be worked on
+just tree                      # Show full ticket hierarchy
+just plan                      # Show execution plan (order, parallelism, deps)
+just ready                     # Show tickets ready to be worked on
 
 # During orchestration
 just watch                   # Interactive session watcher (fzf-based)
@@ -167,10 +167,10 @@ Environment variables for tuning the orchestrator:
 
 | Variable             | Default | Description                           |
 | -------------------- | ------- | ------------------------------------- |
-| `TK_MAX_CONCURRENT`  | 3       | Max concurrent subagents              |
-| `TK_AGENT_TIMEOUT`   | 1800    | Agent timeout in seconds (30 min)     |
-| `TK_NO_HUMAN_REVIEW` | 0       | Skip human review gate when set to 1  |
-| `TK_REVIEW_ROUNDS`   | 5       | Max review iterations before escalate |
+| `JR_MAX_CONCURRENT`  | 3       | Max concurrent subagents              |
+| `JR_AGENT_TIMEOUT`   | 1800    | Agent timeout in seconds (30 min)     |
+| `JR_NO_HUMAN_REVIEW` | 0       | Skip human review gate when set to 1  |
+| `JR_REVIEW_ROUNDS`   | 5       | Max review iterations before escalate |
 
 Per-feature base branches are configured via `base:<branch>` tags on feature tickets (e.g., `base:origin/develop`,
 `base:release/1.0`). No tag defaults to `origin/HEAD`.

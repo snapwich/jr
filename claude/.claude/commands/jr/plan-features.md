@@ -32,7 +32,7 @@ Then build structured data per feature using `just query` with jq filters:
 | State               | Detection                                                           | Scenario |
 | ------------------- | ------------------------------------------------------------------- | -------- |
 | Active              | Feature open, at least 1 child task open/in_progress                | 1        |
-| Awaiting architect  | Feature open, all children closed, assignee = tk:architect-reviewer | 2        |
+| Awaiting architect  | Feature open, all children closed, assignee = jr:architect-reviewer | 2        |
 | Awaiting human      | Feature open, all children closed, assignee = human                 | 3        |
 | Closed              | Feature closed                                                      | 4        |
 | New (doesn't exist) | Not found                                                           | 5        |
@@ -183,11 +183,11 @@ For each new feature identified:
 ```sh
 just create "<feature title>" \
   -t feature \
-  -a tk:architect-reviewer \
+  -a jr:architect-reviewer \
   -d "<plan context embedded in the description>"
 ```
 
-Features are assigned to `tk:architect-reviewer` at creation. When all child tasks close, the feature appears in
+Features are assigned to `jr:architect-reviewer` at creation. When all child tasks close, the feature appears in
 `just ready` and the orchestrator launches the architect for feature-level review.
 
 In multi-repo mode, add a `repo:<name>` tag to each feature matching the target repo directory name. If the user also
@@ -221,7 +221,7 @@ For each task within a feature:
 ```sh
 just create "<task title>" \
   -t task \
-  -a tk:coder \
+  -a jr:coder \
   --parent <feature-id> \
   -d "<task description with implementation guidance>"
 ```
@@ -288,7 +288,7 @@ Handle each scenario differently:
   Proceed only with explicit confirmation.
 - Create new tasks, chain them after the current last task, add feature deps on new tasks.
 
-**Scenario 2 — Awaiting architect** (open, all children closed, assignee = tk:architect-reviewer):
+**Scenario 2 — Awaiting architect** (open, all children closed, assignee = jr:architect-reviewer):
 
 - Add a note explaining what changed: `just add-note $FEATURE "[human] Adding new tasks: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
@@ -296,14 +296,14 @@ Handle each scenario differently:
 
 **Scenario 3 — Awaiting human** (open, all children closed, assignee = human):
 
-- Reassign feature back to architect: `just assign $FEATURE tk:architect-reviewer`
+- Reassign feature back to architect: `just assign $FEATURE jr:architect-reviewer`
 - Add a note: `just add-note $FEATURE "[human] Adding new tasks — re-review required: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 
 **Scenario 4 — Closed feature**:
 
 - Reopen the feature: `just reopen $FEATURE`
-- Reassign to architect: `just assign $FEATURE tk:architect-reviewer`
+- Reassign to architect: `just assign $FEATURE jr:architect-reviewer`
 - Add note: `just add-note $FEATURE "[human] Reopened to add new tasks: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 - **Warning**: Reopening a closed feature re-blocks any downstream features that depend on it. Note this to the user.
@@ -391,7 +391,7 @@ Present the user with:
 
 **STOP after verification.** This command creates and modifies tickets ONLY. Do NOT:
 
-- Spawn agents to work on tickets (e.g., `Task` tool with `subagent_type="tk:coder"`)
+- Spawn agents to work on tickets (e.g., `Task` tool with `subagent_type="jr:coder"`)
 - Run `just start-work`
 - Start implementing task requirements
 - Make code changes
@@ -411,8 +411,8 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
 ## Rules
 
 - Embed plan context in feature descriptions — do not reference external plan files
-- Features are assigned to `tk:architect-reviewer` at creation — the architect reviews when all tasks close
-- Every task gets initial assignee `tk:coder`
+- Features are assigned to `jr:architect-reviewer` at creation — the architect reviews when all tasks close
+- Every task gets initial assignee `jr:coder`
 - Every feature must depend on all its child tasks
 - Tasks within a feature form a **linear chain** — no parallel tasks
 - One feature = one worktree = one branch = one PR
@@ -427,8 +427,8 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
   HOW (specific pnpm/npm/yarn/make commands). Coders discover the correct commands at implementation time via skills,
   CLAUDE.md, justfile, or project docs. This keeps tickets timeless — project tooling may change between ticket creation
   and implementation.
-- When adding tasks to awaiting-human features, reassign feature to `tk:architect-reviewer`
-- When adding tasks to closed features, reopen the feature AND reassign to `tk:architect-reviewer`
+- When adding tasks to awaiting-human features, reassign feature to `jr:architect-reviewer`
+- When adding tasks to closed features, reopen the feature AND reassign to `jr:architect-reviewer`
 - Add `[human]` notes explaining what was changed and why on modified features
 - New tasks default to appending at end of chain unless user specifies otherwise
 - Use `just` recipes for all ticket operations — NOT MCP task tools
