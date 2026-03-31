@@ -2220,7 +2220,7 @@ rebase-feature feature-id rework-notes="":
 
 # --- tk pass-through commands ---
 
-# Show plan.md content (loaded plan document)
+# Show execution order of plan in waves
 [group('human')]
 plan:
   {{ tk }} plan
