@@ -1364,6 +1364,17 @@ watch:
       [[ "$curr_mtime" == "$prev_mtime" ]] && continue
       curr_lines=$(wc -l < "$sessions_file")
       if (( curr_lines > prev_lines )) && grep -q on "$follow_file" 2>/dev/null; then
+        # Wait for Claude to create the session .jsonl before switching
+        last_line=$(tail -1 "$sessions_file")
+        s_session=$(echo "$last_line" | jq -r '.session')
+        s_wt=$(echo "$last_line" | jq -r '.worktree')
+        wt_path=$(echo "$project_dir/$s_wt" | sed "s|/\./|/|g")
+        esc_path=$(echo "$wt_path" | sed "s|[/.]|-|g")
+        s_file="$HOME/.claude/projects/$esc_path/$s_session.jsonl"
+        for _i in 1 2 3 4 5 6 7 8 9 10; do
+          [[ -f "$s_file" ]] && break
+          sleep 0.5
+        done
         curl -s -XPOST "localhost:$port" -d "reload($reload_cmd)+first" 2>/dev/null
       else
         curl -s -XPOST "localhost:$port" -d "reload($reload_cmd)" 2>/dev/null
