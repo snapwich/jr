@@ -961,12 +961,53 @@ start-work *args:
   }
 
   parse_signal() {
-    local outfile="$1"
-    local tail
-    tail=$(tail -20 "$outfile")
-    SIGNAL=$(echo "$tail" | grep -oP '^signal:\s*\K\S+' || true)
-    SIGNAL_TICKET=$(echo "$tail" | grep -oP '^ticket:\s*\K\S+' || true)
-    SIGNAL_SUMMARY=$(echo "$tail" | grep -oP '^summary:\s*\K.*' || true)
+    local ticket_id="$1" agent_name="${2:-}"
+
+    SIGNAL=""
+    SIGNAL_TICKET=""
+    SIGNAL_SUMMARY=""
+
+    # Derive short agent name for note matching (e.g., "jr:coder" → "coder")
+    local agent_short="${agent_name#jr:}"
+
+    # Primary: parse signal from ticket notes (survives stdout displacement)
+    local notes last_run signal_line
+    notes=$({{ tk }} show "$ticket_id" 2>/dev/null || true)
+    if [[ -n "$notes" ]]; then
+      # Fence: only consider notes after the last "[orchestrator] Run started"
+      last_run=$(echo "$notes" | grep -n '\[orchestrator\] Run started' | tail -1 | cut -d: -f1)
+      local fenced_notes
+      if [[ -n "$last_run" ]]; then
+        fenced_notes=$(echo "$notes" | tail -n +"$last_run")
+      else
+        fenced_notes="$notes"
+      fi
+      # Match signal notes — filter by agent if specified
+      if [[ -n "$agent_short" ]]; then
+        signal_line=$(echo "$fenced_notes" | grep "\[signal:$agent_short\]" | tail -1)
+      else
+        signal_line=$(echo "$fenced_notes" | grep '\[signal:[^]]*\]' | tail -1)
+      fi
+
+      if [[ -n "$signal_line" ]]; then
+        SIGNAL_TICKET="$ticket_id"
+        # Map note prefix to signal type
+        if echo "$signal_line" | grep -q 'Requesting review'; then
+          SIGNAL="requesting-review"
+        elif echo "$signal_line" | grep -q 'APPROVED'; then
+          SIGNAL="approved"
+        elif echo "$signal_line" | grep -q 'CHANGES REQUESTED'; then
+          SIGNAL="changes-requested"
+        elif echo "$signal_line" | grep -q 'Rebase complete'; then
+          SIGNAL="rebase-complete"
+        elif echo "$signal_line" | grep -q 'Escalating'; then
+          SIGNAL="escalate"
+        fi
+        # Extract summary: text after "PREFIX. "
+        SIGNAL_SUMMARY=$(echo "$signal_line" | sed 's/.*\] [^.]*\. //')
+      fi
+    fi
+
   }
 
   react() {
@@ -993,9 +1034,8 @@ start-work *args:
     unset BUSY_WORKTREES[$wt]
     release_lock "$wt"
 
-    # Parse signal from output
-    local outfile="$OUTPUT_DIR/output-$ticket_id.txt"
-    parse_signal "$outfile"
+    # Parse signal from ticket notes
+    parse_signal "$ticket_id" "$finished_agent"
 
     log "Finished $ticket_id \"$title\" — signal: ${SIGNAL:-NONE}"
 

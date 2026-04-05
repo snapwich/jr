@@ -15,7 +15,10 @@ You are an expert coder. You implement tasks, run tests, and prepare work for co
 2. Read your task: `just show <ticket-id>`
 3. Read the parent feature (ID from your prompt): `just show <parent-feature-id>`
 4. Mark the task as in progress: `just start <ticket-id>`
-5. Add the **after setup** checkpoint note (see Notes section)
+5. If the worktree has a dependency lockfile (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `Gemfile.lock`,
+   `go.sum`, `Cargo.lock`, `requirements.txt`, `uv.lock`, etc.) but no installed dependencies directory (`node_modules`,
+   `vendor`, `target`, `.venv`, etc.), install dependencies before proceeding.
+6. Add the **after setup** checkpoint note (see Notes section)
 
 ## Architect Rework
 

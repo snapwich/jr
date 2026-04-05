@@ -142,6 +142,23 @@ Given("the mock subagent returns {string} for {string} as {string} after rework"
   await this.setMockResponse(id, agent, content, 2);
 });
 
+// Displaced output: stdout has non-signal text, but signal note is written to ticket by mock.
+// Simulates the bug where background task notifications displace the signal from stdout.
+// Uses a .force-signal marker file to tell mock-subagent to write the signal note.
+Given(
+  "the mock subagent returns displaced output for {string} as {string} with signal {string}",
+  async function (name, agent, signal) {
+    const id = this.ticketIds[name];
+    // Mock response is non-signal text (simulates background task notification displacement)
+    const displacedContent = "Screenshots-after task completed successfully. The review signal is already sent.";
+    await this.setMockResponse(id, agent, displacedContent);
+    // Write a marker that tells mock-subagent to write signal note even though stdout has no signal
+    const { writeFile } = await import("fs/promises");
+    const { join } = await import("path");
+    await writeFile(join(this.mockResponsesDir, `${id}.${agent}.force-signal`), `${signal}\n${signal} for ${name}`);
+  },
+);
+
 // --- Actions ---
 
 When("I run the orchestrator", async function () {

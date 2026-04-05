@@ -90,6 +90,14 @@ Feature: Orchestrator signal dispatch
     And the orchestrator should exit with code 0
     And the output should contain "no-human-review recovery"
 
+  Scenario: Signal recovered from ticket notes when stdout is displaced
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent returns displaced output for "task-impl" as "jr:coder" with signal "requesting-review"
+    And the mock subagent always returns "approved" for "task-impl" as "jr:code-reviewer"
+    And the mock subagent always returns "approved" for "feat-1" as "jr:architect-reviewer"
+    When I run the orchestrator
+    Then ticket "task-impl" should be closed
+
   Scenario: Escalation after max architect review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"
     And all tasks in "feat-1" are closed
