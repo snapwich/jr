@@ -1853,7 +1853,7 @@ merge-all *args:
     FEAT_BASE[$fid]=$(echo "$fjson" | jq -r '(.tags // [] | map(select(startswith("base:"))) | first // "origin/HEAD") | ltrimstr("base:")')
 
     # Collect feature deps (only features, not tasks)
-    local deps=""
+    deps=""
     while IFS= read -r dep_id; do
       [[ -z "$dep_id" ]] && continue
       dep_type=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null | jq -r '.type' 2>/dev/null || true)
