@@ -1364,17 +1364,6 @@ watch:
       [[ "$curr_mtime" == "$prev_mtime" ]] && continue
       curr_lines=$(wc -l < "$sessions_file")
       if (( curr_lines > prev_lines )) && grep -q on "$follow_file" 2>/dev/null; then
-        # Wait for Claude to create the session .jsonl before switching
-        last_line=$(tail -1 "$sessions_file")
-        s_session=$(echo "$last_line" | jq -r '.session')
-        s_wt=$(echo "$last_line" | jq -r '.worktree')
-        wt_path=$(echo "$project_dir/$s_wt" | sed "s|/\./|/|g")
-        esc_path=$(echo "$wt_path" | sed "s|[/.]|-|g")
-        s_file="$HOME/.claude/projects/$esc_path/$s_session.jsonl"
-        for _i in 1 2 3 4 5 6 7 8 9 10; do
-          [[ -f "$s_file" ]] && break
-          sleep 0.5
-        done
         curl -s -XPOST "localhost:$port" -d "reload($reload_cmd)+first" 2>/dev/null
       else
         curl -s -XPOST "localhost:$port" -d "reload($reload_cmd)" 2>/dev/null
@@ -1399,7 +1388,10 @@ watch:
       worktree_path=$(echo "$WATCH_PROJECT_DIR/$wt" | sed "s|/\./|/|g")
       escaped_path=$(echo "$worktree_path" | sed "s|[/.]|-|g")
       session_file="$HOME/.claude/projects/$escaped_path/$session.jsonl"
-      [[ -f "$session_file" ]] || { echo "Session file not found"; exit 0; }
+      while [[ ! -f "$session_file" ]]; do
+        echo "Waiting for session to start..."
+        sleep 1
+      done
       jq -r "$WATCH_JQ_FILTER" "$session_file" 2>/dev/null
       tail -n 0 -f "$session_file" | stdbuf -oL jq -r --unbuffered "$WATCH_JQ_FILTER" 2>/dev/null
     ' \
