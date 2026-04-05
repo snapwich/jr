@@ -110,6 +110,15 @@ Collect **all** unresolved items and present them to the user in a single batch.
 - Explain why it needs resolution (what decision the coder would be stuck on)
 - Suggest a default if one is obvious
 
+**Base branch**: Always ask the user for the base branch — never assume. Use AskUserQuestion with these options:
+
+- `origin/HEAD (Recommended)` — resolves to whatever the remote default branch is
+- `main`
+- Other — for custom refs like `origin/develop`, `release/1.0`, etc.
+
+This applies to all features in this run. Include in the question description: "This applies to all features being
+created. If any feature needs a different base, specify per-feature overrides via Other."
+
 Wait for the user to answer all open questions before proceeding. Use the resolved answers when writing ticket
 descriptions — replace every ambiguity with the concrete decision. **No ticket description should contain unresolved
 language.** If you find yourself writing "TBD" or "or" between alternatives in a ticket, stop and ask the user.
@@ -194,9 +203,10 @@ In multi-repo mode, add a `repo:<name>` tag to each feature matching the target 
 specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), use `--external-ref` on the **feature** ticket. This
 overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value.
 
-When the user specifies a non-default base branch (release branch, hotfix branch, etc.), add a `base:<branch>` tag to
-the feature. The tag value is an absolute ref — use exactly what the user specifies: `base:origin/develop`,
-`base:release/1.0`, etc. No tag means the default `origin/HEAD`.
+Use the base branch answer from §3. If the user selected `origin/HEAD`, no `base:` tag is needed (this is the system
+default). For any other value, add a `base:<branch>` tag — the tag value is an absolute ref: `base:main`,
+`base:origin/develop`, `base:release/1.0`, etc. If the user specified per-feature overrides in §3, apply those
+individually.
 
 Example: `--external-ref "PEX-1234" --tags "repo:backend,base:origin/develop"`.
 
