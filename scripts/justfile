@@ -1755,8 +1755,8 @@ approve feature-id:
   echo ""
   echo "Next steps:"
   echo "  - Merge manually into base branch from: $wt_path"
-  echo "  - or `just merge-all`            Merge all closed features into their base branches"
-  echo "  - or `just merge-all --squash`   Squash-merge instead"
+  echo "  - or \`just merge-all\`            Merge all closed features into their base branches"
+  echo "  - or \`just merge-all --squash\`   Squash-merge instead"
   echo "  - just rebase-feature <id>       Rebase a downstream feature onto its updated base if needed"
 
 # Merge closed feature branches into base branch in dependency order

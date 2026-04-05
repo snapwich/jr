@@ -9,6 +9,8 @@ Feature: Approve a feature
     Then ticket "feat-1" should be closed
     And the output should contain "approved and closed"
     And the output should contain "Worktree:"
+    And the output should contain "just merge-all"
+    And the output should not contain "error"
 
   Scenario: Fails if child tasks not closed
     Given a feature "feat-1" with a linear task chain: "task-impl"

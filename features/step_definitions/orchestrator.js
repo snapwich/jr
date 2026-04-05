@@ -176,6 +176,10 @@ Then("the output should contain {string}", async function (text) {
   assert.ok(this.lastOutput.includes(text), `Expected output to contain "${text}".\nOutput:\n${this.lastOutput}`);
 });
 
+Then("the output should not contain {string}", async function (text) {
+  assert.ok(!this.lastOutput.includes(text), `Expected output NOT to contain "${text}".\nOutput:\n${this.lastOutput}`);
+});
+
 Then("ticket {string} should have a note containing {string}", async function (name, text) {
   const id = this.ticketIds[name];
   const result = await this.exec("tk", ["show", id]);
