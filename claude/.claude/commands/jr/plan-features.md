@@ -57,6 +57,12 @@ Identify what changes are needed:
 - **Repos**: which repo(s) each task targets (relevant in multi-repo mode)
 - **Modifications to existing features**: new tasks to add, description changes
 
+**Self-contained features.** Each feature = one PR, and every PR must leave the application in a working state when
+merged. When grouping work into features, never split tightly coupled changes across features such that merging one
+without the other breaks the app. If implementing X is incomplete/broken without also implementing Y, group X and Y into
+one feature. Rare exceptions: greenfield apps not yet functional, or work gated behind feature flags (but even flags
+should be uncommon — prefer genuinely self-contained slices).
+
 For existing features, map current chain and identify insertion points (default: append at end of chain).
 
 **Specification depth check**: When the plan references testing specific code (components, endpoints, services, CLI
@@ -426,6 +432,9 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
 - Every feature must depend on all its child tasks
 - Tasks within a feature form a **linear chain** — no parallel tasks
 - One feature = one worktree = one branch = one PR
+- **Features must be self-contained** — each feature must leave the application in a working state when merged. Never
+  split work across features such that merging one without the other breaks the app. Group tightly coupled changes into
+  one feature. Rare exceptions: greenfield apps not yet functional, or work gated behind feature flags.
 - Tasks must only depend on other tasks within the same feature — use feature-level dependencies for cross-feature
   ordering
 - Cross-feature deps: feature B depends on feature A, AND first task of feature B depends on feature A
