@@ -1920,6 +1920,7 @@ merge-all *args:
   declare -A ORIGINAL_SHAS     # "repo|base" → original SHA (for rollback)
   declare -A GROUP_LOCAL_BASE   # "repo|base" → resolved local branch name
   declare -A GROUP_TEMP_BRANCH  # "repo|base" → temp branch name
+  declare -A ORIGINAL_HEADS    # "repo|base" → branch checked out in default/ before we started
   declare -A REBASED_BRANCHES  # branch → original SHA (branches we rebased, for rollback)
   MERGED_FIDS=()               # features successfully merged (across all groups)
   FAILED=0
@@ -1940,10 +1941,19 @@ merge-all *args:
     base_sha=$(git -C "$repo_dir" rev-parse "$local_base")
     ORIGINAL_SHAS[$key]="$base_sha"
 
-    # Create temp branch from base
-    git -C "$repo_dir" branch -f "$temp_branch" "$local_base" 2>/dev/null \
-      || git -C "$repo_dir" checkout -b "$temp_branch" "$local_base" 2>/dev/null
-    git -C "$repo_dir" checkout "$temp_branch"
+    # Save what default/ has checked out so we can restore it later
+    ORIGINAL_HEADS[$key]=$(git -C "$repo_dir" symbolic-ref --short HEAD 2>/dev/null || echo "")
+    # Don't restore to a leftover temp branch from a previous failed run
+    if [[ "${ORIGINAL_HEADS[$key]}" == _merge-all-* ]]; then
+      ORIGINAL_HEADS[$key]=""
+    fi
+
+    # Create temp branch from base (clean up leftover from previous failed run if needed)
+    if [[ "$(git -C "$repo_dir" symbolic-ref --short HEAD 2>/dev/null)" == "$temp_branch" ]]; then
+      git -C "$repo_dir" checkout --detach 2>/dev/null || true
+    fi
+    git -C "$repo_dir" branch -D "$temp_branch" 2>/dev/null || true
+    git -C "$repo_dir" checkout -b "$temp_branch" "$local_base"
 
     for fid in ${GROUP_FEATURES[$key]}; do
       branch="${FEAT_BRANCH[$fid]}"
@@ -2001,15 +2011,24 @@ merge-all *args:
       repo_dir="$repo/default"
       local_base="${GROUP_LOCAL_BASE[$key]}"
       temp_branch="${GROUP_TEMP_BRANCH[$key]}"
-      git -C "$repo_dir" checkout "$local_base" 2>/dev/null || true
+      # Detach from temp branch so we can delete it (avoids worktree conflict)
+      git -C "$repo_dir" checkout --detach 2>/dev/null || true
       git -C "$repo_dir" branch -D "$temp_branch" 2>/dev/null || true
     done
-    # Restore rebased branches
+    # Restore rebased branches (update-ref avoids worktree conflict)
     for branch in "${!REBASED_BRANCHES[@]}"; do
       for key in "${GROUP_KEYS[@]}"; do
         repo="${key%%|*}"
-        git -C "$repo/default" branch -f "$branch" "${REBASED_BRANCHES[$branch]}" 2>/dev/null || true
+        git -C "$repo/default" update-ref "refs/heads/$branch" "${REBASED_BRANCHES[$branch]}" 2>/dev/null || true
       done
+    done
+    # Restore default/ to its original branch (best-effort)
+    for key in "${GROUP_KEYS[@]}"; do
+      repo="${key%%|*}"
+      original_head="${ORIGINAL_HEADS[$key]:-}"
+      if [[ -n "$original_head" ]]; then
+        git -C "$repo/default" checkout "$original_head" 2>/dev/null || true
+      fi
     done
     exit 1
   fi
@@ -2022,10 +2041,32 @@ merge-all *args:
     local_base="${GROUP_LOCAL_BASE[$key]}"
     temp_branch="${GROUP_TEMP_BRANCH[$key]}"
 
-    # Fast-forward base branch to temp
-    git -C "$repo_dir" checkout "$local_base"
-    git -C "$repo_dir" merge --ff-only "$temp_branch"
-    git -C "$repo_dir" branch -d "$temp_branch"
+    # Fast-forward base branch to temp. If the base branch is checked out in
+    # another worktree, merge from there so its working tree stays in sync.
+    default_abs=$(cd "$repo_dir" && pwd)
+    base_wt=""
+    current_wt=""
+    while IFS= read -r line; do
+      if [[ "$line" == worktree\ * ]]; then
+        current_wt="${line#worktree }"
+      elif [[ "$line" == "branch refs/heads/$local_base" && "$current_wt" != "$default_abs" ]]; then
+        base_wt="$current_wt"
+      fi
+    done < <(git -C "$repo_dir" worktree list --porcelain)
+
+    if [[ -n "$base_wt" ]]; then
+      git -C "$base_wt" merge --ff-only "$temp_branch"
+      git -C "$repo_dir" checkout --detach 2>/dev/null || true
+      git -C "$repo_dir" branch -d "$temp_branch"
+      original_head="${ORIGINAL_HEADS[$key]:-}"
+      if [[ -n "$original_head" ]]; then
+        git -C "$repo_dir" checkout "$original_head" 2>/dev/null || true
+      fi
+    else
+      git -C "$repo_dir" checkout "$local_base"
+      git -C "$repo_dir" merge --ff-only "$temp_branch"
+      git -C "$repo_dir" branch -d "$temp_branch"
+    fi
 
     # Clean up merged feature worktrees and branches
     for fid in ${GROUP_FEATURES[$key]}; do
