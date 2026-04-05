@@ -1823,11 +1823,11 @@ merge-all *args:
 
   # --- Collect closed features with existing branches ---
 
-  declare -A FEAT_JSON   # fid → json
-  declare -A FEAT_REPO   # fid → repo dir
-  declare -A FEAT_BRANCH # fid → branch name
-  declare -A FEAT_DEPS   # fid → space-separated dep fids (features only)
-  declare -A FEAT_BASE   # fid → base branch (from base: tag or origin/HEAD)
+  declare -A FEAT_JSON=()   # fid → json
+  declare -A FEAT_REPO=()   # fid → repo dir
+  declare -A FEAT_BRANCH=() # fid → branch name
+  declare -A FEAT_DEPS=()   # fid → space-separated dep fids (features only)
+  declare -A FEAT_BASE=()   # fid → base branch (from base: tag or origin/HEAD)
   FEAT_ORDER=()          # topologically sorted feature IDs
 
   while IFS= read -r fjson; do
@@ -1862,6 +1862,18 @@ merge-all *args:
 
   if [[ ${#FEAT_JSON[@]} -eq 0 ]]; then
     echo "No closed features with existing branches to merge."
+    echo ""
+    echo "Usage: just merge-all [--squash]"
+    echo ""
+    echo "Merges all closed features (with existing branches) into their base branches."
+    echo "Features are merged in dependency order."
+    echo ""
+    echo "Prerequisites:"
+    echo "  - At least one feature ticket must have status 'closed'"
+    echo "  - The feature's branch must still exist"
+    echo ""
+    echo "Options:"
+    echo "  --squash    Squash-merge each feature branch"
     exit 0
   fi
 
