@@ -1762,8 +1762,10 @@ approve feature-id:
   echo "Worktree: $wt_path"
   echo ""
   echo "Next steps:"
-  echo "  - Create PR from branch: $wt"
-  echo "  - Or merge locally and run: just rebase-feature <downstream-feature>"
+  echo "  - Merge manually into base branch from: $wt_path"
+  echo "  - or `just merge-all`            Merge all closed features into their base branches"
+  echo "  - or `just merge-all --squash`   Squash-merge instead"
+  echo "  - just rebase-feature <id>       Rebase a downstream feature onto its updated base if needed"
 
 # Merge closed feature branches into base branch in dependency order
 [group("human")]
