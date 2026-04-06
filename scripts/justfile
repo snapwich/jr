@@ -547,6 +547,13 @@ create-worktree name repo="." base="origin/HEAD":
   git -C "{{ repo }}/default" worktree add --no-track -b "{{ name }}" "../{{ name }}" "{{ base }}" 2>/dev/null || true
 
   if [[ -d ".claude" && -d "$WORKTREE_DIR" ]]; then
+    # Stow jr commands into worktree (symlinks auto-update when jr is updated)
+    JR_DIR=$(readlink -f "$PROJECT_DIR/justfile")
+    JR_DIR="${JR_DIR%/scripts/justfile}"
+    mkdir -p "$WORKTREE_DIR/.claude/commands/jr"
+    stow -R --ignore='agents' --ignore='prompts' --ignore='settings\.local\.json' \
+      -d "$JR_DIR" -t "$WORKTREE_DIR" claude
+
     # Merge jr agents (creates actual files from base + extensions)
     BASE_DIR="$PROJECT_DIR/.claude/agents/jr"
     DEFAULT_DIR="$PROJECT_DIR/.jr/claude/_/agents/jr"
@@ -580,7 +587,7 @@ create-worktree name repo="." base="origin/HEAD":
     fi
 
     # Then rsync the rest (--ignore-existing preserves our files)
-    rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' .claude/ "$WORKTREE_DIR/.claude/"
+    rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' --exclude='agents/jr/' --exclude='commands/jr/' .claude/ "$WORKTREE_DIR/.claude/"
   fi
 
   grep -qxF '.claude/agents/jr/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
@@ -608,6 +615,7 @@ start-work *args:
     esac
   done
   PROJECT_DIR="${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
+  JR_DIR=$(readlink -f "$PROJECT_DIR/justfile"); JR_DIR="${JR_DIR%/scripts/justfile}"
   OUTPUT_DIR="${JR_OUTPUT_DIR:-$PROJECT_DIR/.jr/tmp}"
   LOCK_DIR="$OUTPUT_DIR/locks"
   CLAUDE="${CLAUDE_CMD:-claude}"
@@ -758,23 +766,31 @@ start-work *args:
     if [[ -d "$worktree_dir" ]]; then
       # Worktree already exists — still sync .claude/ but return 1
       if [[ -d "$PROJECT_DIR/.claude" ]]; then
+        # Stow jr commands (symlinks auto-update when jr is updated)
+        mkdir -p "$worktree_dir/.claude/commands/jr"
+        stow -R --ignore='agents' --ignore='prompts' --ignore='settings\.local\.json' \
+          -d "$JR_DIR" -t "$worktree_dir" claude
         # Merge jr agents (creates actual files, not symlinks)
         merge_tk_agents "$worktree_dir" "$repo"
         # Copy project-level .jr rules
         copy_tk_rules "$worktree_dir" "$repo"
         # Then rsync the rest (--ignore-existing preserves our files)
-        rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
+        rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' --exclude='agents/jr/' --exclude='commands/jr/' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
       fi
       return 1
     fi
     git -C "$PROJECT_DIR/$repo/default" worktree add --no-track -b "$name" "../$name" "$base" >/dev/null 2>&1 || return 1
     if [[ -d "$PROJECT_DIR/.claude" && -d "$worktree_dir" ]]; then
+      # Stow jr commands (symlinks auto-update when jr is updated)
+      mkdir -p "$worktree_dir/.claude/commands/jr"
+      stow -R --ignore='agents' --ignore='prompts' --ignore='settings\.local\.json' \
+        -d "$JR_DIR" -t "$worktree_dir" claude
       # Merge jr agents (creates actual files, not symlinks)
       merge_tk_agents "$worktree_dir" "$repo"
       # Copy project-level .jr rules
       copy_tk_rules "$worktree_dir" "$repo"
       # Then rsync the rest (--ignore-existing preserves our files)
-      rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
+      rsync -a --ignore-existing --exclude='settings.local.json' --exclude='prompts/' --exclude='rules/jr/structure.md' --exclude='agents/jr/' --exclude='commands/jr/' "$PROJECT_DIR/.claude/" "$worktree_dir/.claude/"
     fi
     # Ensure tk-specific paths are excluded from git status
     grep -qxF '.claude/agents/jr/' "$git_dir/info/exclude" 2>/dev/null \
