@@ -12,6 +12,7 @@ Feature: Orchestrator signal dispatch
     Then ticket "task-impl" should be closed
     And the orchestrator should exit with code 3
     And the output should contain "ready for human review"
+    And the output should not contain "Resuming session"
 
   Scenario: Changes requested — coder relaunched then approved
     Given a feature "feat-1" with a linear task chain: "task-impl"
@@ -20,6 +21,7 @@ Feature: Orchestrator signal dispatch
     And the mock subagent always returns "approved" for "feat-1" as "jr:architect-reviewer"
     When I run the orchestrator
     Then ticket "task-impl" should be closed
+    And the output should contain "Resuming session"
 
   Scenario: Escalation after max code-review iterations
     Given a feature "feat-1" with a linear task chain: "task-impl"

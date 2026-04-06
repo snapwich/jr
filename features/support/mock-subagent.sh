@@ -13,14 +13,20 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --agent) agent="$2"; shift 2 ;;
     -p) prompt="$2"; shift 2 ;;
+    -r|--resume) shift 2 ;;
+    --session-id) shift 2 ;;
     *) shift ;;
   esac
 done
 
 # Extract ticket ID from prompt
 # Standard pattern: "just show <ticket-id>"
+# Resume pattern: "ticket `<ticket-id>`"
 # Rebaser pattern: "feature-id: <ticket-id>" (multiline prompt)
 ticket_id=$(echo "$prompt" | grep -oP '(?:tk|just) show \K[a-zA-Z0-9_-]+' | head -1 || true)
+if [[ -z "$ticket_id" ]]; then
+  ticket_id=$(echo "$prompt" | grep -oP 'ticket `\K[a-zA-Z0-9_-]+' | head -1 || true)
+fi
 if [[ -z "$ticket_id" ]]; then
   ticket_id=$(echo "$prompt" | grep -oP 'feature-id:\s*\K[a-zA-Z0-9_-]+' | head -1 || true)
 fi

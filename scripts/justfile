@@ -656,6 +656,7 @@ start-work *args:
   setup() {
     mkdir -p "$OUTPUT_DIR" "$LOCK_DIR"
     : > "$OUTPUT_DIR/sessions.jsonl"
+    touch "$OUTPUT_DIR/session-history.jsonl"
     # Clean stale lockfiles (symlinks: target is the PID)
     for lockfile in "$LOCK_DIR"/*.lock; do
       [[ -L "$lockfile" ]] || continue
@@ -817,6 +818,22 @@ start-work *args:
         >> "$git_dir/info/exclude"
   }
 
+  # Look up most recent session UUID for a ticket+agent combination
+  lookup_previous_session() {
+    local ticket_id="$1" agent="$2"
+    local file="$OUTPUT_DIR/session-history.jsonl"
+    [[ -f "$file" ]] || return 0
+    grep "\"ticket\":\"$ticket_id\"" "$file" | grep "\"agent\":\"$agent\"" | tail -1 | jq -r '.session // empty'
+  }
+
+  # Look up start timestamp of the most recent session for a ticket+agent
+  lookup_session_ts() {
+    local ticket_id="$1" agent="$2"
+    local file="$OUTPUT_DIR/session-history.jsonl"
+    [[ -f "$file" ]] || return 0
+    grep "\"ticket\":\"$ticket_id\"" "$file" | grep "\"agent\":\"$agent\"" | tail -1 | jq -r '.ts // empty'
+  }
+
   count_review_rounds() {
     local ticket_id="$1" prefix="$2"
     local notes
@@ -872,6 +889,56 @@ start-work *args:
     echo "$prompt"
   }
 
+  # Generate resume prompt for tasks (coder/code-reviewer rework)
+  make_resume_prompt() {
+    local ticket_id="$1" since_ts="$2"
+    local new_notes
+    new_notes=$(just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" notes "$ticket_id" --after "$since_ts")
+    local prompt="Continue working on ticket \`$ticket_id\`."
+    if [[ -n "$new_notes" ]]; then
+      prompt="$prompt"$'\n\n'"## New notes since your last session"$'\n\n'"$new_notes"
+    fi
+    prompt="$prompt"$'\n\n'"Review the new notes, then continue. Signal completion when done."
+    echo "$prompt"
+  }
+
+  # Generate resume prompt for features (architect re-review)
+  make_architect_resume_prompt() {
+    local feature_id="$1" since_ts="$2"
+    local prompt="Continue reviewing ticket \`$feature_id\`."$'\n\n'"## New notes since your last session"
+    local has_notes=false
+
+    # Feature's own notes
+    local feat_notes
+    feat_notes=$(just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" notes "$feature_id" --after "$since_ts")
+    if [[ -n "$feat_notes" ]]; then
+      local feat_title
+      feat_title=$({{ tk }} show "$feature_id" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //')
+      prompt="$prompt"$'\n\n'"### $feature_id: $feat_title"$'\n\n'"$feat_notes"
+      has_notes=true
+    fi
+
+    # Child task notes
+    local child_ids
+    child_ids=$({{ tk }} query "select(.parent == \"$feature_id\")" 2>/dev/null | jq -r '.id' || true)
+    while IFS= read -r cid; do
+      [[ -z "$cid" ]] && continue
+      local child_notes
+      child_notes=$(just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" notes "$cid" --after "$since_ts")
+      [[ -z "$child_notes" ]] && continue
+      local child_title
+      child_title=$({{ tk }} show "$cid" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //')
+      prompt="$prompt"$'\n\n'"### $cid: $child_title"$'\n\n'"$child_notes"
+      has_notes=true
+    done <<< "$child_ids"
+
+    if ! $has_notes; then
+      prompt="Continue reviewing ticket \`$feature_id\`."
+    fi
+    prompt="$prompt"$'\n\n'"Review the new notes and the updated code, then continue. Signal completion when done."
+    echo "$prompt"
+  }
+
   launch() {
     local ticket_id="$1" ticket_type="$2"
     local current
@@ -892,7 +959,7 @@ start-work *args:
         : # Fall through to launch architect for feature review
       elif [[ "$agent" == "human" ]]; then
         if [[ "$NO_HUMAN_REVIEW" == "1" ]]; then
-          {{ tk }} close "$ticket_id"
+          just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" close "$ticket_id"
           log "Feature $ticket_id auto-closed (no-human-review recovery)"
           return 1
         fi
@@ -961,20 +1028,44 @@ start-work *args:
     model=$(sed -n '/^---$/,/^---$/{ s/^model: *//p }' "$agent_file")
 
     local prompt outfile session_uuid
-    prompt=$(make_prompt "$ticket_id" "$repo" "$parent")
     outfile="$OUTPUT_DIR/output-$ticket_id.txt"
-    session_uuid=$(uuidgen)
 
-    log "Session: $session_uuid (ticket: $ticket_id)"
+    # Check for previous session to resume
+    local prev_session prev_ts
+    prev_session=$(lookup_previous_session "$ticket_id" "$agent")
+    prev_ts=$(lookup_session_ts "$ticket_id" "$agent")
 
-    # Launch claude as background process (exec replaces subshell so PID matches)
-    (
-      cd "$launch_dir"
-      export JR_AGENT="$agent"
-      export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
-      exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} --session-id "$session_uuid" --dangerously-skip-permissions \
-        -p "$prompt" < /dev/null > "$outfile" 2>&1
-    ) &
+    if [[ -n "$prev_session" ]]; then
+      # Resume previous session with new notes only
+      session_uuid="$prev_session"
+      if [[ "$ticket_type" == "feature" ]]; then
+        prompt=$(make_architect_resume_prompt "$ticket_id" "$prev_ts")
+      else
+        prompt=$(make_resume_prompt "$ticket_id" "$prev_ts")
+      fi
+      log "Resuming session: $session_uuid (ticket: $ticket_id)"
+
+      (
+        cd "$launch_dir"
+        export JR_AGENT="$agent"
+        export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
+        exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} -r "$session_uuid" --dangerously-skip-permissions \
+          -p "$prompt" < /dev/null > "$outfile" 2>&1
+      ) &
+    else
+      # First launch — fresh session
+      session_uuid=$(uuidgen)
+      prompt=$(make_prompt "$ticket_id" "$repo" "$parent")
+      log "Session: $session_uuid (ticket: $ticket_id)"
+
+      (
+        cd "$launch_dir"
+        export JR_AGENT="$agent"
+        export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
+        exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} --session-id "$session_uuid" --dangerously-skip-permissions \
+          -p "$prompt" < /dev/null > "$outfile" 2>&1
+      ) &
+    fi
     local pid=$!
 
     if ! acquire_lock "$lock_name" "$pid"; then
@@ -991,8 +1082,9 @@ start-work *args:
     BUSY_WORKTREES[$lock_name]="$pid"
 
     log "Launched $agent on $ticket_id \"$title\" in $repo/$wt (pid: $pid)"
-    echo "{\"ticket\":\"$ticket_id\",\"agent\":\"$agent\",\"session\":\"$session_uuid\",\"worktree\":\"$repo/$wt\",\"pid\":$pid,\"ts\":\"$(date -Iseconds)\"}" \
-      >> "$OUTPUT_DIR/sessions.jsonl"
+    local session_record="{\"ticket\":\"$ticket_id\",\"agent\":\"$agent\",\"session\":\"$session_uuid\",\"worktree\":\"$repo/$wt\",\"pid\":$pid,\"ts\":\"$(date -Iseconds)\"}"
+    echo "$session_record" >> "$OUTPUT_DIR/sessions.jsonl"
+    echo "$session_record" >> "$OUTPUT_DIR/session-history.jsonl"
     return 0
   }
 
@@ -1085,7 +1177,7 @@ start-work *args:
       case "${SIGNAL:-}" in
         approved)
           if [[ "$NO_HUMAN_REVIEW" == "1" ]]; then
-            {{ tk }} close "$ticket_id"
+            just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" close "$ticket_id"
             log "Feature $ticket_id approved — closed (no-human-review)"
           else
             {{ tk }} assign "$ticket_id" human
@@ -1139,7 +1231,7 @@ start-work *args:
         ;;
       approved)
         log "Closing $ticket_id (approved)"
-        {{ tk }} close "$ticket_id"
+        just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" close "$ticket_id"
         ;;
       changes-requested)
         # Check iteration cap for code-reviewer
@@ -2365,10 +2457,22 @@ edit ticket-id *args:
 blocked *args:
   {{ tk }} blocked "$@"
 
-# Close a ticket
+# Close a ticket — purges session history when closing a feature
 [group('plan-features')]
 close ticket-id:
-  {{ tk }} close "$@"
+  #!/usr/bin/env bash
+  set -euo pipefail
+  {{ tk }} close "{{ ticket-id }}"
+  # Only purge session history when closing a feature (tasks may reopen)
+  ticket_type=$({{ tk }} query 'select(.id == "{{ ticket-id }}")' 2>/dev/null | jq -r '.type // empty')
+  [[ "$ticket_type" == "feature" ]] || exit 0
+  file="${JR_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}/session-history.jsonl"
+  [[ -f "$file" ]] || exit 0
+  ids=("{{ ticket-id }}")
+  while IFS= read -r cid; do [[ -n "$cid" ]] && ids+=("$cid")
+  done < <({{ tk }} query 'select(.parent == "{{ ticket-id }}")' 2>/dev/null | jq -r '.id' || true)
+  pattern=$(printf '|"ticket":"%s"' "${ids[@]}"); pattern="${pattern:1}"
+  grep -vE "$pattern" "$file" > "$file.tmp" && mv "$file.tmp" "$file" || : > "$file"
 
 # Reopen a closed ticket
 [group('plan-features'), group('subagent-architect-reviewer')]
@@ -2414,6 +2518,46 @@ undep ticket-id dependency-id:
 [group('plan-features'), group('subagent-architect-reviewer')]
 assign ticket-id assignee:
   {{ tk }} assign "$@"
+
+# Show just the notes section of a ticket — [--after <iso-timestamp>] to filter
+notes ticket-id *args:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  after=""
+  shift_args=({{ args }})
+  while [[ ${#shift_args[@]} -gt 0 ]]; do
+    case "${shift_args[0]}" in
+      --after|-a) after="${shift_args[1]}"; shift_args=("${shift_args[@]:2}") ;;
+      *) shift_args=("${shift_args[@]:1}") ;;
+    esac
+  done
+  output=$({{ tk }} show "{{ ticket-id }}" 2>/dev/null)
+  # Extract notes section (between ## Notes and next ## heading or EOF)
+  notes=$(echo "$output" | awk '/^## Notes$/{found=1;next} found && /^## /{exit} found{print}')
+  [[ -z "$notes" ]] && exit 0
+  if [[ -z "$after" ]]; then
+    echo "$notes"
+    exit 0
+  fi
+  # Normalize --after timestamp to UTC Z for comparison with note timestamps
+  after_z=$(date -u -d "$after" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "$after")
+  # Emit only note blocks with timestamp > cutoff
+  in_block=false; block_ts=""; block=""
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^\*\*([0-9T:Z+-]+)\*\*$ ]]; then
+      if $in_block && [[ -n "$block" && "$block_ts" > "$after_z" ]]; then
+        printf '%s\n' "$block"
+      fi
+      block_ts="${BASH_REMATCH[1]}"
+      block="$line"
+      in_block=true
+    elif $in_block; then
+      block="$block"$'\n'"$line"
+    fi
+  done <<< "$notes"
+  if $in_block && [[ -n "$block" && "$block_ts" > "$after_z" ]]; then
+    printf '%s\n' "$block"
+  fi
 
 # Add note to ticket — auto-prefixed with [$JR_AGENT]
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
