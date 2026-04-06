@@ -2,7 +2,7 @@ import { Given, When, Then } from "@cucumber/cucumber";
 import assert from "assert";
 import { join } from "path";
 import { execFile } from "child_process";
-import { writeFile } from "fs/promises";
+import { writeFile, mkdir, access } from "fs/promises";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
@@ -30,6 +30,10 @@ Given("a closed feature {string} with a worktree and commit {string}", async fun
 
   const wtDir = join(this.projectDir, wtName);
   await writeFile(join(wtDir, `${wtName}.txt`), commitMsg);
+  // Add gitignored files that should be cleaned up by merge-all
+  await writeFile(join(wtDir, ".gitignore"), "node_modules/\n");
+  await mkdir(join(wtDir, "node_modules", ".cache"), { recursive: true });
+  await writeFile(join(wtDir, "node_modules", ".cache", "data"), "cached");
   await execFileAsync("git", ["add", "."], { cwd: wtDir });
   await execFileAsync("git", ["commit", "-m", `${commitMsg}\n\nTk-Task: ${taskId}`], { cwd: wtDir });
 
@@ -91,6 +95,17 @@ Then("the base branch worktree should have a clean working tree", async function
   const wtDir = this._conflictWtDir;
   const { stdout } = await execFileAsync("git", ["status", "--porcelain"], { cwd: wtDir });
   assert.strictEqual(stdout.trim(), "", `Expected clean working tree in ${wtDir}.\ngit status:\n${stdout}`);
+});
+
+Then("worktree directory for {string} should not exist", async function (featureName) {
+  const wtName = this.ticketIds[`${featureName}:wt`];
+  const wtDir = join(this.projectDir, wtName);
+  try {
+    await access(wtDir);
+    assert.fail(`Worktree directory "${wtDir}" should have been removed but still exists`);
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
 });
 
 Then("branch for {string} should not exist", async function (featureName) {
