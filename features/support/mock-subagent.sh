@@ -44,7 +44,7 @@ write_signal_note() {
   [[ -z "$signal_type" ]] && return 0
 
   summary=$(grep -oP '^summary:\s*\K.*' "$response_file" 2>/dev/null || true)
-  agent_short="${agent#jr:}"
+  agent_short="$agent"
 
   case "$signal_type" in
     requesting-review) prefix="Requesting review" ;;
@@ -66,7 +66,7 @@ write_forced_signal_note() {
   local signal_type summary agent_short prefix
   signal_type=$(head -1 "$marker")
   summary=$(sed -n '2p' "$marker")
-  agent_short="${agent#jr:}"
+  agent_short="$agent"
 
   case "$signal_type" in
     requesting-review) prefix="Requesting review" ;;

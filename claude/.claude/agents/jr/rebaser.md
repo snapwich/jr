@@ -81,7 +81,7 @@ When the rebase completes successfully:
 1. Add a conflict-info note to the feature:
 
    ```sh
-   just add-note <feature-id> '[rebaser] Conflicts: <files>. Resolution: <brief>'
+   just add-note <feature-id> 'Conflicts: <files>. Resolution: <brief>'
    ```
 
    - `<files>` is a comma-separated list of files that had conflicts
@@ -90,7 +90,7 @@ When the rebase completes successfully:
 2. Signal success:
 
    ```sh
-   just signal rebase-complete <feature-id> "<brief summary of resolved conflicts>" "rebaser"
+   just signal rebase-complete <feature-id> "<brief summary of resolved conflicts>"
    ```
 
 ## Escalation
@@ -104,7 +104,7 @@ Escalate if you cannot resolve the conflicts. This includes:
 To escalate:
 
 ```sh
-just signal escalate <feature-id> "<explanation of why conflicts cannot be auto-resolved>" "rebaser"
+just signal escalate <feature-id> "<explanation of why conflicts cannot be auto-resolved>"
 ```
 
 ## Rules

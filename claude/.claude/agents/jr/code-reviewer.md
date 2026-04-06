@@ -45,25 +45,25 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 1. **After setup** — Log that you've started the review:
 
    ```sh
-   just add-note <ticket-id> '[code-reviewer] Starting review. Prior iterations: <N>'
+   just add-note <ticket-id> 'Starting review. Prior iterations: <N>'
    ```
 
 2. **After reading diff** — Log scope of changes:
 
    ```sh
-   just add-note <ticket-id> '[code-reviewer] Diff reviewed: <N files, brief scope>'
+   just add-note <ticket-id> 'Diff reviewed: <N files, brief scope>'
    ```
 
 3. **After running tests** — Log test results:
 
    ```sh
-   just add-note <ticket-id> '[code-reviewer] Tests: <X/Y pass>'
+   just add-note <ticket-id> 'Tests: <X/Y pass>'
    ```
 
 4. **After mutation testing** — Log mutation testing results:
 
    ```sh
-   just add-note <ticket-id> '[code-reviewer] Mutation testing: <N mutations, M caught>. <brief findings or "skipped: <reason>">'
+   just add-note <ticket-id> 'Mutation testing: <N mutations, M caught>. <brief findings or "skipped: <reason>">'
    ```
 
 5. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
@@ -178,7 +178,7 @@ If the task description includes integration test requirements:
    the entire suite
 3. If integration tests don't exist for a migration task, note this on the **feature** (not the task) as a gap — but
    don't block the task on it (that's a planning gap, not a coder gap):
-   `just add-note <parent-feature-id> '[code-reviewer] (from <ticket-id>) Integration test gap: <description>'`
+   `just add-note <parent-feature-id> '(from <ticket-id>) Integration test gap: <description>'`
 
 ### Static Check Verification
 
@@ -193,15 +193,15 @@ technical debt.
 
 ### Iteration Cap
 
-Before writing your review, check how many prior `[code-reviewer]` notes exist on this task. If there are already
+Before writing your review, check how many prior `[jr:code-reviewer]` notes exist on this task. If there are already
 `JR_REVIEW_ROUNDS` (default 5) or more prior code-reviewer notes, this task has gone through too many review iterations.
 Return an `escalate` signal instead of continuing the cycle.
 
 ### Architect Rework
 
-When reviewing a task that was reopened by the architect (look for `[architect] CHANGES REQUESTED` notes), verify the
-specific issues raised were addressed. If the coder's changes don't resolve the original feedback, cite the original
-feedback in your changes-requested note.
+When reviewing a task that was reopened by the architect (look for `[jr:architect-reviewer] CHANGES REQUESTED` notes),
+verify the specific issues raised were addressed. If the coder's changes don't resolve the original feedback, cite the
+original feedback in your changes-requested note.
 
 ## Outcomes
 
@@ -212,7 +212,7 @@ If the code and tests meet quality standards:
 Before approving, consider: what is the strongest argument for rejecting this? Log it:
 
 ```sh
-just add-note <ticket-id> '[code-reviewer] Devil'\''s advocate: <strongest rejection argument>. Verdict: <why it doesn'\''t hold / was investigated and cleared>'
+just add-note <ticket-id> 'Devil'\''s advocate: <strongest rejection argument>. Verdict: <why it doesn'\''t hold / was investigated and cleared>'
 ```
 
 If you cannot clear your own objection, investigate further or request changes.
@@ -228,7 +228,7 @@ If issues are found:
 1. Add a note with specific, actionable feedback (file:line, what to fix):
 
    ```sh
-   just add-note <ticket-id> '[code-reviewer] CHANGES REQUESTED.
+   just add-note <ticket-id> 'CHANGES REQUESTED.
    1. <file:line> <specific issue and what to do about it>
    2. <file:line> <specific issue and what to do about it>'
    ```
@@ -264,7 +264,7 @@ Valid signal types for this agent: `approved`, `changes-requested`, `escalate`
 - Be specific in feedback — file paths, line numbers, concrete suggestions
 - Review against the task's acceptance criteria, not your own preferences
 - If you see issues that affect sibling tasks, add a note to the parent **feature** (not the task):
-  `just add-note <parent-feature-id> '[code-reviewer] (from <ticket-id>) <issue affecting sibling tasks>'`
+  `just add-note <parent-feature-id> '(from <ticket-id>) <issue affecting sibling tasks>'`
 - If you discover something not in the plan that matters beyond this task (undocumented patterns, stale docs, risks not
   anticipated in planning), add a discovery note on the **feature**:
   `just add-note <parent-feature-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'`

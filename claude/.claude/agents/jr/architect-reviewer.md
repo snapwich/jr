@@ -34,31 +34,31 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
 1. **After setup** — Log that you've started and the scope:
 
    ```sh
-   just add-note <feature-id> '[architect] Starting feature review. <N> child tasks.'
+   just add-note <feature-id> 'Starting feature review. <N> child tasks.'
    ```
 
 2. **After contextual exploration** — Log what you found:
 
    ```sh
-   just add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
+   just add-note <feature-id> 'Exploration: <key areas explored, existing patterns found, potential gaps>'
    ```
 
 3. **After reviewing branch diff** — Log findings:
 
    ```sh
-   just add-note <feature-id> '[architect] Branch diff reviewed: <N files, brief scope>'
+   just add-note <feature-id> 'Branch diff reviewed: <N files, brief scope>'
    ```
 
 4. **After cross-task coherence check** — Log integration assessment:
 
    ```sh
-   just add-note <feature-id> '[architect] Coherence: <assessment of how pieces fit together>'
+   just add-note <feature-id> 'Coherence: <assessment of how pieces fit together>'
    ```
 
 5. **After spec completeness check** — Log findings:
 
    ```sh
-   just add-note <feature-id> '[architect] Spec completeness: <N significant gaps, M minor gaps noted>'
+   just add-note <feature-id> 'Spec completeness: <N significant gaps, M minor gaps noted>'
    ```
 
 6. **After discovery triage** — Read all `[discovery]` notes on the feature. Categorize each as **migrate** (should be
@@ -66,7 +66,7 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
    the implementation or only relevant to this feature):
 
    ```sh
-   just add-note <feature-id> '[architect] Discovery triage: <N> discoveries. Migrate: <list of what + where>. Resolved: <list>.'
+   just add-note <feature-id> 'Discovery triage: <N> discoveries. Migrate: <list of what + where>. Resolved: <list>.'
    ```
 
 7. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
@@ -90,7 +90,7 @@ implementer may have missed entirely.
 3. **Checkpoint note:**
 
    ```sh
-   just add-note <feature-id> '[architect] Exploration: <key areas explored, existing patterns found, potential gaps>'
+   just add-note <feature-id> 'Exploration: <key areas explored, existing patterns found, potential gaps>'
    ```
 
 ## Review Process
@@ -133,7 +133,7 @@ Flag issues where the implementation:
   the current feature for context:
 
   ```sh
-  just add-note <downstream-feature-id> '[architect] Note from <current-feature-id> review: <what they should address or be aware of>'
+  just add-note <downstream-feature-id> 'Note from <current-feature-id> review: <what they should address or be aware of>'
   ```
 
 ### Feature Acceptance Criteria Coverage
@@ -169,14 +169,14 @@ test.
   human awareness but do not block approval:
 
   ```sh
-  just add-note <feature-id> '[architect] Spec gap (minor): <description of untested behavior>'
+  just add-note <feature-id> 'Spec gap (minor): <description of untested behavior>'
   ```
 
   If a minor gap is relevant to a known downstream feature, also note it there so it gets addressed rather than
   forgotten:
 
   ```sh
-  just add-note <downstream-feature-id> '[architect] Spec gap from <current-feature-id>: <what needs coverage>'
+  just add-note <downstream-feature-id> 'Spec gap from <current-feature-id>: <what needs coverage>'
   ```
 
 ### Test Appropriateness
@@ -254,7 +254,7 @@ If the feature is coherent and ready for human review:
 2. Signal approval:
 
    ```sh
-   just signal approved <feature-id> "<summary of review findings>" "architect"
+   just signal approved <feature-id> "<summary of review findings>"
    ```
 
 ### Changes Requested
@@ -272,7 +272,7 @@ task. For cross-task issues, pick the later task.
 For each task to reopen:
 
 ```sh
-just add-note <task-id> '[architect] CHANGES REQUESTED: <specific feedback>'
+just add-note <task-id> 'CHANGES REQUESTED: <specific feedback>'
 just assign <task-id> jr:coder
 just reopen <task-id>
 ```
@@ -313,7 +313,7 @@ just dep <feature-id> rep-0006
 #### Step 5: Signal
 
 ```sh
-just signal changes-requested <feature-id> "<one-line summary>" "architect"
+just signal changes-requested <feature-id> "<one-line summary>"
 ```
 
 ### Escalate
@@ -321,7 +321,7 @@ just signal changes-requested <feature-id> "<one-line summary>" "architect"
 If there is an architectural concern or blocker:
 
 ```sh
-just signal escalate <feature-id> "<reason for escalation>" "architect"
+just signal escalate <feature-id> "<reason for escalation>"
 ```
 
 Valid signal types for this agent: `approved`, `changes-requested`, `escalate`

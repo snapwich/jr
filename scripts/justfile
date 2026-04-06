@@ -935,6 +935,7 @@ start-work *args:
     # Launch claude as background process (exec replaces subshell so PID matches)
     (
       cd "$launch_dir"
+      export JR_AGENT="$agent"
       export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
       exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} --session-id "$session_uuid" --dangerously-skip-permissions \
         -p "$prompt" < /dev/null > "$outfile" 2>&1
@@ -967,8 +968,7 @@ start-work *args:
     SIGNAL_TICKET=""
     SIGNAL_SUMMARY=""
 
-    # Derive short agent name for note matching (e.g., "jr:coder" → "coder")
-    local agent_short="${agent_name#jr:}"
+    local agent_id="$agent_name"
 
     # Primary: parse signal from ticket notes (survives stdout displacement)
     local notes last_run signal_line
@@ -983,8 +983,8 @@ start-work *args:
         fenced_notes="$notes"
       fi
       # Match signal notes — filter by agent if specified
-      if [[ -n "$agent_short" ]]; then
-        signal_line=$(echo "$fenced_notes" | grep "\[signal:$agent_short\]" | tail -1)
+      if [[ -n "$agent_id" ]]; then
+        signal_line=$(echo "$fenced_notes" | grep "\[signal:$agent_id\]" | tail -1)
       else
         signal_line=$(echo "$fenced_notes" | grep '\[signal:[^]]*\]' | tail -1)
       fi
@@ -1060,7 +1060,7 @@ start-work *args:
         changes-requested)
           # Architect reopened tasks — check iteration cap then let discover() find them
           local arch_count
-          arch_count=$(count_review_rounds "$ticket_id" "architect")
+          arch_count=$(count_review_rounds "$ticket_id" "jr:architect-reviewer")
           if (( arch_count >= REVIEW_ROUNDS )); then
             log "ESCALATE: Feature $ticket_id has $arch_count architect review rounds — max exceeded"
             ESCALATION="Max architect review iterations exceeded for feature $ticket_id"
@@ -1109,7 +1109,7 @@ start-work *args:
       changes-requested)
         # Check iteration cap for code-reviewer
         local cr_count
-        cr_count=$(count_review_rounds "$ticket_id" "code-reviewer")
+        cr_count=$(count_review_rounds "$ticket_id" "jr:code-reviewer")
         if (( cr_count >= REVIEW_ROUNDS )); then
           log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
           ESCALATION="Max review iterations exceeded for $ticket_id"
@@ -1341,7 +1341,7 @@ _watch-list:
   seq=0
   while IFS= read -r line; do
     s_ticket=$(echo "$line" | jq -r .ticket)
-    s_agent=$(echo "$line" | jq -r '.agent | ltrimstr("jr:")')
+    s_agent=$(echo "$line" | jq -r '.agent')
     s_pid=$(echo "$line" | jq -r .pid)
     s_session=$(echo "$line" | jq -r .session)
     s_worktree=$(echo "$line" | jq -r .worktree)
@@ -1481,36 +1481,23 @@ task-diff ticket-id repo='.':
 
 # Output signal block and add completion note — use this instead of manual signal output
 [group('subagent-coder'), group('subagent-code-reviewer'), group('subagent-architect-reviewer')]
-signal type ticket-id summary role="":
+signal type ticket-id summary:
   #!/usr/bin/env bash
   set -e
-  type="{{ type }}"
-  ticket="{{ ticket-id }}"
-  summary="{{ summary }}"
-  role="{{ role }}"
-
-  case "$type" in
-    requesting-review) agent="${role:-coder}"; prefix="Requesting review" ;;
-    approved) agent="${role:-code-reviewer}"; prefix="APPROVED" ;;
-    changes-requested) agent="${role:-code-reviewer}"; prefix="CHANGES REQUESTED" ;;
-    rebase-complete) agent="${role:-rebaser}"; prefix="Rebase complete" ;;
-    escalate)
-      if [[ -n "$role" ]]; then
-        agent="$role"
-      else
-        assignee=$({{ tk }} query "select(.id == \"$ticket\")" | jq -r '.assignee // "jr:coder"')
-        agent="${assignee#jr:}"
-      fi
-      prefix="Escalating"
-      ;;
-    *) echo "Unknown signal type: $type" >&2; exit 1 ;;
+  agent="${JR_AGENT:?JR_AGENT not set}"
+  case "{{ type }}" in
+    requesting-review) prefix="Requesting review" ;;
+    approved) prefix="APPROVED" ;;
+    changes-requested) prefix="CHANGES REQUESTED" ;;
+    rebase-complete) prefix="Rebase complete" ;;
+    escalate) prefix="Escalating" ;;
+    *) echo "Unknown signal type: {{ type }}" >&2; exit 1 ;;
   esac
-
-  {{ tk }} add-note "$ticket" "[signal:$agent] $prefix. $summary"
+  {{ tk }} add-note "{{ ticket-id }}" "[signal:$agent] $prefix. {{ summary }}"
   echo "---"
-  echo "signal: $type"
-  echo "ticket: $ticket"
-  echo "summary: $summary"
+  echo "signal: {{ type }}"
+  echo "ticket: {{ ticket-id }}"
+  echo "summary: {{ summary }}"
   exit 0
 
 # Acquire exclusive lock on a named resource, then run command.
@@ -2243,7 +2230,7 @@ rebase-feature feature-id rework-notes="":
     AGENT_TIMEOUT="${JR_AGENT_TIMEOUT}"
     [[ -z "$AGENT_TIMEOUT" ]] && AGENT_TIMEOUT='1800'
     rebaser_tmpfile=$(mktemp)
-    timeout --foreground "$AGENT_TIMEOUT" $CLAUDE --agent jr:rebaser --dangerously-skip-permissions \
+    JR_AGENT=jr:rebaser timeout --foreground "$AGENT_TIMEOUT" $CLAUDE --agent jr:rebaser --dangerously-skip-permissions \
       -p "$rebaser_prompt" 2>&1 | tee "$rebaser_tmpfile" || true
     rebaser_output=$(cat "$rebaser_tmpfile")
     rm -f "$rebaser_tmpfile"
@@ -2393,10 +2380,12 @@ undep ticket-id dependency-id:
 assign ticket-id assignee:
   {{ tk }} assign "$@"
 
-# Add note to ticket — text arg or pipe via stdin
+# Add note to ticket — auto-prefixed with [$JR_AGENT]
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
 add-note ticket-id *note:
-  {{ tk }} add-note "$@"
+  #!/usr/bin/env bash
+  agent="${JR_AGENT:?JR_AGENT not set}"
+  {{ tk }} add-note "{{ ticket-id }}" "[$agent] {{ note }}"
 
 # Mark ticket as in progress
 [group('subagent-coder')]

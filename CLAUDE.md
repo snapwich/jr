@@ -204,8 +204,10 @@ All subagents must use `just signal` as the **last command** in their output. Th
 and outputs the signal block for the orchestrator to parse:
 
 ```sh
-just signal <type> <ticket-id> "<summary>" ["<role>"]
+just signal <type> <ticket-id> "<summary>"
 ```
+
+The agent identity is read from the `JR_AGENT` env var (set by the orchestrator at launch).
 
 | Signal              | Agent                             | Meaning                                       |
 | ------------------- | --------------------------------- | --------------------------------------------- |
@@ -214,13 +216,11 @@ just signal <type> <ticket-id> "<summary>" ["<role>"]
 | `changes-requested` | code-reviewer, architect-reviewer | Issues found, coder should address feedback   |
 | `escalate`          | any                               | Blocker that needs human attention            |
 
-The optional `role` parameter overrides the default note prefix. The architect-reviewer passes `"architect"` to get
-`[architect]` notes.
-
 ### Note conventions
 
-Notes are prefixed with the agent role in brackets: `[coder]`, `[code-reviewer]`, `[architect]`, `[orchestrator]`,
-`[human]`. Task notes are for the next agent on the same task. Feature notes are for sibling tasks and the architect.
+`just add-note` auto-prefixes with `[$JR_AGENT]`. Notes use full agent names: `[jr:coder]`, `[jr:code-reviewer]`,
+`[jr:architect-reviewer]`. Non-agent prefixes: `[orchestrator]`, `[human]`. Task notes are for the next agent on the
+same task. Feature notes are for sibling tasks and the architect.
 
 ### Autonomous mode (`--no-human-review`)
 

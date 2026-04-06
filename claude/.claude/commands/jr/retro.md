@@ -41,8 +41,8 @@ Cross-reference ticket notes, session logs, and task descriptions to identify:
   possible (e.g., "spent 15 tool calls exploring X before finding Y").
 
 - **Missed catches**: Regressions or gaps that passed code-review but were caught later by the architect or human. Look
-  for `[architect] CHANGES REQUESTED` or `[human]` notes that identify issues the code-reviewer should have caught.
-  Cross-reference with the code-reviewer's approval note — what did they check vs. what they missed?
+  for `[jr:architect-reviewer] CHANGES REQUESTED` or `[human]` notes that identify issues the code-reviewer should have
+  caught. Cross-reference with the code-reviewer's approval note — what did they check vs. what they missed?
 
 - **Wasted cycles**: Full rework loops triggered by things that should have been caught earlier. A task that went
   through multiple coder→code-reviewer→coder cycles where the final fix was something obvious from the start. Architect

@@ -81,7 +81,7 @@ Given("ticket {string} is assigned to {string}", async function (name, assignee)
 Given("ticket {string} has {int} code-reviewer notes", async function (name, count) {
   const id = this.ticketIds[name];
   for (let i = 0; i < count; i++) {
-    await this.addNote(id, `[signal:code-reviewer] CHANGES REQUESTED. Review round ${i + 1}`);
+    await this.addNote(id, `[signal:jr:code-reviewer] CHANGES REQUESTED. Review round ${i + 1}`);
   }
 });
 
@@ -90,7 +90,7 @@ Given("ticket {string} has {int} architect notes", async function (name, count) 
   // Add "Run started" first so architect notes count from current run (simulates mid-run iterations)
   await this.addNote(id, `[orchestrator] Run started`);
   for (let i = 0; i < count; i++) {
-    await this.addNote(id, `[signal:architect] CHANGES REQUESTED. Review round ${i + 1}`);
+    await this.addNote(id, `[signal:jr:architect-reviewer] CHANGES REQUESTED. Review round ${i + 1}`);
   }
 });
 

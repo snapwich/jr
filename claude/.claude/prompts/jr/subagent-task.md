@@ -6,7 +6,7 @@ Every subagent MUST end by running `just signal` and **outputting its result ver
 summarize, add commentary, or output anything after the signal block.
 
 ```sh
-just signal <type> <ticket-id> "<summary>" ["<role>"]
+just signal <type> <ticket-id> "<summary>"
 ```
 
 The command outputs a signal block — copy it exactly as your final output:
@@ -17,9 +17,6 @@ signal: requesting-review
 ticket: abc-1234
 summary: Implemented feature X with tests
 ```
-
-The optional `role` parameter overrides the default note prefix. The architect-reviewer passes `"architect"` to get
-`[architect]` notes.
 
 Valid signals:
 
@@ -33,15 +30,13 @@ Valid signals:
 
 ## Note Conventions
 
-Prefix every note with your agent role in brackets:
+`just add-note` auto-prefixes notes with `[$JR_AGENT]` — just pass the message text:
 
-```text
-[coder] Implemented auth endpoint using JWT. Added 12 unit tests.
-[code-reviewer] APPROVED. Code quality good. Tests are meaningful.
-[code-reviewer] CHANGES REQUESTED. 1. auth.test.ts: need error cases. 2. middleware/auth.ts:15: race condition.
-[architect] APPROVED. Feature coherent. Backend API matches frontend expectations.
-[architect] CHANGES REQUESTED. 1. API contract mismatch between task A and task B.
+```sh
+just add-note <ticket-id> "Implemented auth endpoint using JWT. Added 12 unit tests."
 ```
+
+Result: `[jr:coder] Implemented auth endpoint using JWT. Added 12 unit tests.`
 
 ### Task Notes vs Feature Notes
 
