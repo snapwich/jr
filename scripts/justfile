@@ -895,18 +895,20 @@ start-work *args:
     local ticket_id="$1" since_ts="$2"
     local new_notes
     new_notes=$(just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" notes "$ticket_id" --after "$since_ts")
-    local prompt="Continue working on ticket \`$ticket_id\`."
+    local prompt="Continue working on ticket \`$ticket_id\`. This is a **resumed session** — you should already have full context from your first launch. Skip setup."
     if [[ -n "$new_notes" ]]; then
-      prompt="$prompt"$'\n\n'"## New notes since your last session"$'\n\n'"$new_notes"
+      prompt="$prompt"$'\n\n'"## Ticket notes since your last session"$'\n\n'"$new_notes"
+    else
+      prompt="$prompt No new notes."
     fi
-    prompt="$prompt"$'\n\n'"Review the new notes, then continue. Signal completion when done."
+    prompt="$prompt"$'\n\n'"Continue from where you left off. Signal completion when done."
     echo "$prompt"
   }
 
   # Generate resume prompt for features (architect re-review)
   make_architect_resume_prompt() {
     local feature_id="$1" since_ts="$2"
-    local prompt="Continue reviewing ticket \`$feature_id\`."$'\n\n'"## New notes since your last session"
+    local prompt="Continue reviewing ticket \`$feature_id\`. This is a **resumed session** — you should already have full context from your first launch. Skip setup."$'\n\n'"## Ticket notes since your last session"
     local has_notes=false
 
     # Feature's own notes
@@ -934,9 +936,9 @@ start-work *args:
     done <<< "$child_ids"
 
     if ! $has_notes; then
-      prompt="Continue reviewing ticket \`$feature_id\`."
+      prompt="Continue reviewing ticket \`$feature_id\`. This is a **resumed session** — you should already have full context from your first launch. Skip setup. No new notes."
     fi
-    prompt="$prompt"$'\n\n'"Review the new notes and the updated code, then continue. Signal completion when done."
+    prompt="$prompt"$'\n\n'"Continue from where you left off. Signal completion when done."
     echo "$prompt"
   }
 
