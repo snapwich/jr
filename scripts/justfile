@@ -609,9 +609,9 @@ create-worktree name repo="." base="origin/HEAD":
 
 [group('orchestrator')]
 remove-worktree name repo=".":
-  git -C {{ repo }}/default worktree remove ../{{ name }}
+  git -C {{ repo }}/default worktree remove --force ../{{ name }} || true
+  git -C {{ repo }}/default branch -d {{ name }} || true
   rm -rf {{ repo }}/{{ name }}
-  git -C {{ repo }}/default branch -d {{ name }}
 
 # Run the orchestration loop — discovers ready work, launches subagents, reacts to signals
 [group("human")]
@@ -2232,12 +2232,10 @@ merge-all *args:
     for fid in ${GROUP_FEATURES[$key]}; do
       branch="${FEAT_BRANCH[$fid]}"
       wt_dir="$(dirname "$repo_dir")/$branch"
-      # Remove worktree if it exists
       git -C "$repo_dir" worktree remove "../$branch" 2>/dev/null || true
-      # Remove leftover gitignored files (node_modules, build caches, etc.)
-      [ -d "$wt_dir" ] && rm -rf "$wt_dir"
-      # Delete branch
       git -C "$repo_dir" branch -D "$branch" 2>/dev/null || true
+      # Remove leftover gitignored files (node_modules, build caches, etc.)
+      rm -rf "$wt_dir"
     done
   done
 
