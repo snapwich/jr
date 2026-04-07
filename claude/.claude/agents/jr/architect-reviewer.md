@@ -123,18 +123,26 @@ Flag issues where the implementation:
 
 ### Downstream Dependencies
 
-- Check for features that depend on this feature
-- Read the dependent feature descriptions to understand what they will need from this feature's output — APIs,
-  interfaces, data formats, test infrastructure, patterns
-- Evaluate whether the implementation supports those needs: are the APIs flexible enough, are the interfaces
-  well-defined for consumers, are there extension points where downstream work will need them
-- Flag any gaps, constraints, or architectural decisions that would block or unnecessarily complicate downstream work
-- **Add notes to downstream feature tickets** when you identify something they should address or be aware of. Reference
-  the current feature for context:
+Review the **full dependency tree**, not just direct dependents. Two passes:
 
-  ```sh
-  just add-note <downstream-feature-id> 'Note from <current-feature-id> review: <what they should address or be aware of>'
-  ```
+1. **Scan the tree** — run `just feature-deps <feature-id>` to see all downstream features with titles. Identify which
+   features (at any depth) might be affected by this review's findings based on their titles.
+2. **Selective deep-read** — read descriptions (`just show`) of direct dependents (always) and any indirect dependents
+   whose titles suggest relevance to your findings. Skip features with clearly unrelated titles.
+
+For each feature you read:
+
+- Understand what it will need from this feature's output — APIs, interfaces, data formats, test infrastructure,
+  patterns
+- Evaluate whether the implementation supports those needs
+- Flag gaps, constraints, or architectural decisions that would block or complicate downstream work
+
+**Add notes to any downstream feature that should be aware**, regardless of depth in the tree. Reference the current
+feature for context:
+
+```sh
+just add-note <downstream-feature-id> 'Note from <current-feature-id> review: <what they should address or be aware of>'
+```
 
 ### Feature Acceptance Criteria Coverage
 
@@ -172,8 +180,8 @@ test.
   just add-note <feature-id> 'Spec gap (minor): <description of untested behavior>'
   ```
 
-  If a minor gap is relevant to a known downstream feature, also note it there so it gets addressed rather than
-  forgotten:
+  If a minor gap is relevant to a downstream feature (at any depth in the dependency tree), also note it there so it
+  gets addressed rather than forgotten:
 
   ```sh
   just add-note <downstream-feature-id> 'Spec gap from <current-feature-id>: <what needs coverage>'
