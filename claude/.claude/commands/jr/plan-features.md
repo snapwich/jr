@@ -306,21 +306,21 @@ Handle each scenario differently:
 
 **Scenario 2 — Awaiting architect** (open, all children closed, assignee = jr:architect-reviewer):
 
-- Add a note explaining what changed: `just add-note $FEATURE "[human] Adding new tasks: <brief description>"`
+- Add a note explaining what changed: `just add-note $FEATURE "Adding new tasks: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 - The architect review will trigger again after the new tasks close.
 
 **Scenario 3 — Awaiting human** (open, all children closed, assignee = human):
 
 - Reassign feature back to architect: `just assign $FEATURE jr:architect-reviewer`
-- Add a note: `just add-note $FEATURE "[human] Adding new tasks — re-review required: <brief description>"`
+- Add a note: `just add-note $FEATURE "Adding new tasks — re-review required: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 
 **Scenario 4 — Closed feature**:
 
 - Reopen the feature: `just reopen $FEATURE`
 - Reassign to architect: `just assign $FEATURE jr:architect-reviewer`
-- Add note: `just add-note $FEATURE "[human] Reopened to add new tasks: <brief description>"`
+- Add note: `just add-note $FEATURE "Reopened to add new tasks: <brief description>"`
 - Create new tasks, chain after current last task, add feature deps.
 - **Warning**: Reopening a closed feature re-blocks any downstream features that depend on it. Note this to the user.
 

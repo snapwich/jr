@@ -2570,7 +2570,7 @@ notes ticket-id *args:
 [group('plan-features'), group('subagent-architect-reviewer'), group('subagent-code-reviewer'), group('subagent-coder')]
 add-note ticket-id *note:
   #!/usr/bin/env bash
-  agent="${JR_AGENT:?JR_AGENT not set}"
+  agent="${JR_AGENT:-human}"
   {{ tk }} add-note "{{ ticket-id }}" "[$agent] {{ note }}"
 
 # Mark ticket as in progress
