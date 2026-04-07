@@ -151,6 +151,10 @@ tests are fundamentally inadequate).
    task's commits (`just task-commits <ticket-id>`), same scope as your code review.
 2. For each mutation:
    - Use Edit to introduce the mutation (e.g., flip a conditional, change a return value, remove a validation check)
+   - If the tests run against build output (e.g., E2E tests that serve a pre-built site, tests against compiled
+     artifacts), rebuild before running tests — mutations to source won't be visible until the build output is
+     regenerated. Unit tests that import source directly don't need this. When unsure, check the test config for a
+     webServer/serve command — if tests hit a server that serves build output, rebuild first.
    - Run the narrow test set — the same unit/integration tests the coder should have run for this task
    - Record whether the mutation was caught (test failed) or survived (tests still passed)
    - Revert immediately: `git checkout -- <file>`
