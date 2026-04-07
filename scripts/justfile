@@ -1506,16 +1506,19 @@ watch:
 
   export WATCH_PROJECT_DIR="$project_dir"
   export WATCH_JQ_FILTER='
-    select(.type == "assistant" and .message.content) |
-    .message.content[] |
-    if .type == "text" then .text
-    elif .type == "thinking" then "[thinking] " + .thinking
-    elif .type == "tool_use" then
-      if .name == "Write" or .name == "Edit" then "[" + .name + "] " + .input.file_path
-      elif .name == "Read" then "[Read] " + .input.file_path
-      elif .name == "Bash" then "[Bash] " + (.input.command | .[0:100])
-      else "[" + .name + "] " + (.input | tostring | .[0:150])
-      end
+    if (.type == "user" and (.message.content | type) == "string") then
+      "\n\u001b[36m--- prompt ---\u001b[0m\n" + .message.content + "\n\u001b[36m--------------\u001b[0m\n"
+    elif (.type == "assistant" and .message.content) then
+      .message.content[] |
+      if .type == "text" then .text
+      elif .type == "thinking" then "[thinking] " + .thinking
+      elif .type == "tool_use" then
+        if .name == "Write" or .name == "Edit" then "[" + .name + "] " + .input.file_path
+        elif .name == "Read" then "[Read] " + .input.file_path
+        elif .name == "Bash" then "[Bash] " + (.input.command | .[0:100])
+        else "[" + .name + "] " + (.input | tostring | .[0:150])
+        end
+      else empty end
     else empty end
   '
 
