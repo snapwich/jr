@@ -226,6 +226,18 @@ not referenced again. Include:
   task-level requirements — concrete enough that you can point to a test and say "this verifies that criterion."
 - Any architectural notes or constraints
 - Cross-feature context if relevant
+- **Expected test impact** — when the feature will predictably change test outputs, declare what reviewers should expect
+  to see in test-related diffs. This helps reviewers distinguish intentional changes from regressions. 2–5 bullets, each
+  stating: what tests are affected, how, and why.
+
+  This is guidance for **reviewers interpreting diffs**, not an excuse for failing tests. Coders must still update
+  fixtures, snapshots, and assertions to make tests pass. The only exception is diff-comparison workflows (e.g., visual
+  regression before/after) where diffs are reviewed by a human rather than pass/fail gated.
+
+  Examples:
+  - "Visual regression before/after diffs will show avatar size changes at >=992px — expected, review visually"
+  - "Snapshot assertions for LoginForm will need updating due to new ARIA attributes — coder should update"
+  - "E2E tests for dark-mode toggle will need rewriting — behavior changes from toggle to set-specific"
 
 ### 8. Execute: Create Tasks
 

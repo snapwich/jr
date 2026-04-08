@@ -40,6 +40,9 @@ Only concerns that pass all three filters belong in a changes-requested note.
 
 Notes provide visibility into progress. You MUST add notes at mandatory checkpoints.
 
+Checkpoint notes should contain information the reader doesn't already know. If a checkpoint has nothing notable to
+report, combine it with the next rather than posting a no-content note.
+
 ### Mandatory Checkpoints
 
 1. **After setup** — Log that you've started the review:
@@ -48,27 +51,33 @@ Notes provide visibility into progress. You MUST add notes at mandatory checkpoi
    just add-note <ticket-id> 'Starting review. Prior iterations: <N>'
    ```
 
-2. **After reading diff** — Log scope of changes:
+2. **After reading diff + running tests** — Log scope and test results. Can be one note:
 
    ```sh
-   just add-note <ticket-id> 'Diff reviewed: <N files, brief scope>'
+   just add-note <ticket-id> 'Diff reviewed: <N files, brief scope>. Tests: <X/Y pass>'
    ```
 
-3. **After running tests** — Log test results:
+   If the diff reveals something worth noting before tests run (unexpected scope, missing files), post separately.
 
-   ```sh
-   just add-note <ticket-id> 'Tests: <X/Y pass>'
-   ```
-
-4. **After mutation testing** — Log mutation testing results:
+3. **After mutation testing** — Log mutation testing results:
 
    ```sh
    just add-note <ticket-id> 'Mutation testing: <N mutations, M caught>. <brief findings or "skipped: <reason>">'
    ```
 
-5. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
+4. **Before signaling** — Log your decision with reasoning (covered in Outcomes section)
 
 ## Review Process
+
+**Cross-task and feature-level notes.** The human reads feature-level notes, not task-level notes. When you find
+something that matters beyond this task, note it on the **feature** — that's where it gets seen.
+
+- Issues affecting sibling tasks → note on the feature:
+  `just add-note <parent-feature-id> '(from <ticket-id>) <issue affecting sibling tasks>'`
+- Discoveries not in the plan → note on the feature:
+  `just add-note <parent-feature-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'`
+- Systemic test gaps revealed by mutation testing (e.g., "CSS property mutations consistently survive because the test
+  suite relies on visual regression, not computed-style assertions") → note on the feature as a discovery.
 
 ### Code Review
 
@@ -135,6 +144,24 @@ guessing.
 - **Visual regression tests**: When the task includes screenshot/visual regression tests that produce diff images on
   failure, use the Read tool to view a few `*-diff.png` files rather than only checking pass/fail counts. This helps
   verify that test assertions are actually meaningful.
+
+### Empirical Verification
+
+After tests pass, do 1–2 spot checks that the implementation actually works as described — not just that tests agree
+with each other. This catches issues tests miss: CSS specificity overrides, response bodies that are technically valid
+but wrong, UI elements that exist in the DOM but aren't visible.
+
+**When to do it:** Tasks that change user-visible behavior (UI, API responses, CLI output), CSS/styling changes, or
+tasks where mutations survived and coverage is sparse. Skip for config-only, docs-only, or pure refactoring tasks.
+
+**Examples:**
+
+- **Frontend/CSS**: Check computed styles on key elements, take a screenshot, tab through to verify focus visibility
+- **API/backend**: Curl the endpoint and verify the response body matches the spec — not just status code
+- **CLI**: Run the command and check output format matches the task description
+- **Migrations**: Query the migrated data/schema and verify it matches expectations
+
+If a spot check reveals a real issue, include it in your changes-requested note.
 
 ### Mutation Testing
 
@@ -267,8 +294,3 @@ Valid signal types for this agent: `approved`, `changes-requested`, `escalate`
   a known bad state — approving more work on top compounds the problem. Escalate with details of what's failing.
 - Be specific in feedback — file paths, line numbers, concrete suggestions
 - Review against the task's acceptance criteria, not your own preferences
-- If you see issues that affect sibling tasks, add a note to the parent **feature** (not the task):
-  `just add-note <parent-feature-id> '(from <ticket-id>) <issue affecting sibling tasks>'`
-- If you discover something not in the plan that matters beyond this task (undocumented patterns, stale docs, risks not
-  anticipated in planning), add a discovery note on the **feature**:
-  `just add-note <parent-feature-id> '[discovery] (from <ticket-id>) <what was discovered and why it matters>'`
