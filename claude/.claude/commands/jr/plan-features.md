@@ -7,7 +7,7 @@ describes work to be done: new features, new tasks, or modifications to existing
 
 ## Commands
 
-Run `just plan-work` to see all available commands for this workflow.
+Run `just plan-features` to see all available commands for this workflow.
 
 **Use `just` for ALL ticket operations.** Do NOT use MCP task tools (`mcp__mc-dev__tasks`, `TaskCreate`, `TaskUpdate`,
 `TaskList`, `TaskGet`) — those are generic Claude Code task tracking, unrelated to this system's tickets.
@@ -390,8 +390,8 @@ This blocks all tasks in the dependent feature until the dependency feature is c
 
 ### 11. Execute: Modify Descriptions
 
-Use `just show <id>` to read the current ticket content. Then use the Edit tool on `.tickets/<id>.md` to modify the body
-text.
+Use `just show <id>` to read the current ticket content. Then use the Edit tool on `.jr/.tickets/<id>.md` to modify the
+body text.
 
 **Do not hand-edit frontmatter** — use `tk` commands for metadata changes (status, assignee, tags, deps).
 
