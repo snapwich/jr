@@ -2439,6 +2439,102 @@ rebase-feature feature-id rework-notes="":
     echo "Run 'just start-work' — architect will determine which tasks to reopen"
   fi
 
+# Archive a ticket and its entire dependency tree — moves ticket files to .jr/archive/<name>/
+[group("human")]
+archive name ticket-id:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  archive_dir=".jr/archive/{{ name }}"
+  jr_git="git -C .jr"
+
+  if [[ -d "$archive_dir" ]]; then
+    echo "ERROR: Archive '{{ name }}' already exists" >&2
+    exit 1
+  fi
+
+  # Collect all ticket IDs from dependency tree
+  tree_output=$({{ tk }} dep tree "{{ ticket-id }}" 2>/dev/null) || true
+  if [[ -z "$tree_output" ]]; then
+    echo "ERROR: No tickets found for {{ ticket-id }}" >&2
+    exit 1
+  fi
+
+  # Extract ticket IDs (format: "id [status][type] title")
+  dep_ids=$(echo "$tree_output" | grep -oP '[a-z0-9]+-[a-z0-9]+(?= \[)')
+
+  if [[ -z "$dep_ids" ]]; then
+    echo "ERROR: Could not parse ticket IDs from dep tree" >&2
+    exit 1
+  fi
+
+  # Also collect children via parent field (catches tasks not in deps array)
+  all_ids="$dep_ids"
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    children=$({{ tk }} query "select(.parent == \"$id\")" 2>/dev/null | jq -r '.id' || true)
+    if [[ -n "$children" ]]; then
+      all_ids=$(printf '%s\n%s' "$all_ids" "$children")
+    fi
+  done <<< "$dep_ids"
+  all_ids=$(echo "$all_ids" | sort -u)
+
+  mkdir -p "$archive_dir"
+
+  count=0
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    src=".tickets/$id.md"
+    if [[ -f ".jr/$src" ]]; then
+      $jr_git mv "$src" "archive/{{ name }}/" 2>/dev/null \
+        || mv ".jr/$src" "$archive_dir/"
+      ((count++)) || true
+    fi
+  done <<< "$all_ids"
+
+  # Commit the move
+  $jr_git add .tickets/ "archive/{{ name }}/"
+  $jr_git commit -m "archive: {{ name }}" --allow-empty 2>/dev/null || true
+
+  echo "Archived $count ticket(s) to $archive_dir:"
+  echo "$tree_output"
+
+# Restore archived tickets back to .jr/.tickets/
+[group("human")]
+unarchive name:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  archive_dir=".jr/archive/{{ name }}"
+  jr_git="git -C .jr"
+
+  if [[ ! -d "$archive_dir" ]]; then
+    echo "ERROR: Archive '{{ name }}' not found" >&2
+    echo "Available archives:" >&2
+    ls .jr/archive/ 2>/dev/null || echo "  (none)" >&2
+    exit 1
+  fi
+
+  count=0
+  for f in "$archive_dir"/*.md; do
+    [[ -f "$f" ]] || continue
+    fname=$(basename "$f")
+    $jr_git mv "archive/{{ name }}/$fname" .tickets/ 2>/dev/null \
+      || mv "$f" ".jr/.tickets/"
+    ((count++)) || true
+  done
+
+  # Remove archive dir if empty (preserves if plans/ or other subdirs remain)
+  rmdir "$archive_dir" 2>/dev/null || true
+
+  # Commit the restore
+  $jr_git add .tickets/ "archive/{{ name }}" 2>/dev/null || true
+  $jr_git commit -m "unarchive: {{ name }}" --allow-empty 2>/dev/null || true
+
+  echo "Restored $count ticket(s) from $archive_dir"
+
 # --- tk pass-through commands ---
 
 # Show execution order of plan in waves
