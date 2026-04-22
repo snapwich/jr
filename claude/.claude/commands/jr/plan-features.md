@@ -45,7 +45,7 @@ just ls
 
 This shows the project structure — repos and their worktrees. A single level of entries under `.` means single-repo
 mode. Entries grouped under named subdirectories means multi-repo mode — use those directory names as `repo:<name>` tag
-values on tasks.
+values on features.
 
 ### 2. Analyze Input
 
@@ -254,9 +254,9 @@ just create "<task title>" \
   -d "<task description with implementation guidance>"
 ```
 
-In multi-repo mode, every task MUST have a `repo:<name>` tag matching the target repo directory name. Features MUST also
-have a `repo:<name>` tag in multi-repo mode (used by `rebase-feature`, `approve`, and `worktree-deps`). In single-repo
-mode, omit the tag (the orchestrator defaults to `.`).
+In multi-repo mode, features MUST have a `repo:<name>` tag matching the target repo directory name (used by the
+orchestrator, `rebase-feature`, `approve`, and `worktree-deps`). Tasks inherit the repo from their parent feature — do
+NOT add `repo:` tags to tasks. In single-repo mode, omit the tag (the orchestrator defaults to `.`).
 
 The task description should include:
 
@@ -405,6 +405,21 @@ After all changes:
 4. Run `just verify-tickets` to check for linear chains and cross-feature task dependencies
 5. Report a summary to the user: what was created, reopened, re-wired
 
+### 13. Commit checkpoint
+
+After verification passes, commit the ticket changes as a checkpoint:
+
+```sh
+just commit-tickets "chore: plan-features — <summary>"
+```
+
+The summary should describe what was done and list feature IDs. Examples:
+
+- `chore: plan-features — created feat-abcd, feat-efgh (3 features, 8 tasks)`
+- `chore: plan-features — added tasks to feat-abcd, created feat-efgh`
+
+This is non-fatal — if it fails, warn the user but don't treat it as an error.
+
 ## Output
 
 Present the user with:
@@ -414,6 +429,7 @@ Present the user with:
 - What's immediately ready to work on
 - Any cross-feature dependencies
 - Confirmation that no dependency cycles exist
+- Confirmation that tickets were committed (or warning if commit failed)
 
 ## Scope Boundary
 
@@ -450,7 +466,7 @@ Work on tickets happens through the orchestrator: `just start-work`. The human d
 - Tasks must only depend on other tasks within the same feature — use feature-level dependencies for cross-feature
   ordering
 - Cross-feature deps: feature B depends on feature A, AND first task of feature B depends on feature A
-- In multi-repo mode, every task must have a `repo:<name>` tag
+- In multi-repo mode, features must have a `repo:<name>` tag
 - `--external-ref` goes on **features** (not tasks) for worktree/branch naming
 - **No unresolved questions in tickets** — every TBD, open alternative, or ambiguity in the plan must be resolved with
   the user before creating tickets. Coders implement exactly what the ticket says; if it says "TBD", they're stuck.

@@ -990,13 +990,21 @@ start-work *args:
 
     # Derive worktree from parent feature (not task)
     local repo wt feature_id base_branch
-    repo=$(echo "$ticket_json" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
 
     if [[ -n "$parent" ]]; then
       feature_id="$parent"
     else
       feature_id="$ticket_id"
     fi
+
+    # Repo tag always comes from the feature (tasks inherit their feature's repo)
+    local feature_json_for_repo
+    if [[ "$feature_id" != "$ticket_id" ]]; then
+      feature_json_for_repo=$({{ tk }} query "select(.id == \"$feature_id\")")
+    else
+      feature_json_for_repo="$ticket_json"
+    fi
+    repo=$(echo "$feature_json_for_repo" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
 
     wt=$(worktree_name "$ticket_id")
     if [[ -z "$wt" ]]; then
@@ -1443,6 +1451,7 @@ start-work *args:
 
 # Commit and optionally push .jr/.tickets/ changes
 [group('orchestrator')]
+[group('plan-features')]
 commit-tickets subject:
   #!/usr/bin/env bash
   set -euo pipefail
