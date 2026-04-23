@@ -605,8 +605,8 @@ create-worktree name repo="." base="origin/HEAD":
     fi
   fi
 
-  grep -qxF '.claude/agents/jr/' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
-    || printf '%s\n' '.claude/agents/jr/' '.claude/commands/jr/' '.claude/rules/jr-agents.md' \
+  grep -qxF '.claude/agents/jr' "{{ repo }}/default/.git/info/exclude" 2>/dev/null \
+    || printf '%s\n' '.claude/agents/jr' '.claude/commands/jr' \
       >> "{{ repo }}/default/.git/info/exclude"
 
 [group('orchestrator')]
@@ -815,9 +815,9 @@ start-work *args:
       # Copy project-level .jr rules
       copy_tk_rules "$worktree_dir" "$repo"
     fi
-    # Ensure tk-specific paths are excluded from git status
-    grep -qxF '.claude/agents/jr/' "$git_dir/info/exclude" 2>/dev/null \
-      || printf '%s\n' '.claude/agents/jr/' '.claude/commands/jr/' '.claude/rules/jr-agents.md' \
+    # Ensure jr-specific paths are excluded from git status
+    grep -qxF '.claude/agents/jr' "$git_dir/info/exclude" 2>/dev/null \
+      || printf '%s\n' '.claude/agents/jr' '.claude/commands/jr' \
         >> "$git_dir/info/exclude"
   }
 
