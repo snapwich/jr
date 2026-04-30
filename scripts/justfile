@@ -971,6 +971,7 @@ start-work *args:
         if [[ -z "${LOGGED_FEATURES[$ticket_id]:-}" ]]; then
           log "Feature $ticket_id ready for human review"
           LOGGED_FEATURES[$ticket_id]=1
+          printf '\a'
         fi
         return 1
       else
@@ -1195,6 +1196,7 @@ start-work *args:
           else
             {{ tk }} assign "$ticket_id" human
             log "Feature $ticket_id approved by architect — assigned to human for review"
+            printf '\a'
           fi
           ;;
         changes-requested)
