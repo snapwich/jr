@@ -352,7 +352,7 @@ cmd_tree() {
     BEGIN { FS=": "; in_front=0 }
     FNR==1 {
         if (prev_file) store()
-        id=""; status=""; title=""; parent=""; deps=""; priority=""; assignee=""; tags=""; itype=""; in_front=0
+        id=""; status=""; title=""; parent=""; deps=""; priority=""; assignee=""; tags=""; itype=""; extref=""; in_front=0
         prev_file=FILENAME
     }
     /^---$/ { in_front = !in_front; next }
@@ -363,6 +363,7 @@ cmd_tree() {
     in_front && /^assignee:/ { assignee = $2 }
     in_front && /^tags:/ { tags = $2; gsub(/[\[\] ]/, "", tags) }
     in_front && /^type:/ { itype = $2 }
+    in_front && /^external-ref:/ { extref = $2 }
     in_front && /^deps:/ {
         deps = $2
         gsub(/[\[\] ]/, "", deps)
@@ -378,6 +379,7 @@ cmd_tree() {
             assignees[id] = assignee
             all_tags[id] = tags
             types[id] = (itype != "") ? itype : "task"
+            extrefs[id] = extref
             ticket_count++
             ticket_ids[ticket_count] = id
         }
@@ -584,9 +586,15 @@ cmd_tree() {
         for (r = 1; r <= root_count; r++) {
             id = roots[r]
             if (filtering && !(id in included)) continue
-            print id " [" statuses[id] "][" types[id] "] " titles[id]
+            print fmt_node(id)
             build_tree_children(id, "", ":" id ":")
         }
+    }
+
+    function fmt_node(nid) {
+        s = nid
+        if (extrefs[nid] != "") s = s " (" extrefs[nid] ")"
+        return s " [" statuses[nid] "][" types[nid] "] " titles[nid]
     }
 
     function _tree_gt(a, b) {
@@ -630,7 +638,7 @@ cmd_tree() {
                 connector = "├── "
                 new_prefix = prefix "│   "
             }
-            print prefix connector ch " [" statuses[ch] "][" types[ch] "] " titles[ch]
+            print prefix connector fmt_node(ch)
             build_tree_children(ch, new_prefix, path ch ":")
         }
     }
@@ -1018,7 +1026,7 @@ cmd_ls() {
     BEGIN { FS=": "; in_front=0 }
     FNR==1 {
         if (prev_file) store()
-        id=""; status=""; title=""; deps=""; priority=""; assignee=""; tags=""; itype=""; in_front=0
+        id=""; status=""; title=""; deps=""; priority=""; assignee=""; tags=""; itype=""; extref=""; in_front=0
         prev_file=FILENAME
     }
     /^---$/ { in_front = !in_front; next }
@@ -1028,6 +1036,7 @@ cmd_ls() {
     in_front && /^assignee:/ { assignee = $2 }
     in_front && /^tags:/ { tags = $2; gsub(/[\[\] ]/, "", tags) }
     in_front && /^type:/ { itype = $2 }
+    in_front && /^external-ref:/ { extref = $2 }
     in_front && /^deps:/ {
         deps = $2
         gsub(/[\[\] ]/, "", deps)
@@ -1047,6 +1056,7 @@ cmd_ls() {
             assignees[id] = assignee
             all_tags[id] = tags
             types[id] = (itype != "") ? itype : "task"
+            extrefs[id] = extref
             ticket_count++
             ticket_ids[ticket_count] = id
         }
@@ -1146,7 +1156,9 @@ cmd_ls() {
         # Output
         for (i = 1; i <= count; i++) {
             id = payload[i]
-            printf "%-8s [%s][%s] - %s\n", id, statuses[id], types[id], titles[id]
+            ext = ""
+            if (extrefs[id] != "") ext = " (" extrefs[id] ")"
+            printf "%-8s%s [%s][%s] - %s\n", id, ext, statuses[id], types[id], titles[id]
         }
     }
     ' "$TICKETS_DIR"/*.md 2>/dev/null
@@ -1169,7 +1181,7 @@ cmd_ready() {
     BEGIN { FS=": "; in_front=0 }
     FNR==1 {
         if (prev_file) store()
-        id=""; status=""; title=""; deps=""; priority=""; assignee=""; tags=""; itype=""; in_front=0
+        id=""; status=""; title=""; deps=""; priority=""; assignee=""; tags=""; itype=""; extref=""; in_front=0
         prev_file=FILENAME
     }
     /^---$/ { in_front = !in_front; next }
@@ -1179,6 +1191,7 @@ cmd_ready() {
     in_front && /^assignee:/ { assignee = $2 }
     in_front && /^tags:/ { tags = $2; gsub(/[\[\] ]/, "", tags) }
     in_front && /^type:/ { itype = $2 }
+    in_front && /^external-ref:/ { extref = $2 }
     in_front && /^deps:/ {
         deps = $2
         gsub(/[\[\] ]/, "", deps)
@@ -1198,6 +1211,7 @@ cmd_ready() {
             assignees[id] = assignee
             all_tags[id] = tags
             types[id] = (itype != "") ? itype : "task"
+            extrefs[id] = extref
         }
     }
     END {
@@ -1226,7 +1240,7 @@ cmd_ready() {
                 }
             }
             if (ready) {
-                output[++count] = sprintf("%s|%s|%s|%s|%s", priorities[id], id, status, types[id], titles[id])
+                output[++count] = sprintf("%s|%s|%s|%s|%s|%s", priorities[id], id, status, types[id], titles[id], extrefs[id])
             }
         }
 
@@ -1243,7 +1257,9 @@ cmd_ready() {
 
         for (i = 1; i <= count; i++) {
             split(output[i], f, "|")
-            printf "%-8s [P%s][%s][%s] - %s\n", f[2], f[1], f[3], f[4], f[5]
+            ext = ""
+            if (f[6] != "") ext = " (" f[6] ")"
+            printf "%-8s%s [P%s][%s][%s] - %s\n", f[2], ext, f[1], f[3], f[4], f[5]
         }
     }
     ' "$TICKETS_DIR"/*.md 2>/dev/null
@@ -1312,7 +1328,7 @@ cmd_blocked() {
     BEGIN { FS=": "; in_front=0 }
     FNR==1 {
         if (prev_file) store()
-        id=""; status=""; title=""; deps=""; priority=""; assignee=""; tags=""; itype=""; in_front=0
+        id=""; status=""; title=""; deps=""; priority=""; assignee=""; tags=""; itype=""; extref=""; in_front=0
         prev_file=FILENAME
     }
     /^---$/ { in_front = !in_front; next }
@@ -1322,6 +1338,7 @@ cmd_blocked() {
     in_front && /^assignee:/ { assignee = $2 }
     in_front && /^tags:/ { tags = $2; gsub(/[\[\] ]/, "", tags) }
     in_front && /^type:/ { itype = $2 }
+    in_front && /^external-ref:/ { extref = $2 }
     in_front && /^deps:/ {
         deps = $2
         gsub(/[\[\] ]/, "", deps)
@@ -1341,6 +1358,7 @@ cmd_blocked() {
             assignees[id] = assignee
             all_tags[id] = tags
             types[id] = (itype != "") ? itype : "task"
+            extrefs[id] = extref
         }
     }
     END {
@@ -1374,7 +1392,7 @@ cmd_blocked() {
                         blockers = (blockers == "") ? dep : blockers ", " dep
                     }
                 }
-                output[++count] = sprintf("%s|%s|%s|%s|%s|[%s]", priorities[id], id, status, types[id], titles[id], blockers)
+                output[++count] = sprintf("%s|%s|%s|%s|%s|[%s]|%s", priorities[id], id, status, types[id], titles[id], blockers, extrefs[id])
             }
         }
 
@@ -1391,7 +1409,9 @@ cmd_blocked() {
 
         for (i = 1; i <= count; i++) {
             split(output[i], f, "|")
-            printf "%-8s [P%s][%s][%s] - %s <- %s\n", f[2], f[1], f[3], f[4], f[5], f[6]
+            ext = ""
+            if (f[7] != "") ext = " (" f[7] ")"
+            printf "%-8s%s [P%s][%s][%s] - %s <- %s\n", f[2], ext, f[1], f[3], f[4], f[5], f[6]
         }
     }
     ' "$TICKETS_DIR"/*.md 2>/dev/null

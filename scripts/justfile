@@ -30,6 +30,51 @@ _list-group group:
     found { print }
   '
 
+# Interactive ticket picker via fzf — used by commands when ticket-id is omitted.
+# Usage: just _pick-ticket <header> <jq-filter>        (queries tk)
+#    or: <candidates> | just _pick-ticket <header>     (piped input, pre-formatted)
+# Output format: ID (EXT-REF) [status][type] Title
+# Returns: selected ticket ID (first field)
+_pick-ticket header *filter:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
+  header="{{ header }}"
+  filter="{{ filter }}"
+  tickets_dir="${TICKETS_DIR:-.jr/.tickets}"
+
+  if [[ ! -t 0 ]]; then
+    # Piped input — candidates already formatted
+    candidates=$(cat)
+  else
+    # Query tk and format
+    candidates=""
+    while IFS= read -r json; do
+      [[ -z "$json" ]] && continue
+      id=$(echo "$json" | jq -r '.id')
+      extref=$(echo "$json" | jq -r '.["external-ref"] // empty')
+      status=$(echo "$json" | jq -r '.status')
+      type=$(echo "$json" | jq -r '.type')
+      title=$(grep -m1 '^# ' "$tickets_dir/$id.md" 2>/dev/null | cut -c3- || true)
+      line="$id"
+      [[ -n "$extref" ]] && line="$line ($extref)"
+      line="$line [$status][$type] $title"
+      candidates+="$line"$'\n'
+    done < <({{ tk }} query "select($filter)" 2>/dev/null)
+  fi
+
+  # Strip trailing newlines and check for empty
+  candidates=$(echo "$candidates" | sed '/^$/d')
+  if [[ -z "$candidates" ]]; then
+    echo "ERROR: No tickets available to $header" >&2
+    exit 1
+  fi
+
+  # Show fzf picker
+  selected=$(echo "$candidates" | fzf --no-sort --header "Select ticket to $header:")
+  # Extract ticket ID (first field, before any space)
+  echo "$selected" | awk '{print $1}'
+
 [private]
 orchestrator: (_list-group "orchestrator")
 [private]
@@ -1831,12 +1876,17 @@ verify-tickets:
 # Request changes on a feature after human review — reassigns to architect for rework
 # If feedback is omitted, opens $EDITOR for multi-line input.
 [group("human")]
-request-changes feature-id feedback="":
+request-changes feature-id="" feedback="":
   #!/usr/bin/env bash
   set -e
   cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
   feedback="{{ feedback }}"
+
+  if [[ -z "$feature_id" ]]; then
+    feature_id=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" \
+      _pick-ticket "request changes" '.assignee == "human" and .type == "feature"')
+  fi
 
   # Validate feature exists
   feature_json=$({{ tk }} query "select(.id == \"$feature_id\")" 2>/dev/null)
@@ -1879,11 +1929,16 @@ request-changes feature-id feedback="":
 
 # Approve a feature — validates, closes, prints next steps
 [group("human")]
-approve feature-id:
+approve feature-id="":
   #!/usr/bin/env bash
   set -e
   cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
+
+  if [[ -z "$feature_id" ]]; then
+    feature_id=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" \
+      _pick-ticket "approve" '.assignee == "human" and .type == "feature"')
+  fi
 
   # Validate ticket exists and is a feature
   feature_json=$({{ tk }} query "select(.id == \"$feature_id\")" 2>/dev/null)
@@ -2264,12 +2319,47 @@ merge-all *args:
 # Rebase a feature's worktree onto its correct base (lazy — run when ready to merge)
 # Optional rework-notes: if provided, triggers a rework cycle after rebase (for API changes)
 [group("human")]
-rebase-feature feature-id rework-notes="":
+rebase-feature feature-id="" rework-notes="":
   #!/usr/bin/env bash
   set -e
   cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
   feature_id="{{ feature-id }}"
   rework_notes="{{ rework-notes }}"
+  JUSTFILE="{{ justfile() }}"
+  WORKING_DIR="${JR_PROJECT_DIR:-.}"
+  tickets_dir="${TICKETS_DIR:-.jr/.tickets}"
+
+  if [[ -z "$feature_id" ]]; then
+    # Build candidate list: features with active worktree + closed upstream feature dep
+    candidates=""
+    while IFS= read -r json; do
+      [[ -z "$json" ]] && continue
+      fid=$(echo "$json" | jq -r '.id')
+      repo=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" resolve-repo "$fid" 2>/dev/null || echo ".")
+      wt=$(just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" worktree-name "$fid" 2>/dev/null || true)
+      [[ -z "$wt" || ! -d "$repo/$wt" ]] && continue
+      # Check for closed upstream feature dep
+      has_closed_dep=false
+      while IFS= read -r dep_id; do
+        [[ -z "$dep_id" ]] && continue
+        dep_json=$({{ tk }} query "select(.id == \"$dep_id\")" 2>/dev/null || true)
+        [[ -z "$dep_json" ]] && continue
+        dep_type=$(echo "$dep_json" | jq -r '.type')
+        dep_status=$(echo "$dep_json" | jq -r '.status')
+        [[ "$dep_type" == "feature" && "$dep_status" == "closed" ]] && { has_closed_dep=true; break; }
+      done < <(echo "$json" | jq -r '.deps[]?' 2>/dev/null)
+      $has_closed_dep || continue
+      # Format line
+      extref=$(echo "$json" | jq -r '.["external-ref"] // empty')
+      status=$(echo "$json" | jq -r '.status')
+      title=$(grep -m1 '^# ' "$tickets_dir/$fid.md" 2>/dev/null | cut -c3- || true)
+      line="$fid"
+      [[ -n "$extref" ]] && line="$line ($extref)"
+      line="$line [$status][feature] $title"
+      candidates+="$line"$'\n'
+    done < <({{ tk }} query 'select(.type == "feature" and .status != "closed")' 2>/dev/null)
+    feature_id=$(echo "$candidates" | just --justfile "$JUSTFILE" --working-directory "$WORKING_DIR" _pick-ticket "rebase")
+  fi
 
   # Validate feature exists and is a feature
   feature_json=$({{ tk }} query "select(.id == \"$feature_id\")" 2>/dev/null)
@@ -2565,8 +2655,16 @@ ready *args:
 
 # Open ticket in $EDITOR — [--children]
 [group('human')]
-edit ticket-id *args:
-  {{ tk }} edit "$@"
+edit ticket-id="" *args:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
+  ticket_id="{{ ticket-id }}"
+  if [[ -z "$ticket_id" ]]; then
+    ticket_id=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" \
+      _pick-ticket "edit" '.id != null')
+  fi
+  {{ tk }} edit "$ticket_id" {{ args }}
 
 # Show blocked tickets — [-a ASSIGNEE] [-T TYPE]
 [group('human')]
@@ -2636,6 +2734,7 @@ assign ticket-id assignee:
   {{ tk }} assign "$@"
 
 # Show just the notes section of a ticket — [--after <iso-timestamp>] to filter
+[group('orchestrator'), group('human')]
 notes ticket-id *args:
   #!/usr/bin/env bash
   set -euo pipefail
