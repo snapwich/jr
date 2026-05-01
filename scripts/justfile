@@ -1250,6 +1250,7 @@ start-work *args:
           arch_count=$(count_review_rounds "$ticket_id" "jr:architect-reviewer")
           if (( arch_count >= REVIEW_ROUNDS )); then
             log "ESCALATE: Feature $ticket_id has $arch_count architect review rounds — max exceeded"
+            {{ tk }} assign "$ticket_id" "human"
             ESCALATION="Max architect review iterations exceeded for feature $ticket_id"
             return
           fi
@@ -1257,6 +1258,7 @@ start-work *args:
           ;;
         escalate)
           log "ESCALATE: $ticket_id — ${SIGNAL_SUMMARY:-no summary}"
+          {{ tk }} assign "$ticket_id" "human"
           ESCALATION="Escalation from $ticket_id: ${SIGNAL_SUMMARY:-no details}"
           ;;
         *)
@@ -1268,6 +1270,7 @@ start-work *args:
             local session_uuid
             session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
             {{ tk }} add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
+            {{ tk }} assign "$ticket_id" "human"
             ESCALATION="Timeout on $ticket_id after ${duration}s"
           else
             log "ESCALATE: $ticket_id returned no valid signal"
@@ -1275,6 +1278,7 @@ start-work *args:
               log "Last 5 lines of output:"
               tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
             fi
+            {{ tk }} assign "$ticket_id" "human"
             ESCALATION="No valid signal from $ticket_id"
           fi
           ;;
@@ -1299,6 +1303,7 @@ start-work *args:
         cr_count=$(count_review_rounds "$ticket_id" "jr:code-reviewer")
         if (( cr_count >= REVIEW_ROUNDS )); then
           log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
+          {{ tk }} assign "$ticket_id" "human"
           ESCALATION="Max review iterations exceeded for $ticket_id"
           return
         fi
@@ -1309,6 +1314,7 @@ start-work *args:
         ;;
       escalate)
         log "ESCALATE: $ticket_id — ${SIGNAL_SUMMARY:-no summary}"
+        {{ tk }} assign "$ticket_id" "human"
         ESCALATION="Escalation from $ticket_id: ${SIGNAL_SUMMARY:-no details}"
         ;;
       *)
@@ -1322,6 +1328,7 @@ start-work *args:
           local session_uuid
           session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
           {{ tk }} add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
+          {{ tk }} assign "$ticket_id" "human"
           ESCALATION="Timeout on $ticket_id after ${duration}s"
         else
           # Unknown failure
@@ -1330,6 +1337,7 @@ start-work *args:
             log "Last 5 lines of output:"
             tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
           fi
+          {{ tk }} assign "$ticket_id" "human"
           ESCALATION="No valid signal from $ticket_id"
         fi
         ;;
@@ -1872,6 +1880,60 @@ verify-tickets:
   fi
 
   echo "All tickets valid"
+
+# What's waiting on me? — shows tickets assigned to human with suggested actions
+[group("human")]
+me:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "${JR_PROJECT_DIR:-{{ justfile_directory() }}}"
+
+  found=0
+
+  tickets_dir=".jr/.tickets"
+
+  # Features awaiting review
+  features=""
+  while IFS= read -r json; do
+    [[ -z "$json" ]] && continue
+    id=$(echo "$json" | jq -r '.id')
+    extref=$(echo "$json" | jq -r '.["external-ref"] // empty')
+    title=$(grep -m1 '^# ' "$tickets_dir/$id.md" 2>/dev/null | cut -c3- || true)
+    line="  $id"
+    [[ -n "$extref" ]] && line="$line ($extref)"
+    [[ -n "$title" ]] && line="$line $title"
+    features+="$line"$'\n'
+    found=1
+  done < <({{ tk }} query 'select(.assignee == "human" and .type == "feature" and .status != "closed")' 2>/dev/null)
+
+  if [[ -n "$features" ]]; then
+    echo "Features awaiting review: (just approve | request-changes <id>)"
+    printf "%s" "$features"
+  fi
+
+  # Escalations (non-feature tickets assigned to human)
+  escalations=""
+  while IFS= read -r json; do
+    [[ -z "$json" ]] && continue
+    id=$(echo "$json" | jq -r '.id')
+    extref=$(echo "$json" | jq -r '.["external-ref"] // empty')
+    title=$(grep -m1 '^# ' "$tickets_dir/$id.md" 2>/dev/null | cut -c3- || true)
+    line="  $id"
+    [[ -n "$extref" ]] && line="$line ($extref)"
+    [[ -n "$title" ]] && line="$line $title"
+    escalations+="$line"$'\n'
+    found=1
+  done < <({{ tk }} query 'select(.assignee == "human" and .type != "feature" and .status != "closed")' 2>/dev/null)
+
+  if [[ -n "$escalations" ]]; then
+    [[ -n "$features" ]] && echo ""
+    echo "Escalations: (just show <id>)"
+    printf "%s" "$escalations"
+  fi
+
+  if [[ $found -eq 0 ]]; then
+    echo "Nothing awaiting human attention."
+  fi
 
 # Request changes on a feature after human review — reassigns to architect for rework
 # If feedback is omitted, opens $EDITOR for multi-line input.
