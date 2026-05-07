@@ -1521,6 +1521,12 @@ commit-tickets subject:
     git -C "$project_dir/.jr" push
   fi
 
+# Print the jr repo path (resolved from justfile symlink)
+[group('orchestrator')]
+[group('plan-features')]
+jr-home:
+    @readlink -f "{{ justfile() }}" | sed 's|/scripts/justfile$||'
+
 # Print tab-delimited session entries to stdout (used by watch + fzf reload)
 [group('watch')]
 _watch-list:

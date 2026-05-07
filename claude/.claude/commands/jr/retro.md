@@ -32,7 +32,25 @@ directories matching the worktree path pattern.
 Read all `.jsonl` session files in the matching project directory. Each line is a JSON object representing an API
 message. Focus on assistant messages with tool calls and tool results — these show what the agent actually did.
 
-### 3. Analyze for Friction Patterns
+### 3. Load jr Toolkit Context
+
+Resolve the jr repo location and read its architecture docs:
+
+```sh
+just jr-home
+```
+
+Read the `CLAUDE.md` at that path — it describes jr's design goals, agent model, orchestrator logic, review workflow,
+and ticket lifecycle. This context informs "Workflow recommendations" below.
+
+If a specific recommendation requires deeper understanding of agent behavior or orchestrator logic, the following files
+are available at the jr repo path:
+
+- `claude/.claude/agents/jr/coder.md`, `code-reviewer.md`, `architect-reviewer.md` — agent definitions
+- `claude/.claude/prompts/jr/subagent-task.md` — shared subagent prompt template
+- `scripts/justfile` — orchestrator and recipe implementations
+
+### 4. Analyze for Friction Patterns
 
 Cross-reference ticket notes, session logs, and task descriptions to identify:
 
@@ -56,7 +74,7 @@ Cross-reference ticket notes, session logs, and task descriptions to identify:
   note. For "migrate" items: generate specific, actionable recommendations (fits into "Project recommendations" below).
   For items the architect missed or didn't triage: flag as additional recommendations.
 
-### 4. Present Findings
+### 5. Present Findings
 
 Organize findings into three categories:
 
@@ -83,13 +101,16 @@ details? Should remaining open tickets be updated before continuing work? Exampl
 #### Workflow recommendations
 
 Observations about agent behavior that suggest `jr`-level changes — agent definitions, orchestrator logic, review
-process. These are surfaced for the user to act on separately. Examples:
+process. Reference jr's CLAUDE.md and (if needed) the specific source files from step 3 to make concrete, implementable
+suggestions that cite the relevant jr file and what to change. These are surfaced for the user to act on separately.
+Examples:
 
-- "Code-reviewer approved a migration without checking semantic equivalence — consider adding a migration-specific
-  review checklist"
-- "Architect caught an issue on second review that was present in the original diff — code-reviewer's mutation testing
-  didn't target the right code paths"
-- "Coder escalated for a missing system dependency that could have been detected in task description"
+- "Code-reviewer approved without checking semantic equivalence — add a migration-specific checklist to
+  `claude/.claude/agents/jr/code-reviewer.md`"
+- "Architect caught an issue on second review that was present in the original diff — code-reviewer's scope should
+  expand to include X (see code-reviewer.md line Y)"
+- "Coder churned discovering project setup that could have been in the task description — update `subagent-task.md` to
+  include a setup discovery step, or improve `/jr:plan-features` to capture this"
 
 ## Rules
 
