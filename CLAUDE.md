@@ -248,7 +248,29 @@ JSONL tail, ticket notes, and the worktree diff. It returns `resume "<optional n
 optionally with a steering note) or `escalate "<diagnosis>"` (reassign the ticket to human). `JR_RESUME_BUDGET`
 (default: 3) caps resumes per ticket per run; once exhausted, no-signal exits escalate without invoking the
 investigator. The investigator itself has a 600s timeout — if it doesn't return, the ticket escalates with
-`Investigator timed out`.
+`Investigator timed out`. Embedded session-JSONL and diff payloads are byte-truncated (50 KB and 30 KB) so the
+investigator prompt stays under `ARG_MAX` (claude CLI takes the prompt via `-p` argv; there's no stdin-prompt mode).
+
+### Rate-limit handling
+
+When a subagent's output contains `You've hit your limit · resets <time> (<TZ>)` (the literal message Claude prints when
+the per-account window is exhausted), the orchestrator handles it deterministically rather than running the
+investigator:
+
+1. Parse the reset time + 5-minute buffer.
+2. Add a `[orchestrator] Rate-limited; will resume after <epoch> (<ISO>, parsed from "<line>")` note to the ticket.
+   Assignee and status stay as-is.
+3. Set a global `RATE_LIMIT_RESET_TS`. The main loop drains in-flight subagents (they may also hit the wall — same
+   handling), then sleeps until the reset, then resumes the loop. Bell rings once at sleep start and once on wake.
+4. On orchestrator restart, the same note is the source of truth: `setup()` scans open/in_progress tickets, takes the
+   max future reset time across them, and re-enters the sleep state if needed.
+
+Rate-limit deferrals do not count against `JR_RESUME_BUDGET` — the `Agent crashed/timed out` note that drives that
+counter is never written for this path. Investigator output is also checked for the rate-limit line so a non-rate-limit
+crash followed by a rate-limited investigator defers cleanly instead of cascading to escalation.
+
+If the reset time can't be parsed (Anthropic changes the wording, etc.), the ticket escalates with
+`Rate-limited but reset time unparseable: <line>` so the parser drift is visible.
 
 ### Per-ticket escalation
 

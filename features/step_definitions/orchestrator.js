@@ -209,6 +209,42 @@ Given("the mock subagent for {string} as {string} crashes once with exit {int}",
   await this.setMockResponse(id, agent, `exit: ${code}\nCrash output.`, 1);
 });
 
+// Mock writes a literal rate-limit line and exits 1 — simulates Anthropic's per-account
+// limit message. The orchestrator must detect this deterministically (before investigator).
+// "once" form: queued as numbered file 1, so a follow-up response (e.g., requesting-review)
+// can be queued at slot 2 to test the wake-and-resume path.
+Given(
+  "the mock subagent emits a rate-limit line then exits 1 once for {string} as {string}",
+  async function (name, agent) {
+    const id = this.ticketIds[name];
+    const body = "exit: 1\nYou've hit your limit · resets 11:20am (America/Denver)";
+    await this.setMockResponse(id, agent, body, 1);
+  },
+);
+
+// Same shape but with a malformed reset clause that parse_reset_time cannot handle.
+Given("the mock subagent emits an unparseable rate-limit line for {string} as {string}", async function (name, agent) {
+  const id = this.ticketIds[name];
+  const body = "exit: 1\nYou've hit your limit · resets soon";
+  await this.setMockResponse(id, agent, body);
+});
+
+// Pre-seed the recover_rate_limit_state marker note so setup() picks it up on startup.
+Given("ticket {string} has a pre-seeded rate-limit note resuming in {int} second(s)", async function (name, seconds) {
+  const id = this.ticketIds[name];
+  const epoch = Math.floor(Date.now() / 1000) + seconds;
+  await this.addNote(id, `[orchestrator] Rate-limited; will resume after ${epoch} (test-seeded, parsed from "test")`);
+});
+
+Then("ticket {string} should not have a note containing {string}", async function (name, text) {
+  const id = this.ticketIds[name];
+  const result = await this.exec("tk", ["show", id]);
+  assert.ok(
+    !result.stdout.includes(text),
+    `Expected ticket ${name} (${id}) NOT to have a note containing "${text}".\nTicket:\n${result.stdout}`,
+  );
+});
+
 // Pre-seed prior `[orchestrator] Agent timed out` notes (consumed by count_resumes).
 Given("ticket {string} has {int} prior timeout notes", async function (name, count) {
   const id = this.ticketIds[name];
@@ -230,6 +266,14 @@ When("I run the orchestrator with no-human-review", async function () {
 
 When("I run the orchestrator with resume budget {int}", async function (budget) {
   await this.runOrchestrator({ JR_RESUME_BUDGET: String(budget) });
+});
+
+When("I run the orchestrator with rate-limit max sleep {int}", async function (seconds) {
+  await this.runOrchestrator({ JR_RATE_LIMIT_MAX_SLEEP_S: String(seconds) });
+});
+
+When("I run the orchestrator with debug", async function () {
+  await this.runOrchestrator({ JR_DEBUG: "1" });
 });
 
 // --- Assertions ---

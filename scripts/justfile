@@ -708,6 +708,7 @@ start-work *args:
   CLAUDE="${CLAUDE_CMD:-claude}"
   JUSTFILE="{{ justfile() }}"
   AGENT_TIMEOUT="${JR_AGENT_TIMEOUT:-3600}"
+  RATE_LIMIT_MAX_SLEEP="${JR_RATE_LIMIT_MAX_SLEEP_S:-0}"  # 0 = no cap. Useful for tests / safety.
 
   cd "$PROJECT_DIR"
 
@@ -723,10 +724,64 @@ start-work *args:
   declare -A LOGGED_FEATURES   # feature-id → 1 (already logged as ready for human review)
   declare -A LAUNCHED_THIS_RUN # ticket-id → 1 (launched this orchestrator run)
   declare -A ESCALATED_TICKETS # ticket-id → escalation reason (for end-of-run summary)
+  RATE_LIMIT_RESET_TS=0        # epoch seconds; >0 means orchestrator should sleep until then
 
   # --- Functions ---
 
   log() { echo "[orchestrator] $*"; }
+
+  # Parse "resets 11:20am (America/Denver)" → epoch seconds (with 5-min buffer).
+  # Returns 1 if the line doesn't match the expected format.
+  parse_reset_time() {
+    local line="$1" time tz epoch now
+    # Pattern in a variable per bash =~ guidance — inline parens trip the parser.
+    local re='resets[[:space:]]+([0-9]{1,2}:[0-9]{2}(am|pm))[[:space:]]+\(([^)]+)\)'
+    if [[ "$line" =~ $re ]]; then
+      time="${BASH_REMATCH[1]}"
+      tz="${BASH_REMATCH[3]}"
+    else
+      return 1
+    fi
+    epoch=$(TZ="$tz" date -d "$time" +%s 2>/dev/null) || return 1
+    now=$(date +%s)
+    (( epoch < now )) && epoch=$(( epoch + 86400 ))
+    # 5-minute buffer to avoid hitting the wall again immediately on resume
+    echo $(( epoch + 300 ))
+  }
+
+  # Add the deferral note to a ticket and bump the global reset time.
+  # Caller has already verified reset_ts is sensible.
+  defer_for_rate_limit() {
+    local ticket_id="$1" reset_ts="$2" source_line="$3"
+    local iso
+    iso=$(date -u -d "@$reset_ts" -Iseconds 2>/dev/null || echo "epoch:$reset_ts")
+    {{ tk }} add-note "$ticket_id" \
+      "[orchestrator] Rate-limited; will resume after $reset_ts ($iso, parsed from \"$source_line\")"
+    if (( reset_ts > RATE_LIMIT_RESET_TS )); then
+      RATE_LIMIT_RESET_TS=$reset_ts
+    fi
+  }
+
+  # Cross-restart recovery: scan open/in_progress tickets for the most recent
+  # future "Rate-limited; will resume after <epoch>" marker. If any are still
+  # in the future, set RATE_LIMIT_RESET_TS so the main loop enters sleep.
+  recover_rate_limit_state() {
+    local now=$(date +%s) max=0 ticket_id ts
+    local ids
+    ids=$({{ tk }} query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | jq -r '.id')
+    while IFS= read -r ticket_id; do
+      [[ -z "$ticket_id" ]] && continue
+      ts=$({{ tk }} show "$ticket_id" 2>/dev/null \
+           | grep -oE 'Rate-limited; will resume after [0-9]+' \
+           | awk '{print $NF}' | sort -n | tail -1)
+      [[ -n "$ts" ]] && (( ts > max )) && max=$ts
+    done <<< "$ids"
+
+    if (( max > now )); then
+      RATE_LIMIT_RESET_TS=$max
+      log "Recovered active rate-limit window: resume after $(date -d @$max 2>/dev/null || echo "epoch:$max")"
+    fi
+  }
 
   setup() {
     mkdir -p "$OUTPUT_DIR" "$LOCK_DIR"
@@ -742,6 +797,7 @@ start-work *args:
         rm -f "$lockfile"
       fi
     done
+    recover_rate_limit_state
     log "Starting orchestration"
     log "Ready tickets:"
     {{ tk }} ready 2>/dev/null || true
@@ -1259,14 +1315,15 @@ start-work *args:
     launch_dir="$PROJECT_DIR/$repo/$wt"
     [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
 
-    # Collect inputs.
+    # Collect inputs. Truncate by bytes so the assembled prompt stays under ARG_MAX
+    # (claude CLI takes the prompt via -p argv; no stdin-prompt mode exists).
     local session_tail="" notes="" diff=""
     if [[ -n "$session_jsonl" && -f "$session_jsonl" ]]; then
-      session_tail=$(tail -n 200 "$session_jsonl")
+      session_tail=$(tail -c 50000 "$session_jsonl")
     fi
     notes=$(just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" notes "$ticket_id" 2>/dev/null || true)
     if [[ -d "$launch_dir/.git" || -f "$launch_dir/.git" ]]; then
-      diff=$(git -C "$launch_dir" diff "$base_branch...HEAD" 2>/dev/null || true)
+      diff=$(git -C "$launch_dir" diff "$base_branch...HEAD" 2>/dev/null | tail -c 30000)
     fi
 
     local prompt
@@ -1466,6 +1523,26 @@ start-work *args:
     duration=$((now - start_ts))
     session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
 
+    # Rate-limit check on agent's own output — handle deterministically before invoking investigator.
+    local outfile="$OUTPUT_DIR/output-$ticket_id.txt" rl_line rl_ts
+    if rl_line=$(grep -m1 "You've hit your limit" "$outfile" 2>/dev/null) && [[ -n "$rl_line" ]]; then
+      if rl_ts=$(parse_reset_time "$rl_line"); then
+        defer_for_rate_limit "$ticket_id" "$rl_ts" "$rl_line"
+        log "Rate-limited on $ticket_id; orchestrator will sleep until $(date -d @$rl_ts 2>/dev/null || echo "epoch:$rl_ts")"
+        return
+      else
+        escalate_ticket "$ticket_id" "Rate-limited but reset time unparseable: $rl_line"
+        return
+      fi
+    fi
+
+    # If a global rate-limit window is already active, defer this no-signal exit too —
+    # invoking the investigator would just hit the same wall.
+    if (( RATE_LIMIT_RESET_TS > now )); then
+      defer_for_rate_limit "$ticket_id" "$RATE_LIMIT_RESET_TS" "global rate-limit active"
+      return
+    fi
+
     # Count prior resumes BEFORE adding the new failure note so resume_n reflects "Nth resume".
     local resumes_so_far
     resumes_so_far=$(count_resumes "$ticket_id")
@@ -1485,6 +1562,17 @@ start-work *args:
     fi
 
     invoke_investigator "$ticket_id" "$session_uuid" "$exit_reason"
+
+    # If the investigator itself hit the rate-limit, defer instead of escalating.
+    local inv_out="$OUTPUT_DIR/output-$ticket_id.investigator.txt" inv_line inv_ts
+    if inv_line=$(grep -m1 "You've hit your limit" "$inv_out" 2>/dev/null) && [[ -n "$inv_line" ]]; then
+      if inv_ts=$(parse_reset_time "$inv_line"); then
+        defer_for_rate_limit "$ticket_id" "$inv_ts" "$inv_line"
+        log "Investigator rate-limited on $ticket_id; orchestrator will sleep until $(date -d @$inv_ts 2>/dev/null || echo "epoch:$inv_ts")"
+        return
+      fi
+      # Unparseable → fall through to normal dispatch; the original failure is still logged.
+    fi
 
     case "${SIGNAL:-}" in
       resume)
@@ -1603,6 +1691,33 @@ start-work *args:
   setup
 
   while true; do
+    # Rate-limit gate: drain in-flight, freeze launches, then sleep until reset.
+    if (( RATE_LIMIT_RESET_TS > $(date +%s) )); then
+      if (( ${#PID_TO_TICKET[@]} > 0 )); then
+        # Drain phase: keep reaping in-flight subagents but skip discover().
+        FINISHED_PID=""
+        wait -n -p FINISHED_PID "${!PID_TO_TICKET[@]}" 2>/dev/null
+        FINISHED_EXIT=$?
+        if [[ -n "${FINISHED_PID:-}" ]]; then
+          PID_TO_EXIT[$FINISHED_PID]=$FINISHED_EXIT
+          react "$FINISHED_PID"
+        fi
+        continue
+      else
+        sleep_for=$(( RATE_LIMIT_RESET_TS - $(date +%s) ))
+        if (( RATE_LIMIT_MAX_SLEEP > 0 && sleep_for > RATE_LIMIT_MAX_SLEEP )); then
+          sleep_for=$RATE_LIMIT_MAX_SLEEP
+        fi
+        log "Rate-limited; sleeping ${sleep_for}s until $(date -d @$RATE_LIMIT_RESET_TS 2>/dev/null || echo "epoch:$RATE_LIMIT_RESET_TS")"
+        printf '\a'
+        sleep "$sleep_for"
+        log "Rate limit cleared, resuming"
+        printf '\a'
+        RATE_LIMIT_RESET_TS=0
+        continue
+      fi
+    fi
+
     discover
 
     if (( ${#PID_TO_TICKET[@]} == 0 )); then

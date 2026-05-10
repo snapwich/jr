@@ -172,3 +172,34 @@ Feature: Orchestrator signal dispatch
     When I run the orchestrator
     Then the orchestrator should exit with code 2
     And ticket "task-impl" should have a note containing "Investigator timed out"
+
+  Scenario: Rate-limit detected within run — defers, then wakes, then resumes
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent emits a rate-limit line then exits 1 once for "task-impl" as "jr:coder"
+    And the mock subagent returns "requesting-review" for "task-impl" as "jr:coder" after rework
+    And the mock subagent always returns "approved" for "task-impl" as "jr:code-reviewer"
+    And the mock subagent always returns "approved" for "feat-1" as "jr:architect-reviewer"
+    When I run the orchestrator with rate-limit max sleep 2
+    Then ticket "task-impl" should have a note containing "Rate-limited; will resume after"
+    And ticket "task-impl" should not have a note containing "Escalated to human"
+    And ticket "task-impl" should not have a note containing "Investigator"
+    And the output should contain "Rate limit cleared, resuming"
+    And ticket "task-impl" should be closed
+
+  Scenario: Recover active rate-limit window on startup, then resume
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And ticket "task-impl" has a pre-seeded rate-limit note resuming in 3 seconds
+    And the mock subagent always returns "requesting-review" for "task-impl" as "jr:coder"
+    And the mock subagent always returns "approved" for "task-impl" as "jr:code-reviewer"
+    And the mock subagent always returns "approved" for "feat-1" as "jr:architect-reviewer"
+    When I run the orchestrator
+    Then the output should contain "Recovered active rate-limit window"
+    And the output should contain "Rate limit cleared, resuming"
+    And ticket "task-impl" should be closed
+
+  Scenario: Rate-limit with unparseable reset time escalates loudly
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent emits an unparseable rate-limit line for "task-impl" as "jr:coder"
+    When I run the orchestrator
+    Then ticket "task-impl" should have a note containing "Rate-limited but reset time unparseable"
+    And ticket "task-impl" should be assigned to "human"
