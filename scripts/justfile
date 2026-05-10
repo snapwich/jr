@@ -1398,6 +1398,7 @@ start-work *args:
             log "Feature $ticket_id approved — closed (no-human-review)"
           else
             {{ tk }} assign "$ticket_id" human
+            just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — $ticket_id ready for review${title:+: $title}" || log "Warning: ticket commit failed (non-fatal)"
             log "Feature $ticket_id approved by architect — assigned to human for review"
             printf '\a'
           fi
@@ -1607,7 +1608,6 @@ start-work *args:
     if (( ${#PID_TO_TICKET[@]} == 0 )); then
       # Check ready tickets for human review gate or launchable work
       ready_count=0; human_features=0; launchable=0
-      human_feature_names=()
       ready_count=$({{ tk }} ready 2>/dev/null | grep -c '^[a-z]') || true
 
       if (( ready_count > 0 )); then
@@ -1623,9 +1623,6 @@ start-work *args:
 
           if [[ "$rtype" == "feature" && "$rassignee" == "human" ]]; then
             human_features=$((human_features + 1))
-            rtitle=""
-            rtitle=$(echo "$rjson" | jq -r '.title // .id' 2>/dev/null || echo "$rid")
-            human_feature_names+=("$rid: $rtitle")
           elif [[ "$rassignee" == "jr:coder" || "$rassignee" == "jr:code-reviewer" || "$rassignee" == "jr:architect-reviewer" ]]; then
             launchable=$((launchable + 1))
           fi
@@ -1633,12 +1630,8 @@ start-work *args:
 
         if (( human_features > 0 && launchable == 0 )); then
           # Only human-assigned features remain — human review gate (exit 3 wins over 2)
+          # Per-feature commits already happened when each feature was assigned to human.
           log "All automated work complete — features awaiting human review"
-          commit_body=""
-          for fname in "${human_feature_names[@]}"; do
-            commit_body+=$'\n'"- $fname"
-          done
-          just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — features awaiting review${commit_body}" || log "Warning: ticket commit failed (non-fatal)"
           print_escalation_summary
           printf '\a'
           exit 3
@@ -2213,7 +2206,7 @@ approve feature-id="":
     exit 1
   fi
 
-  {{ tk }} close "$feature_id"
+  just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" close "$feature_id"
 
   # Derive worktree location for display
   repo=$(just --justfile "{{ justfile() }}" --working-directory "${JR_PROJECT_DIR:-.}" resolve-repo "$feature_id")
@@ -2919,9 +2912,11 @@ close ticket-id:
   #!/usr/bin/env bash
   set -euo pipefail
   {{ tk }} close "{{ ticket-id }}"
-  # Only purge session history when closing a feature (tasks may reopen)
+  # Only purge session history and commit checkpoint when closing a feature (tasks may reopen)
   ticket_type=$({{ tk }} query 'select(.id == "{{ ticket-id }}")' 2>/dev/null | jq -r '.type // empty')
   [[ "$ticket_type" == "feature" ]] || exit 0
+  title=$({{ tk }} show "{{ ticket-id }}" | grep -m1 '^# ' | sed 's/^# //' || true)
+  just --justfile "{{ justfile() }}" commit-tickets "chore: ticket checkpoint — closed {{ ticket-id }}${title:+: $title}" || echo "Warning: ticket commit failed (non-fatal)" >&2
   file="${JR_OUTPUT_DIR:-{{ justfile_directory() }}/.jr/tmp}/session-history.jsonl"
   [[ -f "$file" ]] || exit 0
   ids=("{{ ticket-id }}")
