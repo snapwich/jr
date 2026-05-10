@@ -660,7 +660,7 @@ remove-worktree name repo=".":
   git -C {{ repo }}/default branch -d {{ name }} || true
   rm -rf {{ repo }}/{{ name }}
 
-# Run the orchestration loop — discovers ready work, launches subagents, reacts to signals
+# Run the orchestration loop — [--no-human-review] to skip human review gate
 [group("human")]
 start-work *args:
   #!/usr/bin/env bash
