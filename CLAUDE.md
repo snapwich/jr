@@ -312,7 +312,7 @@ resort.
 
 - **Cross-repo features**: Supported — each repo gets its own worktree/branch; ticket metadata tracks the target repo
   via `repo:<name>` tag. Limited test coverage.
-- **Crashed subagents**: Treated as escalation (no valid signal). `JR_AGENT_TIMEOUT` (default: 30 min) prevents
+- **Crashed subagents**: Treated as escalation (no valid signal). `JR_AGENT_TIMEOUT` (default: 60 min) prevents
   indefinite runs.
 
 ## Development Guidelines

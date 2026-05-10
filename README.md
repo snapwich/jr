@@ -168,7 +168,7 @@ Environment variables for tuning the orchestrator:
 | Variable             | Default | Description                           |
 | -------------------- | ------- | ------------------------------------- |
 | `JR_MAX_CONCURRENT`  | 3       | Max concurrent subagents              |
-| `JR_AGENT_TIMEOUT`   | 1800    | Agent timeout in seconds (30 min)     |
+| `JR_AGENT_TIMEOUT`   | 3600    | Agent timeout in seconds (60 min)     |
 | `JR_NO_HUMAN_REVIEW` | 0       | Skip human review gate when set to 1  |
 | `JR_REVIEW_ROUNDS`   | 5       | Max review iterations before escalate |
 
