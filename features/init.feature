@@ -46,3 +46,15 @@ Feature: Project initialization
     When I run init on the target directory
     And I run init on the target directory
     Then the target ".jr/.gitignore" should have exactly 1 line matching "node_modules/"
+
+  Scenario: Init sets origin HEAD on default repo when unset
+    Given an empty target directory
+    And the target has a "default" repo with a remote but no origin HEAD
+    When I run init on the target directory
+    Then the target "default" repo should have origin HEAD set
+
+  Scenario: Init does not overwrite an existing origin HEAD setting
+    Given an empty target directory
+    And the target has a "default" repo with origin HEAD pointing at a non-default branch
+    When I run init on the target directory
+    Then the target "default" repo origin HEAD should still point at the non-default branch

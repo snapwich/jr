@@ -1,10 +1,13 @@
 import { Given, When, Then } from "@cucumber/cucumber";
 import assert from "assert";
-import { mkdtemp, readFile, writeFile, access, lstat, stat, readlink } from "fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, access, lstat, stat, readlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { constants } from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
+const execFileAsync = promisify(execFile);
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
 
 Given("an empty target directory", async function () {
@@ -85,3 +88,65 @@ Then(
     );
   },
 );
+
+Given("the target has a {string} repo with a remote but no origin HEAD", async function (repoName) {
+  const repoDir = join(this.initTargetDir, repoName);
+  const bareDir = join(this.initTargetDir, `${repoName}-bare`);
+  await mkdir(repoDir, { recursive: true });
+  await mkdir(bareDir, { recursive: true });
+  await execFileAsync("git", ["init", "--bare"], { cwd: bareDir });
+  await execFileAsync("git", ["init"], { cwd: repoDir });
+  await execFileAsync("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+  await execFileAsync("git", ["config", "user.name", "Test"], { cwd: repoDir });
+  await writeFile(join(repoDir, ".gitkeep"), "");
+  await execFileAsync("git", ["add", "."], { cwd: repoDir });
+  await execFileAsync("git", ["commit", "-m", "init"], { cwd: repoDir });
+  await execFileAsync("git", ["remote", "add", "origin", bareDir], { cwd: repoDir });
+  await execFileAsync("git", ["push", "-u", "origin", "HEAD"], { cwd: repoDir });
+  await execFileAsync("git", ["fetch", "origin"], { cwd: repoDir });
+  // Confirm origin/HEAD doesn't resolve before init runs.
+  const verify = await execFileAsync("git", ["rev-parse", "--verify", "origin/HEAD"], { cwd: repoDir }).catch((e) => ({
+    code: e.code,
+  }));
+  if (!verify.code) throw new Error("Test setup: origin/HEAD should not resolve before init");
+});
+
+Given("the target has a {string} repo with origin HEAD pointing at a non-default branch", async function (repoName) {
+  const repoDir = join(this.initTargetDir, repoName);
+  const bareDir = join(this.initTargetDir, `${repoName}-bare`);
+  await mkdir(repoDir, { recursive: true });
+  await mkdir(bareDir, { recursive: true });
+  await execFileAsync("git", ["init", "--bare"], { cwd: bareDir });
+  await execFileAsync("git", ["init", "-b", "main"], { cwd: repoDir });
+  await execFileAsync("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+  await execFileAsync("git", ["config", "user.name", "Test"], { cwd: repoDir });
+  await writeFile(join(repoDir, ".gitkeep"), "");
+  await execFileAsync("git", ["add", "."], { cwd: repoDir });
+  await execFileAsync("git", ["commit", "-m", "init"], { cwd: repoDir });
+  await execFileAsync("git", ["checkout", "-b", "develop"], { cwd: repoDir });
+  await execFileAsync("git", ["remote", "add", "origin", bareDir], { cwd: repoDir });
+  await execFileAsync("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
+  await execFileAsync("git", ["push", "-u", "origin", "develop"], { cwd: repoDir });
+  await execFileAsync("git", ["fetch", "origin"], { cwd: repoDir });
+  // Manually point origin HEAD at develop (non-default — bare repo defaults to main).
+  await execFileAsync("git", ["remote", "set-head", "origin", "develop"], { cwd: repoDir });
+});
+
+Then("the target {string} repo should have origin HEAD set", async function (repoName) {
+  const repoDir = join(this.initTargetDir, repoName);
+  const result = await execFileAsync("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], { cwd: repoDir });
+  assert.ok(
+    result.stdout.trim().startsWith("refs/remotes/origin/"),
+    `Expected origin HEAD to resolve, got: ${result.stdout}`,
+  );
+});
+
+Then("the target {string} repo origin HEAD should still point at the non-default branch", async function (repoName) {
+  const repoDir = join(this.initTargetDir, repoName);
+  const result = await execFileAsync("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], { cwd: repoDir });
+  assert.strictEqual(
+    result.stdout.trim(),
+    "refs/remotes/origin/develop",
+    `Expected origin HEAD unchanged at develop, got: ${result.stdout}`,
+  );
+});

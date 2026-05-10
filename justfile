@@ -103,6 +103,25 @@ init dir mode="":
   jr_dir="$(dirname "{{ justfile() }}")"
   cp "$jr_dir/templates/project-context-${mode}.md" "$dir/.claude/rules/jr/structure.md"
 
+  # Ensure origin/HEAD is set on each default/ repo so create-worktree can use it as
+  # the default base. Only runs when origin/HEAD is missing — never overwrites an
+  # intentional setting.
+  default_dirs=()
+  if [[ "$mode" == "multi" ]]; then
+    for d in "$dir"/*/default; do
+      [[ -d "$d" ]] && default_dirs+=("$d")
+    done
+  elif [[ -d "$dir/default" ]]; then
+    default_dirs=("$dir/default")
+  fi
+  for default_dir in ${default_dirs[@]+"${default_dirs[@]}"}; do
+    [[ -d "$default_dir/.git" ]] || continue
+    git -C "$default_dir" remote get-url origin >/dev/null 2>&1 || continue
+    if ! git -C "$default_dir" rev-parse --verify origin/HEAD >/dev/null 2>&1; then
+      git -C "$default_dir" remote set-head origin -a >/dev/null 2>&1 || true
+    fi
+  done
+
   # Install dependencies
   (cd "$dir/.jr" && pnpm install)
 

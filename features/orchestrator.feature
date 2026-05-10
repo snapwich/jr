@@ -114,6 +114,15 @@ Feature: Orchestrator signal dispatch
     And the output should contain "ESCALATE"
     And the output should contain "Escalated this run"
 
+  Scenario: Worktree creation failure escalates instead of running agent in project root
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And feature "feat-1" has tag "base:does-not-exist"
+    When I run the orchestrator
+    Then the orchestrator should exit with code 2
+    And the output should contain "ESCALATE"
+    And ticket "task-impl" should have a note containing "worktree"
+    And the mock subagent should not have been launched for "task-impl" as "jr:coder"
+
   # --- Investigator (no-signal) flow ---
 
   Scenario: No-signal exit — investigator says resume, coder finishes on retry

@@ -588,10 +588,35 @@ create-worktree name repo="." base="origin/HEAD":
   PROJECT_DIR="{{ justfile_directory() }}"
   WORKTREE_DIR="{{ repo }}/{{ name }}"
   REPO="{{ repo }}"
+  DEFAULT_DIR="{{ repo }}/default"
+  base="{{ base }}"
 
   # Fetch latest and create worktree from the specified base
-  git -C "{{ repo }}/default" fetch origin 2>/dev/null || true
-  git -C "{{ repo }}/default" worktree add --no-track -b "{{ name }}" "../{{ name }}" "{{ base }}" 2>/dev/null || true
+  git -C "$DEFAULT_DIR" fetch origin 2>/dev/null || true
+
+  # Resolve base ref — auto-set origin/HEAD or fall back if missing
+  if ! git -C "$DEFAULT_DIR" rev-parse --verify "$base" >/dev/null 2>&1; then
+    if [[ "$base" == "origin/HEAD" ]]; then
+      git -C "$DEFAULT_DIR" remote set-head origin -a >/dev/null 2>&1 || true
+      if ! git -C "$DEFAULT_DIR" rev-parse --verify "$base" >/dev/null 2>&1; then
+        for fallback in origin/main origin/master HEAD; do
+          if git -C "$DEFAULT_DIR" rev-parse --verify "$fallback" >/dev/null 2>&1; then
+            base="$fallback"
+            break
+          fi
+        done
+      fi
+    fi
+    if ! git -C "$DEFAULT_DIR" rev-parse --verify "$base" >/dev/null 2>&1; then
+      echo "ERROR: base ref '$base' could not be resolved in $DEFAULT_DIR" >&2
+      exit 1
+    fi
+  fi
+
+  if ! git -C "$DEFAULT_DIR" worktree add --no-track -b "{{ name }}" "../{{ name }}" "$base"; then
+    echo "ERROR: git worktree add failed for {{ name }}" >&2
+    exit 1
+  fi
 
   if [[ -d ".claude" && -d "$WORKTREE_DIR" ]]; then
     # Stow jr agents + commands into worktree (symlinks auto-update when jr is updated)
@@ -835,7 +860,8 @@ start-work *args:
     local name="$1" repo="${2:-.}" base="${3:-origin/HEAD}"
     local git_dir="$PROJECT_DIR/$repo/default/.git"
     local worktree_dir="$PROJECT_DIR/$repo/$name"
-    git -C "$PROJECT_DIR/$repo/default" fetch origin >/dev/null 2>&1 || true
+    local default_dir="$PROJECT_DIR/$repo/default"
+    git -C "$default_dir" fetch origin >/dev/null 2>&1 || true
     if [[ -d "$worktree_dir" ]]; then
       # Worktree already exists — still sync .claude/ but return 1
       if [[ -d "$PROJECT_DIR/.claude" ]]; then
@@ -851,7 +877,30 @@ start-work *args:
       fi
       return 1
     fi
-    git -C "$PROJECT_DIR/$repo/default" worktree add --no-track -b "$name" "../$name" "$base" >/dev/null 2>&1 || return 1
+    # Resolve base ref — auto-set origin/HEAD or fall back if missing
+    if ! git -C "$default_dir" rev-parse --verify "$base" >/dev/null 2>&1; then
+      if [[ "$base" == "origin/HEAD" ]]; then
+        git -C "$default_dir" remote set-head origin -a >/dev/null 2>&1 || true
+        if ! git -C "$default_dir" rev-parse --verify "$base" >/dev/null 2>&1; then
+          local fallback
+          for fallback in origin/main origin/master HEAD; do
+            if git -C "$default_dir" rev-parse --verify "$fallback" >/dev/null 2>&1; then
+              base="$fallback"
+              break
+            fi
+          done
+        fi
+      fi
+      if ! git -C "$default_dir" rev-parse --verify "$base" >/dev/null 2>&1; then
+        log "ERROR: base ref '$base' could not be resolved in $repo/default"
+        return 1
+      fi
+    fi
+    local add_err
+    if ! add_err=$(git -C "$default_dir" worktree add --no-track -b "$name" "../$name" "$base" 2>&1); then
+      log "ERROR: git worktree add failed: $add_err"
+      return 1
+    fi
     if [[ -d "$PROJECT_DIR/.claude" && -d "$worktree_dir" ]]; then
       # Stow jr agents + commands (symlinks auto-update when jr is updated)
       mkdir -p "$worktree_dir/.claude/agents" "$worktree_dir/.claude/commands"
@@ -1101,12 +1150,15 @@ start-work *args:
     # Create worktree if needed, resolving base branch for stacked features
     base_branch=$(resolve_base_branch "$feature_id")
     local wt_created=false
-    if create_worktree "$wt" "$repo" "$base_branch" 2>/dev/null; then
+    if create_worktree "$wt" "$repo" "$base_branch"; then
       wt_created=true
       log "Created worktree $repo/$wt (base: $base_branch)"
     fi
     local launch_dir="$PROJECT_DIR/$repo/$wt"
-    [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
+    if [[ ! -d "$launch_dir" ]]; then
+      escalate_ticket "$ticket_id" "worktree $repo/$wt missing — create_worktree failed (check base ref '$base_branch' and 'git -C $repo/default remote set-head origin -a')"
+      return 1
+    fi
 
     # Add assignment note before launching coder
     if [[ "$agent" == "jr:coder" ]]; then

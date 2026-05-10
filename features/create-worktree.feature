@@ -27,3 +27,19 @@ Feature: Worktree creation deploys .claude/ structure
     And I create worktree "test-wt"
     Then worktree "test-wt" should have symlink ".claude/agents/jr"
     And worktree "test-wt" should have symlink ".claude/commands/jr"
+
+  Scenario: Create-worktree auto-resolves when origin HEAD is unset
+    Given the project has a remote without an origin HEAD
+    When I create worktree "test-wt" with default base
+    Then worktree "test-wt" should be registered as a git worktree
+    And the project's origin HEAD should now be set
+
+  Scenario: Create-worktree falls back to local HEAD when no origin
+    Given the project has no origin remote
+    When I create worktree "test-wt" with default base
+    Then worktree "test-wt" should be registered as a git worktree
+
+  Scenario: Create-worktree fails clearly when explicit base ref doesn't exist
+    When I create worktree "test-wt" with base "does-not-exist"
+    Then create-worktree should have failed
+    And the create-worktree error should mention "could not be resolved"

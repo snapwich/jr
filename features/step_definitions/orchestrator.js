@@ -104,6 +104,31 @@ Given("ticket {string} depends on nonexistent {string}", async function (name, d
   await this.addDep(depId, id);
 });
 
+// Add a tag to an existing ticket by editing its frontmatter directly.
+// `tk` doesn't expose a tag-edit command, so we patch the markdown file.
+Given("feature {string} has tag {string}", async function (name, tag) {
+  const { readFile, writeFile } = await import("fs/promises");
+  const { join } = await import("path");
+  const id = this.ticketIds[name];
+  const filePath = join(this.projectDir, ".jr", ".tickets", `${id}.md`);
+  const content = await readFile(filePath, "utf8");
+  let updated;
+  if (/^tags:\s*\[/m.test(content)) {
+    updated = content.replace(/^tags:\s*\[(.*)\]/m, (_m, inner) => {
+      const items = inner
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      items.push(tag);
+      return `tags: [${items.join(", ")}]`;
+    });
+  } else {
+    // Insert tags line just before the closing `---`
+    updated = content.replace(/^---\n([\s\S]*?)\n---/, (_m, body) => `---\n${body}\ntags: [${tag}]\n---`);
+  }
+  await writeFile(filePath, updated);
+});
+
 // --- Mock responses ---
 
 Given("the mock subagent always returns {string} for {string} as {string}", async function (signal, name, agent) {
@@ -241,5 +266,35 @@ Then("ticket {string} should have a note containing {string}", async function (n
   assert.ok(
     result.stdout.includes(text),
     `Expected ticket ${name} (${id}) to have a note containing "${text}".\nTicket:\n${result.stdout}`,
+  );
+});
+
+// Mock subagent writes a session-history record for every launch — verify the queue file
+// for this ticket+agent was NOT consumed (i.e., the agent never ran).
+Then("the mock subagent should not have been launched for {string} as {string}", async function (name, agent) {
+  const { join } = await import("path");
+  const sessionsFile = join(this.outputDir, "session-history.jsonl");
+  const { readFile } = await import("fs/promises");
+  let content = "";
+  try {
+    content = await readFile(sessionsFile, "utf8");
+  } catch {
+    return; // file doesn't exist → no launches at all → assertion holds
+  }
+  const id = this.ticketIds[name];
+  const launched = content
+    .split("\n")
+    .filter(Boolean)
+    .some((line) => {
+      try {
+        const rec = JSON.parse(line);
+        return rec.ticket === id && rec.agent === agent;
+      } catch {
+        return false;
+      }
+    });
+  assert.ok(
+    !launched,
+    `Expected no launch for ${name} (${id}) as ${agent}, but session-history shows one.\n${content}`,
   );
 });
