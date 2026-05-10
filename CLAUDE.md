@@ -130,16 +130,18 @@ worktrees. The orchestrator enforces one agent per worktree at a time.
 
 ### Agent model
 
-Three Claude subagents plus a bash orchestrator:
+Four Claude subagents plus a bash orchestrator:
 
 - **Coder** (`jr:coder`, sonnet, full tools, orange) — implements tasks, runs tests, commits
 - **Code-Reviewer** (`jr:code-reviewer`, opus, read-only, cyan) — reviews code + test quality, approves or requests
   changes
 - **Architect-Reviewer** (`jr:architect-reviewer`, opus, ticket write access, magenta) — reviews full feature branch for
   cross-task coherence, integration quality. Can reopen tasks or create new ones.
+- **Investigator** (`jr:investigator`, haiku, read-only, yellow) — triages no-signal exits (timeout/crash). Synchronous,
+  ≤5 turns. Returns `resume` (with optional steering nudge) or `escalate`.
 - **Orchestrator** (`just start-work`, bash) — coordinates the workflow, launches subagents, reacts to their signals.
-  Deterministic signal dispatch — no LLM. Exits 0 on completion, 2 on escalation/deadlock, 3 on features awaiting human
-  review
+  Deterministic signal dispatch — no LLM. Exits 0 on completion, 2 on per-ticket escalations/deadlock, 3 on features
+  awaiting human review (3 wins over 2).
 
 ### Ticket hierarchy
 
@@ -209,12 +211,13 @@ just signal <type> <ticket-id> "<summary>"
 
 The agent identity is read from the `JR_AGENT` env var (set by the orchestrator at launch).
 
-| Signal              | Agent                             | Meaning                                       |
-| ------------------- | --------------------------------- | --------------------------------------------- |
-| `requesting-review` | coder                             | Implementation done, tests pass, ready for CR |
-| `approved`          | code-reviewer, architect-reviewer | Code/feature looks good                       |
-| `changes-requested` | code-reviewer, architect-reviewer | Issues found, coder should address feedback   |
-| `escalate`          | any                               | Blocker that needs human attention            |
+| Signal              | Agent                             | Meaning                                                   |
+| ------------------- | --------------------------------- | --------------------------------------------------------- |
+| `requesting-review` | coder                             | Implementation done, tests pass, ready for CR             |
+| `approved`          | code-reviewer, architect-reviewer | Code/feature looks good                                   |
+| `changes-requested` | code-reviewer, architect-reviewer | Issues found, coder should address feedback               |
+| `escalate`          | any                               | Blocker that needs human attention                        |
+| `resume`            | investigator                      | Original agent should be resumed (optional steering note) |
 
 ### Note conventions
 
@@ -237,12 +240,32 @@ downstream branches onto the temp branch after each squash merge. Rolls back on 
 rebased branches). Cleans up worktrees and branches on success. Groups features by `(repo, base)` — features targeting
 different base branches get separate merge tracks. Multi-repo aware via `repo:<name>` tags. Does not push.
 
+### No-signal exits and the investigator
+
+When a subagent exits without a valid signal — timeout (124/137) or crash (other non-zero) — the orchestrator
+synchronously runs `jr:investigator` (Haiku, read-only triage role). The investigator gets the failed agent's session
+JSONL tail, ticket notes, and the worktree diff. It returns `resume "<optional nudge>"` (re-launch the original agent,
+optionally with a steering note) or `escalate "<diagnosis>"` (reassign the ticket to human). `JR_RESUME_BUDGET`
+(default: 3) caps resumes per ticket per run; once exhausted, no-signal exits escalate without invoking the
+investigator. The investigator itself has a 600s timeout — if it doesn't return, the ticket escalates with
+`Investigator timed out`.
+
+### Per-ticket escalation
+
+All escalations (agent `escalate` signal, review-round caps, investigator escalates, budget exhaustion) are
+**per-ticket**: the ticket is reassigned to `human`, an `[orchestrator] Escalated to human: ...` note is added, and the
+run continues with other launchable work. The terminal bell rings on each escalation. End-of-run prints the list of
+escalated tickets and points the user at `just me`. Exit code: `2` if the run finished with any escalations and no
+human-review-gate; `3` if the human-review-gate hit (3 wins over 2); `0` otherwise.
+
 ### Concurrency
 
 The orchestrator enforces a configurable max concurrent subagents limit (default: 3, via `$JR_MAX_CONCURRENT`).
 Per-feature base branches are configured via `base:<branch>` tags (e.g., `base:origin/develop`, `base:release/1.0`). No
-tag defaults to `origin/HEAD`. `$JR_REVIEW_ROUNDS` sets the max review iterations before escalation (default: 5). One
-agent per worktree at a time. See [docs/workflow.md](docs/workflow.md) for visual diagrams of the orchestrator flow.
+tag defaults to `origin/HEAD`. `$JR_REVIEW_ROUNDS` sets the max review iterations before escalation (default: 5).
+`$JR_RESUME_BUDGET` (default: 3) caps no-signal resumes per ticket per run. One agent per worktree at a time.
+Escalations no longer halt the run — sibling tickets keep going. See [docs/workflow.md](docs/workflow.md) for visual
+diagrams of the orchestrator flow.
 
 ## Directory Structure
 
@@ -250,9 +273,10 @@ agent per worktree at a time. See [docs/workflow.md](docs/workflow.md) for visua
 justfile                              # main entry point — `just init <dir>`
 claude/.claude/
   agents/jr/
-    coder.md                          # coder agent (opus, full tools, orange)
+    coder.md                          # coder agent (sonnet, full tools, orange)
     code-reviewer.md                  # code reviewer agent (opus, read-only, cyan)
     architect-reviewer.md             # architect reviewer agent (opus, ticket write access, magenta)
+    investigator.md                   # no-signal triage agent (haiku, read-only, yellow)
   commands/jr/
     plan-features.md                  # slash command: create/modify features and tasks
     retro.md                          # slash command: post-mortem analysis of a feature
@@ -312,8 +336,8 @@ resort.
 
 - **Cross-repo features**: Supported — each repo gets its own worktree/branch; ticket metadata tracks the target repo
   via `repo:<name>` tag. Limited test coverage.
-- **Crashed subagents**: Treated as escalation (no valid signal). `JR_AGENT_TIMEOUT` (default: 60 min) prevents
-  indefinite runs.
+- **Crashed/timed-out subagents**: Triaged by `jr:investigator` (see "No-signal exits and the investigator").
+  `JR_AGENT_TIMEOUT` (default: 60 min) prevents indefinite runs; `JR_RESUME_BUDGET` (default: 3) caps resumes.
 
 ## Development Guidelines
 

@@ -165,12 +165,13 @@ just rebase-feature <id>     # Rebase a stacked feature after upstream merges
 
 Environment variables for tuning the orchestrator:
 
-| Variable             | Default | Description                           |
-| -------------------- | ------- | ------------------------------------- |
-| `JR_MAX_CONCURRENT`  | 3       | Max concurrent subagents              |
-| `JR_AGENT_TIMEOUT`   | 3600    | Agent timeout in seconds (60 min)     |
-| `JR_NO_HUMAN_REVIEW` | 0       | Skip human review gate when set to 1  |
-| `JR_REVIEW_ROUNDS`   | 5       | Max review iterations before escalate |
+| Variable             | Default | Description                                        |
+| -------------------- | ------- | -------------------------------------------------- |
+| `JR_MAX_CONCURRENT`  | 3       | Max concurrent subagents                           |
+| `JR_AGENT_TIMEOUT`   | 3600    | Agent timeout in seconds (60 min)                  |
+| `JR_NO_HUMAN_REVIEW` | 0       | Skip human review gate when set to 1               |
+| `JR_REVIEW_ROUNDS`   | 5       | Max review iterations before escalate              |
+| `JR_RESUME_BUDGET`   | 3       | Max investigator-driven resumes per ticket per run |
 
 Per-feature base branches are configured via `base:<branch>` tags on feature tickets (e.g., `base:origin/develop`,
 `base:release/1.0`). No tag defaults to `origin/HEAD`.

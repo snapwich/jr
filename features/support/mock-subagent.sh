@@ -58,6 +58,7 @@ write_signal_note() {
     changes-requested) prefix="CHANGES REQUESTED" ;;
     rebase-complete) prefix="Rebase complete" ;;
     escalate) prefix="Escalating" ;;
+    resume) prefix="Resuming" ;;
     *) return 0 ;;
   esac
 
@@ -80,6 +81,7 @@ write_forced_signal_note() {
     changes-requested) prefix="CHANGES REQUESTED" ;;
     rebase-complete) prefix="Rebase complete" ;;
     escalate) prefix="Escalating" ;;
+    resume) prefix="Resuming" ;;
     *) return 0 ;;
   esac
 
@@ -96,12 +98,20 @@ for f in "$MOCK_RESPONSES_DIR/$ticket_id.$agent".[0-9]*.txt; do
   fi
 done
 
+# Read optional `exit:` field — defaults to 0. Lets tests force a crash exit code.
+# Always succeeds (set -e safe): grep -oP returns 1 with no match, suppressed via || true.
+read_exit_code() {
+  local f="$1"
+  { grep -oP '^exit:\s*\K\d+' "$f" 2>/dev/null || true; } | head -1
+}
+
 if [[ -n "$found" ]]; then
   cat "$found"
   write_signal_note "$found"
   write_forced_signal_note
+  ec=$(read_exit_code "$found")
   rm "$found"
-  exit 0
+  exit "${ec:-0}"
 fi
 
 # Fall back to unnumbered file (repeatable mode): <ticket-id>.<agent>.txt
@@ -110,7 +120,8 @@ if [[ -f "$fallback" ]]; then
   cat "$fallback"
   write_signal_note "$fallback"
   write_forced_signal_note
-  exit 0
+  ec=$(read_exit_code "$fallback")
+  exit "${ec:-0}"
 fi
 
 echo "mock-subagent: no response file for ticket=$ticket_id agent=$agent" >&2

@@ -64,15 +64,19 @@ Feature: Orchestrator signal dispatch
     Then the orchestrator should exit with code 2
     And the output should contain "DEADLOCK"
 
-  Scenario: Drain does not launch new agents after escalation
+  Scenario: One ticket escalates, others continue and the run exits 2 with a summary
     Given a feature "feat-a" with a linear task chain: "task-a1"
     And a feature "feat-b" with a linear task chain: "task-b1"
     And the mock subagent always returns "escalate" for "task-a1" as "jr:coder"
     And the mock subagent always returns "requesting-review" for "task-b1" as "jr:coder"
+    And the mock subagent always returns "approved" for "task-b1" as "jr:code-reviewer"
+    And the mock subagent always returns "approved" for "feat-b" as "jr:architect-reviewer"
     When I run the orchestrator
-    Then the orchestrator should exit with code 2
-    And the output should contain "ESCALATE"
-    And the output should contain "Drain: skipping dispatch"
+    Then the orchestrator should exit with code 3
+    And the output should contain "ESCALATE: "
+    And the output should contain "Escalated this run"
+    And ticket "task-b1" should be closed
+    And the output should contain "Run `just me` to review."
 
   Scenario: No-human-review closes feature after architect approval
     Given a feature "feat-1" with a linear task chain: "task-impl"
@@ -106,5 +110,56 @@ Feature: Orchestrator signal dispatch
     And ticket "feat-1" has 5 architect notes
     And the mock subagent always returns "changes-requested" for "feat-1" as "jr:architect-reviewer"
     When I run the orchestrator
-    Then the orchestrator should exit with code 2
+    Then the orchestrator should exit with code 3
     And the output should contain "ESCALATE"
+    And the output should contain "Escalated this run"
+
+  # --- Investigator (no-signal) flow ---
+
+  Scenario: No-signal exit — investigator says resume, coder finishes on retry
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent for "task-impl" as "jr:coder" produces no signal once
+    And the mock subagent returns "approved" for "task-impl" as "jr:coder" after rework
+    And the mock subagent always returns "resume" for "task-impl" as "jr:investigator"
+    When I run the orchestrator
+    Then ticket "task-impl" should have a note containing "[orchestrator] Resuming (resume 1 of"
+    And ticket "task-impl" should have a note containing "[orchestrator] Agent crashed (exit 0)"
+
+  Scenario: No-signal exit — investigator escalates, run continues with other tickets
+    Given a feature "feat-a" with a linear task chain: "task-a1"
+    And a feature "feat-b" with a linear task chain: "task-b1"
+    And the mock subagent for "task-a1" as "jr:coder" produces no signal
+    And the mock subagent always returns "escalate" for "task-a1" as "jr:investigator"
+    And the mock subagent always returns "requesting-review" for "task-b1" as "jr:coder"
+    And the mock subagent always returns "approved" for "task-b1" as "jr:code-reviewer"
+    And the mock subagent always returns "approved" for "feat-b" as "jr:architect-reviewer"
+    When I run the orchestrator
+    Then the orchestrator should exit with code 3
+    And ticket "task-b1" should be closed
+    And ticket "task-a1" should have a note containing "Investigator escalated"
+    And the output should contain "Escalated this run"
+
+  Scenario: Crash (non-zero exit) is diagnosed and routed to investigator
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent for "task-impl" as "jr:coder" crashes with exit 1
+    And the mock subagent always returns "escalate" for "task-impl" as "jr:investigator"
+    When I run the orchestrator
+    Then the orchestrator should exit with code 2
+    And ticket "task-impl" should have a note containing "Agent crashed (exit 1)"
+    And ticket "task-impl" should have a note containing "Investigator escalated"
+
+  Scenario: Resume budget exhausted after repeated failures
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent for "task-impl" as "jr:coder" produces no signal
+    And the mock subagent always returns "resume" for "task-impl" as "jr:investigator"
+    When I run the orchestrator with resume budget 2
+    Then the orchestrator should exit with code 2
+    And ticket "task-impl" should have a note containing "Resume budget exhausted"
+
+  Scenario: Investigator's own timeout escalates the ticket
+    Given a feature "feat-1" with a linear task chain: "task-impl"
+    And the mock subagent for "task-impl" as "jr:coder" produces no signal
+    And the mock subagent for "task-impl" as "jr:investigator" crashes with exit 124
+    When I run the orchestrator
+    Then the orchestrator should exit with code 2
+    And ticket "task-impl" should have a note containing "Investigator timed out"

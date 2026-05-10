@@ -669,6 +669,7 @@ start-work *args:
   # --- Configuration ---
   MAX_CONCURRENT="${JR_MAX_CONCURRENT:-3}"
   REVIEW_ROUNDS="${JR_REVIEW_ROUNDS:-5}"
+  RESUME_BUDGET="${JR_RESUME_BUDGET:-3}"
   NO_HUMAN_REVIEW="${JR_NO_HUMAN_REVIEW:-0}"
   for arg in {{ args }}; do
     case "$arg" in
@@ -692,10 +693,11 @@ start-work *args:
   declare -A PID_TO_START_TS   # pid → epoch seconds when launched
   declare -A PID_TO_TITLE      # pid → ticket title
   declare -A PID_TO_TYPE       # pid → ticket type (task or feature)
+  declare -A PID_TO_EXIT       # pid → exit code captured from `wait -n -p`
   declare -A BUSY_WORKTREES    # worktree-name → pid
   declare -A LOGGED_FEATURES   # feature-id → 1 (already logged as ready for human review)
   declare -A LAUNCHED_THIS_RUN # ticket-id → 1 (launched this orchestrator run)
-  ESCALATION=""                # non-empty = stop launching, drain, exit
+  declare -A ESCALATED_TICKETS # ticket-id → escalation reason (for end-of-run summary)
 
   # --- Functions ---
 
@@ -902,6 +904,31 @@ start-work *args:
     fi
   }
 
+  # Reassign a ticket to human, leave a note explaining why, record for end-of-run summary, ring the bell.
+  escalate_ticket() {
+    local ticket_id="$1" reason="$2"
+    {{ tk }} assign "$ticket_id" "human"
+    {{ tk }} add-note "$ticket_id" "[orchestrator] Escalated to human: $reason"
+    ESCALATED_TICKETS[$ticket_id]="$reason"
+    log "ESCALATE: $ticket_id — $reason"
+    printf '\a'
+  }
+
+  # Count investigator-driven resumes since the last `[orchestrator] Run started`.
+  # Each resume is preceded by an `Agent timed out` or `Agent crashed` note.
+  count_resumes() {
+    local ticket_id="$1"
+    local notes
+    notes=$({{ tk }} show "$ticket_id")
+    local last_run
+    last_run=$(echo "$notes" | grep -n "\[orchestrator\] Run started" | tail -1 | cut -d: -f1)
+    if [[ -n "$last_run" ]]; then
+      echo "$notes" | tail -n +"$last_run" | grep -cE "\[orchestrator\] Agent (timed out|crashed)" || true
+    else
+      echo "$notes" | grep -cE "\[orchestrator\] Agent (timed out|crashed)" || true
+    fi
+  }
+
   make_prompt() {
     local ticket_id="$1" repo="$2" parent="${3:-}"
     local template="$PROJECT_DIR/.claude/prompts/jr/subagent-task.md"
@@ -1002,6 +1029,11 @@ start-work *args:
     ticket_json=$({{ tk }} query "select(.id == \"$ticket_id\")")
     local agent parent title
     agent=$(echo "$ticket_json" | jq -r '.assignee')
+
+    # Tasks reassigned to human (after escalation) are silently skipped.
+    if [[ "$ticket_type" != "feature" && "$agent" == "human" ]]; then
+      return 1
+    fi
 
     # Feature handling: launch if architect-assigned, skip if human or unassigned
     if [[ "$ticket_type" == "feature" ]]; then
@@ -1147,6 +1179,82 @@ start-work *args:
     return 0
   }
 
+  # Synchronously invoke jr:investigator to triage a no-signal exit (timeout or crash).
+  # Sets SIGNAL/SIGNAL_SUMMARY (via parse_signal) — caller dispatches.
+  # On investigator's own timeout (124/137), sets SIGNAL="investigator-timeout".
+  invoke_investigator() {
+    local ticket_id="$1" session_uuid="$2" exit_reason="$3"
+
+    # Locate the failed agent's session JSONL by UUID across all encoded-cwd dirs.
+    local session_jsonl=""
+    if [[ -n "$session_uuid" ]]; then
+      session_jsonl=$(find "$HOME/.claude/projects" -name "$session_uuid.jsonl" -type f 2>/dev/null | head -1)
+    fi
+
+    # Derive worktree dir + base branch the same way launch() does.
+    local ticket_json parent feature_id repo wt feature_json_for_repo base_branch launch_dir
+    ticket_json=$({{ tk }} query "select(.id == \"$ticket_id\")")
+    parent=$(echo "$ticket_json" | jq -r '.parent // empty')
+    feature_id="${parent:-$ticket_id}"
+    if [[ "$feature_id" != "$ticket_id" ]]; then
+      feature_json_for_repo=$({{ tk }} query "select(.id == \"$feature_id\")")
+    else
+      feature_json_for_repo="$ticket_json"
+    fi
+    repo=$(echo "$feature_json_for_repo" | jq -r '(.tags // [] | map(select(startswith("repo:"))) | first // ".") | ltrimstr("repo:")')
+    wt=$(worktree_name "$ticket_id")
+    base_branch=$(resolve_base_branch "$feature_id")
+    launch_dir="$PROJECT_DIR/$repo/$wt"
+    [[ -d "$launch_dir" ]] || launch_dir="$PROJECT_DIR"
+
+    # Collect inputs.
+    local session_tail="" notes="" diff=""
+    if [[ -n "$session_jsonl" && -f "$session_jsonl" ]]; then
+      session_tail=$(tail -n 200 "$session_jsonl")
+    fi
+    notes=$(just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" notes "$ticket_id" 2>/dev/null || true)
+    if [[ -d "$launch_dir/.git" || -f "$launch_dir/.git" ]]; then
+      diff=$(git -C "$launch_dir" diff "$base_branch...HEAD" 2>/dev/null || true)
+    fi
+
+    local prompt
+    prompt="A subagent on ticket \`$ticket_id\` exited without signaling completion."$'\n\n'
+    prompt+="**Exit reason:** $exit_reason"$'\n\n'
+    prompt+="Triage and decide. End your turn with \`just signal resume $ticket_id \"<optional nudge>\"\` or \`just signal escalate $ticket_id \"<diagnosis>\"\`."$'\n\n'
+    prompt+="## Ticket notes"$'\n\n'"$notes"$'\n\n'
+    prompt+="## Worktree diff (vs $base_branch)"$'\n\n'
+    prompt+='```diff'$'\n'"$diff"$'\n''```'$'\n\n'
+    prompt+="## Last 200 lines of agent session JSONL"$'\n\n'
+    prompt+='```'$'\n'"$session_tail"$'\n''```'$'\n'
+
+    local outfile="$OUTPUT_DIR/output-$ticket_id.investigator.txt"
+    local agent_file="$PROJECT_DIR/.claude/agents/jr/investigator.md"
+    local model
+    model=$(sed -n '/^---$/,/^---$/{ s/^model: *//p }' "$agent_file" 2>/dev/null)
+
+    log "Investigating $ticket_id (session: ${session_uuid:-unknown})"
+    (
+      cd "$launch_dir"
+      export JR_AGENT="jr:investigator"
+      export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
+      timeout 600 $CLAUDE --agent jr:investigator ${model:+--model "$model"} --dangerously-skip-permissions \
+        -p "$prompt" < /dev/null > "$outfile" 2>&1
+    )
+    local rc=$?
+
+    SIGNAL=""
+    SIGNAL_TICKET="$ticket_id"
+    SIGNAL_SUMMARY=""
+
+    if (( rc == 124 || rc == 137 )); then
+      {{ tk }} add-note "$ticket_id" "[orchestrator] Investigator timed out, escalating."
+      SIGNAL="investigator-timeout"
+      return 0
+    fi
+
+    parse_signal "$ticket_id" "jr:investigator"
+  }
+
   parse_signal() {
     local ticket_id="$1" agent_name="${2:-}"
 
@@ -1188,6 +1296,8 @@ start-work *args:
           SIGNAL="rebase-complete"
         elif echo "$signal_line" | grep -q 'Escalating'; then
           SIGNAL="escalate"
+        elif echo "$signal_line" | grep -q 'Resuming'; then
+          SIGNAL="resume"
         fi
         # Extract summary: text after "PREFIX. "
         SIGNAL_SUMMARY=$(echo "$signal_line" | sed 's/.*\] [^.]*\. //')
@@ -1208,15 +1318,17 @@ start-work *args:
       return
     fi
 
-    # Clean up tracking state (save start_ts before unset for timeout detection)
+    # Clean up tracking state (save start_ts/exit_code before unset for diagnosis)
     local start_ts="${PID_TO_START_TS[$finished_pid]:-0}"
     local title="${PID_TO_TITLE[$finished_pid]:-}"
+    local exit_code="${PID_TO_EXIT[$finished_pid]:-0}"
     unset PID_TO_TICKET[$finished_pid]
     unset PID_TO_AGENT[$finished_pid]
     unset PID_TO_WORKTREE[$finished_pid]
     unset PID_TO_START_TS[$finished_pid]
     unset PID_TO_TITLE[$finished_pid]
     unset PID_TO_TYPE[$finished_pid]
+    unset PID_TO_EXIT[$finished_pid]
     unset BUSY_WORKTREES[$wt]
     release_lock "$wt"
 
@@ -1224,12 +1336,6 @@ start-work *args:
     parse_signal "$ticket_id" "$finished_agent"
 
     log "Finished $ticket_id \"$title\" — signal: ${SIGNAL:-NONE}"
-
-    # Drain mode: skip dispatch if escalation already triggered
-    if [[ -n "$ESCALATION" ]]; then
-      log "Drain: skipping dispatch for $ticket_id (signal: ${SIGNAL:-NONE})"
-      return
-    fi
 
     # Feature-level signals (from architect reviewing a feature)
     if [[ "$ticket_type" == "feature" ]]; then
@@ -1249,38 +1355,16 @@ start-work *args:
           local arch_count
           arch_count=$(count_review_rounds "$ticket_id" "jr:architect-reviewer")
           if (( arch_count >= REVIEW_ROUNDS )); then
-            log "ESCALATE: Feature $ticket_id has $arch_count architect review rounds — max exceeded"
-            {{ tk }} assign "$ticket_id" "human"
-            ESCALATION="Max architect review iterations exceeded for feature $ticket_id"
+            escalate_ticket "$ticket_id" "Max architect review iterations exceeded ($arch_count rounds)"
             return
           fi
           log "Feature $ticket_id: architect requested changes — reopened tasks will appear in ready"
           ;;
         escalate)
-          log "ESCALATE: $ticket_id — ${SIGNAL_SUMMARY:-no summary}"
-          {{ tk }} assign "$ticket_id" "human"
-          ESCALATION="Escalation from $ticket_id: ${SIGNAL_SUMMARY:-no details}"
+          escalate_ticket "$ticket_id" "Escalation from architect: ${SIGNAL_SUMMARY:-no details}"
           ;;
         *)
-          local now duration
-          now=$(date +%s)
-          duration=$((now - start_ts))
-          if [[ $duration -ge $((AGENT_TIMEOUT - 10)) ]]; then
-            log "TIMEOUT: $ticket_id timed out after ${duration}s"
-            local session_uuid
-            session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
-            {{ tk }} add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
-            {{ tk }} assign "$ticket_id" "human"
-            ESCALATION="Timeout on $ticket_id after ${duration}s"
-          else
-            log "ESCALATE: $ticket_id returned no valid signal"
-            if [[ -f "$outfile" ]]; then
-              log "Last 5 lines of output:"
-              tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
-            fi
-            {{ tk }} assign "$ticket_id" "human"
-            ESCALATION="No valid signal from $ticket_id"
-          fi
+          handle_no_signal "$ticket_id" "$ticket_type" "$start_ts" "$exit_code"
           ;;
       esac
       return
@@ -1302,9 +1386,7 @@ start-work *args:
         local cr_count
         cr_count=$(count_review_rounds "$ticket_id" "jr:code-reviewer")
         if (( cr_count >= REVIEW_ROUNDS )); then
-          log "ESCALATE: $ticket_id has $cr_count code-review rounds — max exceeded"
-          {{ tk }} assign "$ticket_id" "human"
-          ESCALATION="Max review iterations exceeded for $ticket_id"
+          escalate_ticket "$ticket_id" "Max code-review iterations exceeded ($cr_count rounds)"
           return
         fi
         log "Assigning $ticket_id back to jr:coder"
@@ -1313,39 +1395,68 @@ start-work *args:
         launch "$ticket_id" "task" || log "Could not immediately relaunch coder for $ticket_id"
         ;;
       escalate)
-        log "ESCALATE: $ticket_id — ${SIGNAL_SUMMARY:-no summary}"
-        {{ tk }} assign "$ticket_id" "human"
-        ESCALATION="Escalation from $ticket_id: ${SIGNAL_SUMMARY:-no details}"
+        escalate_ticket "$ticket_id" "Escalation from agent: ${SIGNAL_SUMMARY:-no details}"
         ;;
       *)
-        local now duration
-        now=$(date +%s)
-        duration=$((now - start_ts))
+        handle_no_signal "$ticket_id" "$ticket_type" "$start_ts" "$exit_code"
+        ;;
+    esac
+  }
 
-        if [[ $duration -ge $((AGENT_TIMEOUT - 10)) ]]; then
-          # Timeout detected
-          log "TIMEOUT: $ticket_id timed out after ${duration}s"
-          local session_uuid
-          session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
-          {{ tk }} add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
-          {{ tk }} assign "$ticket_id" "human"
-          ESCALATION="Timeout on $ticket_id after ${duration}s"
+  # Handle a no-signal exit (timeout or crash). Diagnoses via exit_code, writes a
+  # diagnostic note, checks resume budget, invokes the investigator, and dispatches
+  # on resume / escalate / investigator-timeout.
+  handle_no_signal() {
+    local ticket_id="$1" ticket_type="$2" start_ts="$3" exit_code="$4"
+    local now duration session_uuid exit_reason
+    now=$(date +%s)
+    duration=$((now - start_ts))
+    session_uuid=$(grep "\"ticket\":\"$ticket_id\"" "$OUTPUT_DIR/sessions.jsonl" | tail -1 | jq -r '.session // empty')
+
+    # Count prior resumes BEFORE adding the new failure note so resume_n reflects "Nth resume".
+    local resumes_so_far
+    resumes_so_far=$(count_resumes "$ticket_id")
+
+    if (( exit_code == 124 || exit_code == 137 )); then
+      exit_reason="timed out after ${duration}s"
+      {{ tk }} add-note "$ticket_id" "[orchestrator] Agent timed out after ${duration}s. Session: ${session_uuid:-unknown}"
+    else
+      exit_reason="crashed (exit $exit_code) after ${duration}s"
+      {{ tk }} add-note "$ticket_id" "[orchestrator] Agent crashed (exit $exit_code) after ${duration}s. Session: ${session_uuid:-unknown}"
+    fi
+    log "NO SIGNAL: $ticket_id $exit_reason"
+
+    if (( resumes_so_far >= RESUME_BUDGET )); then
+      escalate_ticket "$ticket_id" "Resume budget exhausted ($resumes_so_far of $RESUME_BUDGET) — last: $exit_reason"
+      return
+    fi
+
+    invoke_investigator "$ticket_id" "$session_uuid" "$exit_reason"
+
+    case "${SIGNAL:-}" in
+      resume)
+        local resume_n=$((resumes_so_far + 1))
+        if [[ -n "${SIGNAL_SUMMARY:-}" ]]; then
+          {{ tk }} add-note "$ticket_id" "[orchestrator] Resuming (resume $resume_n of $RESUME_BUDGET) — investigator nudge: ${SIGNAL_SUMMARY}"
         else
-          # Unknown failure
-          log "ESCALATE: $ticket_id returned no valid signal"
-          if [[ -f "$outfile" ]]; then
-            log "Last 5 lines of output:"
-            tail -5 "$outfile" | while IFS= read -r line; do log "  $line"; done
-          fi
-          {{ tk }} assign "$ticket_id" "human"
-          ESCALATION="No valid signal from $ticket_id"
+          {{ tk }} add-note "$ticket_id" "[orchestrator] Resuming (resume $resume_n of $RESUME_BUDGET)"
         fi
+        log "Investigator: resume $ticket_id (resume $resume_n of $RESUME_BUDGET)"
+        launch "$ticket_id" "$ticket_type" || log "Could not immediately resume $ticket_id"
+        ;;
+      escalate)
+        escalate_ticket "$ticket_id" "Investigator escalated: ${SIGNAL_SUMMARY:-no details} ($exit_reason)"
+        ;;
+      investigator-timeout)
+        escalate_ticket "$ticket_id" "Investigator timed out — original failure: $exit_reason"
+        ;;
+      *)
+        escalate_ticket "$ticket_id" "Investigator returned no valid signal — original failure: $exit_reason"
         ;;
     esac
   }
 
   discover() {
-    [[ -n "$ESCALATION" ]] && return
     local tickets
     tickets=$(get_ready_tickets)
     [[ -z "$tickets" ]] && return
@@ -1420,6 +1531,18 @@ start-work *args:
     exit 130
   }
 
+  # Print end-of-run summary listing escalated tickets and pointing at `just me`.
+  print_escalation_summary() {
+    (( ${#ESCALATED_TICKETS[@]} > 0 )) || return 0
+    log ""
+    log "Escalated this run (${#ESCALATED_TICKETS[@]}):"
+    local id
+    for id in "${!ESCALATED_TICKETS[@]}"; do
+      log "  - $id: ${ESCALATED_TICKETS[$id]}"
+    done
+    log "Run \`just me\` to review."
+  }
+
   # --- Main ---
 
   trap cleanup SIGINT SIGTERM
@@ -1451,19 +1574,20 @@ start-work *args:
             rtitle=""
             rtitle=$(echo "$rjson" | jq -r '.title // .id' 2>/dev/null || echo "$rid")
             human_feature_names+=("$rid: $rtitle")
-          elif [[ "$rtype" == "task" || "$rassignee" == "jr:architect-reviewer" ]]; then
+          elif [[ "$rassignee" == "jr:coder" || "$rassignee" == "jr:code-reviewer" || "$rassignee" == "jr:architect-reviewer" ]]; then
             launchable=$((launchable + 1))
           fi
         done < <({{ tk }} ready 2>/dev/null || true)
 
         if (( human_features > 0 && launchable == 0 )); then
-          # Only human-assigned features remain — human review gate
+          # Only human-assigned features remain — human review gate (exit 3 wins over 2)
           log "All automated work complete — features awaiting human review"
           commit_body=""
           for fname in "${human_feature_names[@]}"; do
             commit_body+=$'\n'"- $fname"
           done
           just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" commit-tickets "chore: ticket checkpoint — features awaiting review${commit_body}" || log "Warning: ticket commit failed (non-fatal)"
+          print_escalation_summary
           printf '\a'
           exit 3
         elif (( launchable > 0 )); then
@@ -1474,7 +1598,12 @@ start-work *args:
 
       open_count=0
       open_count=$({{ tk }} query 'select(.status == "open" or .status == "in_progress")' 2>/dev/null | wc -l) || true
-      if (( open_count == 0 )); then
+      if (( ${#ESCALATED_TICKETS[@]} > 0 )); then
+        log "Run finished with ${#ESCALATED_TICKETS[@]} escalation(s)"
+        print_escalation_summary
+        printf '\a'
+        exit 2
+      elif (( open_count == 0 )); then
         log "All work complete"
         printf '\a'
         exit 0
@@ -1487,20 +1616,12 @@ start-work *args:
 
     # Wait for any child to finish
     FINISHED_PID=""
-    wait -n -p FINISHED_PID "${!PID_TO_TICKET[@]}" 2>/dev/null || true
+    wait -n -p FINISHED_PID "${!PID_TO_TICKET[@]}" 2>/dev/null
+    FINISHED_EXIT=$?
 
     if [[ -n "${FINISHED_PID:-}" ]]; then
+      PID_TO_EXIT[$FINISHED_PID]=$FINISHED_EXIT
       react "$FINISHED_PID"
-    fi
-
-    # If escalation triggered, drain remaining and exit
-    if [[ -n "$ESCALATION" ]]; then
-      if (( ${#PID_TO_TICKET[@]} > 0 )); then
-        drain
-      fi
-      log "Exiting due to escalation: $ESCALATION"
-      printf '\a'
-      exit 2
     fi
   done
 
@@ -1696,6 +1817,7 @@ signal type ticket-id summary:
     changes-requested) prefix="CHANGES REQUESTED" ;;
     rebase-complete) prefix="Rebase complete" ;;
     escalate) prefix="Escalating" ;;
+    resume) prefix="Resuming" ;;
     *) echo "Unknown signal type: {{ type }}" >&2; exit 1 ;;
   esac
   {{ tk }} add-note "{{ ticket-id }}" "[signal:$agent] $prefix. {{ summary }}"

@@ -159,6 +159,40 @@ Given(
   },
 );
 
+// Mock returns text with no signal block — simulates an agent that finished without signaling.
+// Used to test the no-signal → investigator flow.
+Given("the mock subagent for {string} as {string} produces no signal", async function (name, agent) {
+  const id = this.ticketIds[name];
+  await this.setMockResponse(id, agent, "I forgot to signal completion.");
+});
+
+// Same as above but consumed once (first call, then queue advances).
+Given("the mock subagent for {string} as {string} produces no signal once", async function (name, agent) {
+  const id = this.ticketIds[name];
+  await this.setMockResponse(id, agent, "I forgot to signal completion.", 1);
+});
+
+// Mock crashes with the given exit code (simulates a non-timeout failure).
+Given("the mock subagent for {string} as {string} crashes with exit {int}", async function (name, agent, code) {
+  const id = this.ticketIds[name];
+  await this.setMockResponse(id, agent, `exit: ${code}\nCrash output.`);
+});
+
+// One-shot crash; subsequent calls fall through to the next mock response.
+Given("the mock subagent for {string} as {string} crashes once with exit {int}", async function (name, agent, code) {
+  const id = this.ticketIds[name];
+  await this.setMockResponse(id, agent, `exit: ${code}\nCrash output.`, 1);
+});
+
+// Pre-seed prior `[orchestrator] Agent timed out` notes (consumed by count_resumes).
+Given("ticket {string} has {int} prior timeout notes", async function (name, count) {
+  const id = this.ticketIds[name];
+  await this.addNote(id, `[orchestrator] Run started`);
+  for (let i = 0; i < count; i++) {
+    await this.addNote(id, `[orchestrator] Agent timed out after 60s. Session: prior-${i + 1}`);
+  }
+});
+
 // --- Actions ---
 
 When("I run the orchestrator", async function () {
@@ -167,6 +201,10 @@ When("I run the orchestrator", async function () {
 
 When("I run the orchestrator with no-human-review", async function () {
   await this.runOrchestrator({ JR_NO_HUMAN_REVIEW: "1" });
+});
+
+When("I run the orchestrator with resume budget {int}", async function (budget) {
+  await this.runOrchestrator({ JR_RESUME_BUDGET: String(budget) });
 });
 
 // --- Assertions ---
