@@ -5,6 +5,11 @@ Work on `just show $ARGUMENTS[0]`.$PARENT_ID
 Every subagent MUST end by running `just signal` and **outputting its result verbatim as the final message**. Do not
 summarize, add commentary, or output anything after the signal block.
 
+**Before signaling, terminate every background task you started.** Any Bash tool call you launched with
+`run_in_background: true` (or a `Monitor`) keeps your `claude` process alive until the child exits preventing the
+orchestrator from being notified you're done. Call `TaskStop` on each background task before running `just signal`. If a
+command might not return on its own, run it foreground with a timeout instead of backgrounding it.
+
 ```sh
 just signal <type> <ticket-id> "<summary>"
 ```
