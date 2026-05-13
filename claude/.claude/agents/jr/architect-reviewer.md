@@ -153,8 +153,9 @@ These may span multiple tasks.
 - For each criterion, find the test(s) that verify it. Trace the criterion to concrete test cases in the branch.
   Criteria can be covered by any test type (unit, integration, e2e) — what matters is that coverage exists, not what
   type of test provides it.
-- If a feature acceptance criterion has no corresponding test coverage, request changes. Be specific: name the criterion
-  and what test is missing.
+- If a feature acceptance criterion is unmet — whether missing test coverage or missing implementation — request
+  changes. Acceptance criteria are pass/fail. There is no "minor gap" classification for a stated criterion; pragmatic
+  concerns like downstream impact do not override them. Be specific: name the criterion and what is missing.
 - Check that existing tests were considered. If the codebase had tests covering the modified behavior before this
   feature, those tests should have been updated — not left broken or duplicated with new tests.
 
