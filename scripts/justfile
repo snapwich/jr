@@ -2900,11 +2900,6 @@ archive name ticket-id:
   archive_dir=".jr/archive/{{ name }}"
   jr_git="git -C .jr"
 
-  if [[ -d "$archive_dir" ]]; then
-    echo "ERROR: Archive '{{ name }}' already exists" >&2
-    exit 1
-  fi
-
   # Collect all ticket IDs from dependency tree
   tree_output=$({{ tk }} dep tree "{{ ticket-id }}" 2>/dev/null) || true
   if [[ -z "$tree_output" ]]; then
@@ -2930,6 +2925,21 @@ archive name ticket-id:
     fi
   done <<< "$dep_ids"
   all_ids=$(echo "$all_ids" | sort -u)
+
+  # Pre-flight: check for collisions with existing archived tickets before moving anything
+  collisions=()
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    if [[ -f ".jr/.tickets/$id.md" && -f "$archive_dir/$id.md" ]]; then
+      collisions+=("$id")
+    fi
+  done <<< "$all_ids"
+
+  if (( ${#collisions[@]} > 0 )); then
+    echo "ERROR: Archive '{{ name }}' already contains ticket(s) with these IDs:" >&2
+    printf '  %s\n' "${collisions[@]}" >&2
+    exit 1
+  fi
 
   mkdir -p "$archive_dir"
 
