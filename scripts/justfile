@@ -1071,23 +1071,22 @@ start-work *args:
 
   # Generate resume prompt for tasks (coder/code-reviewer rework)
   make_resume_prompt() {
-    local ticket_id="$1" since_ts="$2"
+    local ticket_id="$1" since_ts="$2" repo="$3" parent="${4:-}"
     local new_notes
     new_notes=$(just --justfile "$JUSTFILE" --working-directory "$PROJECT_DIR" notes "$ticket_id" --after "$since_ts")
-    local prompt="Continue working on ticket \`$ticket_id\`. This is a **resumed session** — you should already have full context from your first launch. Skip setup."
+    local header="## Resumed Task"$'\n\n'"Prior work exists in this worktree. Check ticket notes and git log before starting. Skip dependency installation and \`just start\`."
     if [[ -n "$new_notes" ]]; then
-      prompt="$prompt"$'\n\n'"## Ticket notes since your last session"$'\n\n'"$new_notes"
-    else
-      prompt="$prompt No new notes."
+      header="$header"$'\n\n'"### Notes since last session"$'\n\n'"$new_notes"
     fi
-    prompt="$prompt"$'\n\n'"Continue from where you left off. Signal completion when done."
-    echo "$prompt"
+    local base_prompt
+    base_prompt=$(make_prompt "$ticket_id" "$repo" "$parent")
+    echo "$header"$'\n\n'"$base_prompt"
   }
 
   # Generate resume prompt for features (architect re-review)
   make_architect_resume_prompt() {
-    local feature_id="$1" since_ts="$2"
-    local prompt="Continue reviewing ticket \`$feature_id\`. This is a **resumed session** — you should already have full context from your first launch. Skip setup."$'\n\n'"## Ticket notes since your last session"
+    local feature_id="$1" since_ts="$2" repo="$3"
+    local header="## Resumed Review"$'\n\n'"Prior review exists for this feature. Check ticket notes and branch diff. Skip setup steps already completed."
     local has_notes=false
 
     # Feature's own notes
@@ -1096,7 +1095,7 @@ start-work *args:
     if [[ -n "$feat_notes" ]]; then
       local feat_title
       feat_title=$({{ tk }} show "$feature_id" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //')
-      prompt="$prompt"$'\n\n'"### $feature_id: $feat_title"$'\n\n'"$feat_notes"
+      header="$header"$'\n\n'"### Notes since last session"$'\n\n'"#### $feature_id: $feat_title"$'\n\n'"$feat_notes"
       has_notes=true
     fi
 
@@ -1110,15 +1109,16 @@ start-work *args:
       [[ -z "$child_notes" ]] && continue
       local child_title
       child_title=$({{ tk }} show "$cid" 2>/dev/null | grep '^# ' | head -1 | sed 's/^# //')
-      prompt="$prompt"$'\n\n'"### $cid: $child_title"$'\n\n'"$child_notes"
-      has_notes=true
+      if ! $has_notes; then
+        header="$header"$'\n\n'"### Notes since last session"
+        has_notes=true
+      fi
+      header="$header"$'\n\n'"#### $cid: $child_title"$'\n\n'"$child_notes"
     done <<< "$child_ids"
 
-    if ! $has_notes; then
-      prompt="Continue reviewing ticket \`$feature_id\`. This is a **resumed session** — you should already have full context from your first launch. Skip setup. No new notes."
-    fi
-    prompt="$prompt"$'\n\n'"Continue from where you left off. Signal completion when done."
-    echo "$prompt"
+    local base_prompt
+    base_prompt=$(make_prompt "$feature_id" "$repo" "")
+    echo "$header"$'\n\n'"$base_prompt"
   }
 
   launch() {
@@ -1228,43 +1228,32 @@ start-work *args:
 
     local prompt outfile session_uuid
     outfile="$OUTPUT_DIR/output-$ticket_id.txt"
+    session_uuid=$(uuidgen)
 
-    # Check for previous session to resume
+    # Check for previous session — use resume prompt with full context + new notes
     local prev_session prev_ts
     prev_session=$(lookup_previous_session "$ticket_id" "$agent")
     prev_ts=$(lookup_session_ts "$ticket_id" "$agent")
 
     if [[ -n "$prev_session" ]]; then
-      # Resume previous session with new notes only
-      session_uuid="$prev_session"
       if [[ "$ticket_type" == "feature" ]]; then
-        prompt=$(make_architect_resume_prompt "$ticket_id" "$prev_ts")
+        prompt=$(make_architect_resume_prompt "$ticket_id" "$prev_ts" "$repo")
       else
-        prompt=$(make_resume_prompt "$ticket_id" "$prev_ts")
+        prompt=$(make_resume_prompt "$ticket_id" "$prev_ts" "$repo" "$parent")
       fi
-      log "Resuming session: $session_uuid (ticket: $ticket_id)"
-
-      (
-        cd "$launch_dir"
-        export JR_AGENT="$agent"
-        export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
-        exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} -r "$session_uuid" --dangerously-skip-permissions \
-          -p "$prompt" < /dev/null > "$outfile" 2>&1
-      ) &
+      log "Fresh session (prior: $prev_session) for $ticket_id"
     else
-      # First launch — fresh session
-      session_uuid=$(uuidgen)
       prompt=$(make_prompt "$ticket_id" "$repo" "$parent")
       log "Session: $session_uuid (ticket: $ticket_id)"
-
-      (
-        cd "$launch_dir"
-        export JR_AGENT="$agent"
-        export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
-        exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} --session-id "$session_uuid" --dangerously-skip-permissions \
-          -p "$prompt" < /dev/null > "$outfile" 2>&1
-      ) &
     fi
+
+    (
+      cd "$launch_dir"
+      export JR_AGENT="$agent"
+      export MOCK_RESPONSES_DIR="${MOCK_RESPONSES_DIR:-}"
+      exec timeout "$AGENT_TIMEOUT" $CLAUDE --agent "$agent" ${model:+--model "$model"} --session-id "$session_uuid" --dangerously-skip-permissions \
+        -p "$prompt" < /dev/null > "$outfile" 2>&1
+    ) &
     local pid=$!
 
     if ! acquire_lock "$lock_name" "$pid"; then
