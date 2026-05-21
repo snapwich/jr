@@ -59,13 +59,12 @@ Feature: Archive and unarchive tickets
     When I run unarchive "roundtrip"
     Then the jr repo should have a commit containing "unarchive: roundtrip"
 
-  Scenario: Archive fails if name already exists
+  Scenario: Archive allows reusing name for different tickets
     Given a feature "feat-1" with tasks: "task-a"
-    And I run archive "taken" for "feat-1"
+    And I run archive "shared" for "feat-1"
     And a feature "feat-2" with tasks: "task-b"
-    When I run archive "taken" for "feat-2"
-    Then the last command should exit with code 1
-    And the output should contain "already exists"
+    When I run archive "shared" for "feat-2"
+    Then the last command should exit with code 0
 
   Scenario: Archive fails if ticket not found
     When I run archive "bad" for "nonexistent-id"
