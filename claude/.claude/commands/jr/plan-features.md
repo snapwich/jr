@@ -47,10 +47,13 @@ Before fanning out agents, handle metadata state changes for features that alrea
 - **Awaiting human**: Reassign to `jr:architect-reviewer`, add note.
 - **Closed**: Reopen, reassign to `jr:architect-reviewer`, add note. Warn about re-blocking downstream.
 
-### 4. Fan Out Explore+Create Agents
+### 4. Fan Out Explore+Create Agents (wave-based)
 
-Launch one Agent per feature, **all in parallel**. Each agent explores the codebase AND creates tickets — the
-coordinator never holds task details or exploration findings.
+Group features into waves by dependency order — independent features in wave 1, features that depend on wave 1 in wave
+2, etc. Process one wave at a time; within each wave, launch all agents in parallel.
+
+**Wave N agents** receive upstream ticket IDs from prior waves. They read those tickets (`just show`) to understand the
+future codebase state they'll inherit, then explore the current codebase for structural context.
 
 Agent prompt structure (generate dynamically per feature):
 
@@ -61,9 +64,12 @@ Agent prompt structure (generate dynamically per feature):
 > **Source location**: [path to default/ worktree or repo subdirectory] **Ignore**: `.jr/`, `.tickets/`, `.claude/`,
 > `justfile` — orchestration infrastructure.
 >
-> **Metadata**: external-ref=[value or none], repo=[name or none], base=[branch] **Existing feature ID**: [ID if > > > >
+> **Metadata**: external-ref=[value or none], repo=[name or none], base=[branch] **Existing feature ID**: [ID if > > >
+> modifying, or "new"]
 >
-> > modifying, or "new"]
+> **Upstream dependencies**: [feature IDs this feature depends on, or "none"] Read these with `just show <id>` to
+> understand what state the codebase will be in when your feature starts. Your tasks should assume upstream work is
+> already merged.
 >
 > ## Phase 1: Explore
 >
@@ -124,9 +130,9 @@ Agent prompt structure (generate dynamically per feature):
 > SURPRISES: [brief list of behavioral gotchas, or "none"]
 > ```
 
-### 5. Collect Results and Resolve Questions
+### 5. Collect Results and Resolve Questions (per wave)
 
-Check each agent's output:
+After each wave completes, check each agent's output:
 
 - **`STATUS: created`** — record feature ID, task IDs, cross-feature concerns
 - **`STATUS: questions`** — agent hit ambiguity, no tickets created
@@ -136,6 +142,8 @@ If any agents returned questions:
 1. Batch ALL questions from all agents into one AskUserQuestion call
 2. SendMessage the answers back to each agent that had questions (they resume with exploration context intact, proceed
    to Phase 2, return created IDs)
+
+Then proceed to the next wave (passing created ticket IDs as upstream dependencies).
 
 ### 6. Wire Cross-Feature Dependencies
 
