@@ -1,9 +1,8 @@
-Break down a plan document into features and tasks, or modify existing ticket structures.
+Break down a plan document into features and tasks using parallel subagents that explore and create in one pass.
 
 ## Input
 
-The user provides a plan document or update request — either as a file path (`$ARGUMENTS`) or pasted directly. The input
-describes work to be done: new features, new tasks, or modifications to existing tickets.
+The user provides a plan document or update request — either as a file path (`$ARGUMENTS`) or pasted directly.
 
 ## Commands
 
@@ -14,469 +13,167 @@ Run `just plan-features` to see all available commands for this workflow.
 
 ## Process
 
-### 1. Discover Current State
+### 1. Pre-flight
 
-Before analyzing the input, map the existing ticket landscape:
+Discover current state:
 
 ```sh
 just tree
 ```
 
-Then build structured data per feature using `just query` with jq filters:
+Classify each input feature's state from tree output (shows status, type, assignee, children):
 
-- Feature ID, status, assignee, child tasks
-- Chain order — walk from the task with no sibling deps (first) → follow dependents to the end
-- Last implementation task — the task that the feature depends on (after all task deps are closed, feature is ready)
-- Feature state classification:
+| State              | Detection                                               |
+| ------------------ | ------------------------------------------------------- |
+| Active             | Feature open, at least 1 child task open/in_progress    |
+| Awaiting architect | Feature open, all children closed, assignee = architect |
+| Awaiting human     | Feature open, all children closed, assignee = human     |
+| Closed             | Feature closed                                          |
+| New                | Not found in tree                                       |
 
-| State               | Detection                                                           | Scenario |
-| ------------------- | ------------------------------------------------------------------- | -------- |
-| Active              | Feature open, at least 1 child task open/in_progress                | 1        |
-| Awaiting architect  | Feature open, all children closed, assignee = jr:architect-reviewer | 2        |
-| Awaiting human      | Feature open, all children closed, assignee = human                 | 3        |
-| Closed              | Feature closed                                                      | 4        |
-| New (doesn't exist) | Not found                                                           | 5        |
+Ask for **base branch** (AskUserQuestion): `origin/HEAD (Recommended)`, `main`, or Other. Applies to all features.
 
-Also run:
+### 2. Identify Feature Boundaries
 
-```sh
-just ls
-```
+Trivial when input is external tickets (1 ticket = 1 feature). For plans, identify logical feature groupings. Ask user
+if boundaries are ambiguous. Each feature = one PR that leaves the app working when merged.
 
-This shows the project structure — repos and their worktrees. A single level of entries under `.` means single-repo
-mode. Entries grouped under named subdirectories means multi-repo mode — use those directory names as `repo:<name>` tag
-values on features.
+### 3. Handle Existing Features
 
-### 2. Analyze Input
+Before fanning out agents, handle metadata state changes for features that already exist:
 
-Identify what changes are needed:
+- **Active** (has in_progress tasks): Warn user, recommend waiting. Proceed only with confirmation.
+- **Awaiting architect**: Add note explaining changes.
+- **Awaiting human**: Reassign to `jr:architect-reviewer`, add note.
+- **Closed**: Reopen, reassign to `jr:architect-reviewer`, add note. Warn about re-blocking downstream.
 
-- **Features**: logical groupings of related work (each becomes a `type: feature` ticket)
-- **Tasks**: concrete units of implementation within each feature (each becomes a `type: task` ticket)
-- **Dependencies**: ordering constraints between tasks and between features
-- **Repos**: which repo(s) each task targets (relevant in multi-repo mode)
-- **Modifications to existing features**: new tasks to add, description changes
+### 4. Fan Out Explore+Create Agents
 
-**Self-contained features.** Each feature = one PR, and every PR must leave the application in a working state when
-merged. When grouping work into features, never split tightly coupled changes across features such that merging one
-without the other breaks the app. If implementing X is incomplete/broken without also implementing Y, group X and Y into
-one feature. Rare exceptions: greenfield apps not yet functional, or work gated behind feature flags (but even flags
-should be uncommon — prefer genuinely self-contained slices).
+Launch one Agent per feature, **all in parallel**. Each agent explores the codebase AND creates tickets — the
+coordinator never holds task details or exploration findings.
 
-For existing features, map current chain and identify insertion points (default: append at end of chain).
+Agent prompt structure (generate dynamically per feature):
 
-**Specification depth check**: When the plan references testing specific code (components, endpoints, services, CLI
-commands, libraries, pipelines, etc.), explore the actual source to understand its complexity before finalizing ticket
-descriptions. **Use Task tool with Explore subagents** for this — do not read source files directly into this context.
-Launch Explore agents asking each to summarize the behavior surface of the code under test: inputs, outputs, modes/
-options, state transitions, error paths, and external integrations. This keeps the planning context clean while getting
-accurate complexity assessments.
-
-**Explore agent scoping**: Direct Explore agents to the project's source code — typically the `default/` worktree (or a
-specific repo subdirectory in multi-repo mode). Explicitly tell them to **ignore `.jr/`, `.tickets/`, `.claude/`, and
-`justfile`** — these are orchestration infrastructure, not project source. If an Explore agent needs ticket information
-(e.g., existing requirements, task descriptions), provide that context in the prompt yourself using `tk` output — do not
-let the agent discover it by browsing files.
-
-Compare each Explore summary against the plan's test description for that area. Flag any case where the plan's test
-depth is shallow relative to the code's actual behavior surface — these become open questions for §3.
-
-**Cross-feature test needs**: When the plan involves multiple interrelated features, identify interactions between
-features that need verification but can't be tested within any single feature's scope. Usually, a downstream feature
-that already depends on an upstream feature is the right place for these tests — a task in the downstream feature can
-verify the interaction since it has access to both features' code via stacked branches. Add the cross-feature test
-requirements to that task's description (or its "Feature verification" section).
-
-Only create a **separate verification feature** when there is no downstream feature that naturally depends on all the
-features being tested. This is rare — e.g., multiple independent features that all contribute to a shared flow with no
-feature depending on all of them. Keep verification features lean: only the tests that genuinely require code from
-multiple features to be present.
-
-### 3. Resolve Open Questions
-
-Before creating or modifying any tickets, scan the input for unresolved decisions and ambiguities. Look for:
-
-- Explicit markers: "TBD", "TODO", "TBC", "open question", "to be decided", "to be determined"
-- Alternatives without a decision: "X or Y", "either A or B", "option 1 / option 2"
-- Uncertainty language: "maybe", "possibly", "might", "not sure if", "need to decide"
-- Incomplete specifications: missing error handling strategy, unspecified edge cases, vague acceptance criteria
-- Placeholders: "...", "etc.", "and so on" where specifics are needed for implementation
-- **Implicit underspecification**: The plan describes testing something in vague terms ("loads", "works", "interaction",
-  "handles requests") but the actual source (explored in §2) reveals significant behavior — multiple modes, stateful
-  flows, non-trivial computation, branching logic — that the plan doesn't explicitly cover. For each, present:
-  - What the plan says (quote)
-  - What the code actually does (from source exploration)
-  - The gap between the two
-  - Ask the user how deep testing should go — smoke test (exists/responds), functional test (core flows), or exhaustive
-    (all modes/edge cases/error paths)
-
-Collect **all** unresolved items and present them to the user in a single batch. For each item:
-
-- Quote the relevant text from the input
-- Explain why it needs resolution (what decision the coder would be stuck on)
-- Suggest a default if one is obvious
-
-**Base branch**: Always ask the user for the base branch — never assume. Use AskUserQuestion with these options:
-
-- `origin/HEAD (Recommended)` — resolves to whatever the remote default branch is
-- `main`
-- Other — for custom refs like `origin/develop`, `release/1.0`, etc.
-
-This applies to all features in this run. Include in the question description: "This applies to all features being
-created. If any feature needs a different base, specify per-feature overrides via Other."
-
-Wait for the user to answer all open questions before proceeding. Use the resolved answers when writing ticket
-descriptions — replace every ambiguity with the concrete decision. **No ticket description should contain unresolved
-language.** If you find yourself writing "TBD" or "or" between alternatives in a ticket, stop and ask the user.
-
-### 4. Behavioral Impact Analysis
-
-Before creating tickets, scan for **behavioral breaking changes** — places where the new pattern fundamentally changes
-how code executes, not just how it's written. These require explicit warnings in task descriptions.
-
-**Checklist** (check each that applies):
-
-- [ ] **Async/await implications** — Does the new pattern wait for operations that were previously fire-and-forget? Does
-      it change what happens on success/failure?
-- [ ] **Control flow changes** — Does lifecycle management shift (e.g., state-controlled → promise-controlled)? Does
-      error handling responsibility move?
-- [ ] **Callback behavior** — Do callbacks need to be awaited that weren't before? Do return values now matter?
-- [ ] **Side effect timing** — Does the order or timing of side effects change? Are there new race conditions?
-
-For each "yes" answer, add an explicit **BEHAVIORAL CHANGE** callout to the affected task description:
-
-> **BEHAVIORAL CHANGE**: [Old pattern] becomes [new pattern].
+> You are exploring a codebase and creating tickets for one feature. Do both in one pass.
 >
-> - Old behavior: [what happened before]
-> - New behavior: [what happens now]
-> - Patterns that will break: [fire-and-forget, early returns, etc.]
-> - What to look for: [callback chains, async operations, etc.]
+> **Feature**: [title + full content from plan/ticket]
+>
+> **Source location**: [path to default/ worktree or repo subdirectory] **Ignore**: `.jr/`, `.tickets/`, `.claude/`,
+> `justfile` — orchestration infrastructure.
+>
+> **Metadata**: external-ref=[value or none], repo=[name or none], base=[branch] **Existing feature ID**: [ID if > > > >
+>
+> > modifying, or "new"]
+>
+> ## Phase 1: Explore
+>
+> Read the codebase to understand what's needed. Identify:
+>
+> - Tracer-bullet task decomposition (vertical slices — axis depends on work type)
+> - Ambiguities or underspecified aspects a coder would get stuck on
+> - Components/APIs/files this feature touches that other features might also touch
+> - Behavioral surprises the plan doesn't account for
+>
+> **If you find unresolvable ambiguity**: STOP. Return ONLY your open questions (quote relevant text, explain why it
+> needs resolution). Do NOT create tickets. Format:
+>
+> ```
+> STATUS: questions
+> QUESTIONS:
+> - [question 1]
+> - [question 2]
+> ```
+>
+> **If everything is clear**: proceed to Phase 2.
+>
+> ## Phase 2: Create
+>
+> Create the feature and all tasks using `just` commands:
+>
+> - `just create "<title>" -t feature -a jr:architect-reviewer -d "<description>"` (with --external-ref and --tags as
+>   needed)
+> - `just create "<title>" -t task -a jr:coder --parent <feature-id> -d "<description>"` for each task
+> - `just dep <task-N> <task-N-1>` to chain tasks linearly
+> - `just dep <feature-id> <task-id>` for each task (feature depends on all children)
+>
+> If modifying an existing feature: create new tasks, chain after last existing task, add feature deps on new tasks.
+>
+> ## Ticket-Writing Rules
+>
+> - Feature descriptions: what it accomplishes, acceptance criteria (specific testable statements), architectural notes,
+>   expected test impact (2-5 bullets: what tests change, how, why)
+> - Task descriptions: what to implement, requirements (specific testable statements — basis for test coverage),
+>   acceptance criteria, relevant technical context
+> - Last task in chain: add "Feature verification" section if feature acceptance criteria need cross-task verification.
+>   Prefer unit tests; integration only where units can't cover; e2e only when explicitly needed.
+> - Embed ALL plan context in descriptions — the plan is consumed, never referenced again
+> - No shell commands in descriptions — describe WHAT (run tests, type-check) not HOW (specific commands)
+> - No unresolved questions — every ambiguity must be resolved before creation
+> - Features: `type: feature`, assignee `jr:architect-reviewer`, `--external-ref` for branch naming
+> - Tasks: `type: task`, assignee `jr:coder`, `--parent <feature-id>`, no `repo:` tags (inherited)
+> - Linear task chain — no parallel tasks within a feature
+> - Self-contained features — each PR must leave the app working when merged
+>
+> ## Output (if tickets created)
+>
+> ```
+> STATUS: created
+> FEATURE_ID: <id>
+> TASK_IDS: <id1>, <id2>, ... (chain order)
+> CROSS_FEATURE_CONCERNS: [brief list of shared components/APIs touched]
+> SURPRISES: [brief list of behavioral gotchas, or "none"]
+> ```
 
-### 5. Integration Test Analysis
+### 5. Collect Results and Resolve Questions
 
-For tasks that modify shared components, APIs, or cross-cutting concerns, identify integration test requirements:
+Check each agent's output:
 
-1. **Discovery**: Determine if integration tests exist that exercise the modified code. Use project skills (if
-   available), CLAUDE.md, or explore the test structure to understand how integration tests are organized.
+- **`STATUS: created`** — record feature ID, task IDs, cross-feature concerns
+- **`STATUS: questions`** — agent hit ambiguity, no tickets created
 
-2. **Add to task description** when integration tests are relevant:
+If any agents returned questions:
 
-   > **Integration verification**: Verify integration tests covering [affected area] pass before marking complete.
+1. Batch ALL questions from all agents into one AskUserQuestion call
+2. SendMessage the answers back to each agent that had questions (they resume with exploration context intact, proceed
+   to Phase 2, return created IDs)
 
-3. **When to require**: Migration tasks, API changes, shared component modifications, changes with many consumers
+### 6. Wire Cross-Feature Dependencies
 
-If no integration tests exist but should (shared component migration), note this as a gap on the feature description —
-but don't block task creation on it.
-
-### 6. Present Plan
-
-Show a clear view of what will be created or modified. Include:
-
-**For new features:**
-
-- Feature name and summary
-- Task list with dependencies
-- Cross-feature dependencies if any
-
-**For existing features being modified:**
-
-- Current chain diagram (task order with arrows)
-- Proposed chain diagram showing where new tasks insert
-- What will be created, reopened, or re-wired
-
-**Warnings:**
-
-- In-progress tasks (recommend waiting)
-- Downstream features that will be re-blocked if reopening a closed feature
-
-Wait for user confirmation before executing.
-
-### 7. Execute: Create New Features
-
-For each new feature identified:
-
-```sh
-just create "<feature title>" \
-  -t feature \
-  -a jr:architect-reviewer \
-  -d "<plan context embedded in the description>"
-```
-
-Features are assigned to `jr:architect-reviewer` at creation. When all child tasks close, the feature appears in
-`just ready` and the orchestrator launches the architect for feature-level review.
-
-In multi-repo mode, add a `repo:<name>` tag to each feature matching the target repo directory name. If the user also
-specifies an external prefix (e.g., a JIRA ID like "PEX-1234"), use `--external-ref` on the **feature** ticket. This
-overrides the tk ticket ID as the worktree/branch name prefix, preserving the original case of the value.
-
-Use the base branch answer from §3. If the user selected `origin/HEAD`, no `base:` tag is needed (this is the system
-default). For any other value, add a `base:<branch>` tag — the tag value is an absolute ref: `base:main`,
-`base:origin/develop`, `base:release/1.0`, etc. If the user specified per-feature overrides in §3, apply those
-individually.
-
-Example: `--external-ref "PEX-1234" --tags "repo:backend,base:origin/develop"`.
-
-The description MUST include all relevant plan context for this feature. The plan is consumed — the original document is
-not referenced again. Include:
-
-- What this feature accomplishes (from the plan)
-- **Acceptance criteria** — written as specific, testable statements. These are feature-level requirements that may span
-  multiple tasks (e.g., "the API endpoint returns paginated results and the frontend renders them with infinite
-  scroll"). The architect-reviewer traces these to test coverage across the branch. Write them with the same rigor as
-  task-level requirements — concrete enough that you can point to a test and say "this verifies that criterion."
-- Any architectural notes or constraints
-- Cross-feature context if relevant
-- **Expected test impact** — when the feature will predictably change test outputs, declare what reviewers should expect
-  to see in test-related diffs. This helps reviewers distinguish intentional changes from regressions. 2–5 bullets, each
-  stating: what tests are affected, how, and why.
-
-  This is guidance for **reviewers interpreting diffs**, not an excuse for failing tests. Coders must still update
-  fixtures, snapshots, and assertions to make tests pass. The only exception is diff-comparison workflows (e.g., visual
-  regression before/after) where diffs are reviewed by a human rather than pass/fail gated.
-
-  Examples:
-  - "Visual regression before/after diffs will show avatar size changes at >=992px — expected, review visually"
-  - "Snapshot assertions for LoginForm will need updating due to new ARIA attributes — coder should update"
-  - "E2E tests for dark-mode toggle will need rewriting — behavior changes from toggle to set-specific"
-
-### 8. Execute: Create Tasks
-
-Tasks within a feature form a **linear chain** — no parallel tasks within a feature. Order them logically (e.g., backend
-before frontend, data model before API, etc.).
-
-For each task within a feature:
+From agents' CROSS_FEATURE_CONCERNS, identify ordering (feature touching shared code first → others depend on it). Ask
+user to confirm ordering if non-obvious:
 
 ```sh
-just create "<task title>" \
-  -t task \
-  -a jr:coder \
-  --parent <feature-id> \
-  -d "<task description with implementation guidance>"
+just dep <feature-B> <feature-A>
+just dep <first-task-B> <feature-A>
 ```
 
-In multi-repo mode, features MUST have a `repo:<name>` tag matching the target repo directory name (used by the
-orchestrator, `rebase-feature`, `approve`, and `worktree-deps`). Tasks inherit the repo from their parent feature — do
-NOT add `repo:` tags to tasks. In single-repo mode, omit the tag (the orchestrator defaults to `.`).
-
-The task description should include:
-
-- What to implement
-- **Requirements**: specific, testable statements of what the implementation must do. These are the basis for test
-  coverage — the coder writes tests to verify these requirements, and reviewers check tests against them. Requirements
-  don't need to be exhaustive or prescribe implementation details, but they should be concrete enough that you can tell
-  from a test whether the requirement is met.
-- **Acceptance criteria**: observable conditions for the task to be considered complete
-- Any relevant technical context from the plan
-
-Task descriptions should focus on **what** to accomplish, not **how** to run commands:
-
-- "Run the type checker on the components package" — good
-- `pnpm --filter @mc/components type-check` — bad (explicit command becomes stale)
-- "Run unit tests for the auth module" — good
-- `npm test -- --testPathPattern=auth` — bad
-
-The coder discovers correct commands via skills (if available), CLAUDE.md, or other discovery methods at implementation
-time.
-
-**Last task owns feature-level test verification.** The last task in the chain has access to all prior tasks' code in
-the worktree. If the feature's acceptance criteria require verification beyond what individual tasks test, add a
-"Feature verification" section to this task's description listing what needs to be verified and at what level. Use the
-cheapest test type that adequately covers each criterion:
-
-- **Unit tests** should cover the majority of requirements — they are fast, focused, and cheap to maintain
-- **Integration tests** only where unit tests genuinely can't verify the interaction (e.g., API contracts, middleware
-  chains, cross-component data flow). Happy path is usually sufficient unless the integration boundary has its own
-  failure modes.
-- **E2E tests** only when explicitly needed — expensive to write and maintain
-
-Not every feature needs this section. If all acceptance criteria are already covered by individual tasks' unit tests
-(e.g., a migration feature where each task verifies its own migration), omit it.
-
-Example for a feature that does need cross-task verification:
-
-```
-## Feature verification
-- Verify the API endpoint (task 1) returns data that the renderer (task 2) handles correctly [integration]
-- Verify the Storybook stories render without errors [unit — snapshot test]
-```
-
-**Cross-feature test placement.** If verifying a feature requires testing its interaction with code from other features,
-prefer adding those tests to a downstream feature that already depends on the upstream feature — a task in that feature
-has access to both features' code. Only create a separate verification feature when no existing feature naturally
-depends on all the features being tested (see "Cross-feature test needs" in the analysis step). The feature's own
-acceptance criteria should only cover what can be tested within its scope.
-
-### 9. Execute: Modify Existing Features
-
-Handle each scenario differently:
-
-**Scenario 1 — Active feature** (open, has open/in_progress children):
-
-- If any task is `in_progress`, **warn the user** and recommend waiting for it to complete before modifying the chain.
-  Proceed only with explicit confirmation.
-- Create new tasks, chain them after the current last task, add feature deps on new tasks.
-
-**Scenario 2 — Awaiting architect** (open, all children closed, assignee = jr:architect-reviewer):
-
-- Add a note explaining what changed: `just add-note $FEATURE "Adding new tasks: <brief description>"`
-- Create new tasks, chain after current last task, add feature deps.
-- The architect review will trigger again after the new tasks close.
-
-**Scenario 3 — Awaiting human** (open, all children closed, assignee = human):
-
-- Reassign feature back to architect: `just assign $FEATURE jr:architect-reviewer`
-- Add a note: `just add-note $FEATURE "Adding new tasks — re-review required: <brief description>"`
-- Create new tasks, chain after current last task, add feature deps.
-
-**Scenario 4 — Closed feature**:
-
-- Reopen the feature: `just reopen $FEATURE`
-- Reassign to architect: `just assign $FEATURE jr:architect-reviewer`
-- Add note: `just add-note $FEATURE "Reopened to add new tasks: <brief description>"`
-- Create new tasks, chain after current last task, add feature deps.
-- **Warning**: Reopening a closed feature re-blocks any downstream features that depend on it. Note this to the user.
-
-**Re-wiring pattern** for appending tasks at end:
+### 7. Verify
 
 ```sh
-# New task chains after last existing task
-just dep $NEW_TASK_1 $LAST_TASK
-
-# Chain new tasks together (if multiple)
-just dep $NEW_TASK_2 $NEW_TASK_1
-
-# Feature depends on each new task
-just dep $FEATURE $NEW_TASK_1
-just dep $FEATURE $NEW_TASK_2
+just tree
+just dep-cycle
+just verify-tickets
+just ready
 ```
 
-For **mid-chain insertion** (inserting between two existing tasks): break the link between the two adjacent tasks,
-insert the new task(s), and re-wire both ends.
+Try to fix issues (missing deps, broken chains). Escalate to user only if unfixable.
 
-### 10. Set Up Dependencies
-
-#### Feature depends on all its child tasks
-
-Every feature must depend on all its child tasks so it only appears in `just ready` when all children are closed:
-
-```sh
-just dep <feature-id> <task-id-1>
-just dep <feature-id> <task-id-2>
-# ... for each child task
-```
-
-#### Linear task chain within each feature
-
-Tasks within a feature form a linear chain — each task depends on the previous one:
-
-```sh
-just dep <task-2> <task-1>
-just dep <task-3> <task-2>
-# ... and so on
-```
-
-#### Cross-feature dependencies
-
-If one feature depends on another completing first:
-
-```sh
-# Feature B depends on Feature A
-just dep <feature-B-id> <feature-A-id>
-# First task of Feature B also depends on Feature A (blocks until A is human-reviewed and closed)
-just dep <first-task-B-id> <feature-A-id>
-```
-
-This blocks all tasks in the dependent feature until the dependency feature is closed by a human.
-
-### 11. Execute: Modify Descriptions
-
-Use `just show <id>` to read the current ticket content. Then use the Edit tool on `.jr/.tickets/<id>.md` to modify the
-body text.
-
-**Do not hand-edit frontmatter** — use `tk` commands for metadata changes (status, assignee, tags, deps).
-
-### 12. Verify
-
-After all changes:
-
-1. Show the full hierarchy: `just tree`
-2. Check for dependency cycles: `just dep-cycle`
-3. Show what's immediately ready to work on: `just ready`
-4. Run `just verify-tickets` to check for linear chains and cross-feature task dependencies
-5. Report a summary to the user: what was created, reopened, re-wired
-
-### 13. Commit checkpoint
-
-After verification passes, commit the ticket changes as a checkpoint:
+### 8. Commit
 
 ```sh
 just commit-tickets "chore: plan-features — <summary>"
 ```
 
-The summary should describe what was done and list feature IDs. Examples:
+Non-fatal if it fails.
 
-- `chore: plan-features — created feat-abcd, feat-efgh (3 features, 8 tasks)`
-- `chore: plan-features — added tasks to feat-abcd, created feat-efgh`
-
-This is non-fatal — if it fails, warn the user but don't treat it as an error.
-
-## Output
-
-Present the user with:
-
-- Total features and tasks created/modified
-- The ticket hierarchy (from `just tree`)
-- What's immediately ready to work on
-- Any cross-feature dependencies
-- Confirmation that no dependency cycles exist
-- Confirmation that tickets were committed (or warning if commit failed)
+---
 
 ## Scope Boundary
 
-**STOP after verification.** This command creates and modifies tickets ONLY. Do NOT:
+**STOP after verification.** This command creates tickets ONLY. Do NOT spawn agents to work on tickets, run
+`just start-work`, or make code changes.
 
-- Spawn agents to work on tickets (e.g., `Task` tool with `subagent_type="jr:coder"`)
-- Run `just start-work`
-- Start implementing task requirements
-- Make code changes
+## Output
 
-Work on tickets happens through the orchestrator: `just start-work`. The human decides when to start work.
-
-## Edge Cases
-
-- **Feature with in-progress task**: Warn the user and recommend waiting. Modifying the chain while a coder is active
-  risks conflicts. Only proceed with explicit confirmation.
-- **Feature with no tasks yet**: New tasks become the first in the chain.
-- **Closed feature with downstream deps**: Reopening re-blocks all downstream features that depend on it. Always note
-  this to the user before proceeding.
-- **Mid-chain insertion**: Supported — identify the insertion point, break the link between the two adjacent tasks,
-  insert new task(s), re-wire both ends.
-
-## Rules
-
-- Embed plan context in feature descriptions — do not reference external plan files
-- Features are assigned to `jr:architect-reviewer` at creation — the architect reviews when all tasks close
-- Every task gets initial assignee `jr:coder`
-- Every feature must depend on all its child tasks
-- Tasks within a feature form a **linear chain** — no parallel tasks
-- One feature = one worktree = one branch = one PR
-- **Features must be self-contained** — each feature must leave the application in a working state when merged. Never
-  split work across features such that merging one without the other breaks the app. Group tightly coupled changes into
-  one feature. Rare exceptions: greenfield apps not yet functional, or work gated behind feature flags.
-- Tasks must only depend on other tasks within the same feature — use feature-level dependencies for cross-feature
-  ordering
-- Cross-feature deps: feature B depends on feature A, AND first task of feature B depends on feature A
-- In multi-repo mode, features must have a `repo:<name>` tag
-- `--external-ref` goes on **features** (not tasks) for worktree/branch naming
-- **No unresolved questions in tickets** — every TBD, open alternative, or ambiguity in the plan must be resolved with
-  the user before creating tickets. Coders implement exactly what the ticket says; if it says "TBD", they're stuck.
-- **No explicit shell commands in task descriptions** — describe WHAT to do (run tests, type-check, lint, build), not
-  HOW (specific pnpm/npm/yarn/make commands). Coders discover the correct commands at implementation time via skills,
-  CLAUDE.md, justfile, or project docs. This keeps tickets timeless — project tooling may change between ticket creation
-  and implementation.
-- When adding tasks to awaiting-human features, reassign feature to `jr:architect-reviewer`
-- When adding tasks to closed features, reopen the feature AND reassign to `jr:architect-reviewer`
-- Add `[human]` notes explaining what was changed and why on modified features
-- New tasks default to appending at end of chain unless user specifies otherwise
-- Use `just` recipes for all ticket operations — NOT MCP task tools
-- STOP after verification — do not spawn agents or start implementation
+Present: total features/tasks created, ticket hierarchy (`just tree`), what's ready, cross-feature deps, cycle check
+result, commit status.

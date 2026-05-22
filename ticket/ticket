@@ -594,7 +594,9 @@ cmd_tree() {
     function fmt_node(nid) {
         s = nid
         if (extrefs[nid] != "") s = s " (" extrefs[nid] ")"
-        return s " [" statuses[nid] "][" types[nid] "] " titles[nid]
+        s = s " [" statuses[nid] "][" types[nid] "]"
+        if (assignees[nid] != "") s = s "[" assignees[nid] "]"
+        return s " " titles[nid]
     }
 
     function _tree_gt(a, b) {
